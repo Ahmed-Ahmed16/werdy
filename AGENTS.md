@@ -49,6 +49,8 @@ Agent skills installed on 2026-10-27 with `npx skills@latest add <repo> -a claud
 | [amElnagdy/review-skills](https://github.com/amElnagdy/review-skills) | `debate-review`, `babysit-pr` | Two model PR review and following a PR through bot reviews |
 | [amElnagdy/delegate-skills](https://github.com/amElnagdy/delegate-skills) | `delegate-setup` and the `*-delegate` skills for each supported CLI | Required by `review-skills`. **Not configured yet:** `delegate-setup` runs only after the owner says which other model CLIs he has |
 
+Local change: in our copies of eight Pocock skills (`grill-with-docs`, `to-spec`, `to-tickets`, `implement`, `implement-spec`, `triage`, `wayfinder`, `setup-matt-pocock-skills`) the `disable-model-invocation: true` line was removed on 2026-10-27, so the agent can start them when the owner asks. Rule: the agent starts these only on the owner's request, never on its own. `npx skills update` restores the line; remove it again after an update.
+
 Not installed: Pocock's `code-review` (its name clashes with Claude Code's own `/code-review`, and `debate-review` covers the job).
 
 **REA (morluto/rea), owner runs it.** Its setup is interactive, so the owner runs `npx rea-agents setup` himself in a terminal and declines the Hopper install: Werd's web app is plain JavaScript, so no native disassembler is needed. Clean room limit: use REA to observe behaviour (screens, flows, what a request does), never to copy code or text into werdy. Whoever reads Werd's code does not write the matching werdy code from it.
