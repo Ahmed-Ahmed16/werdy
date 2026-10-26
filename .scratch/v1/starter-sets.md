@@ -10,7 +10,7 @@ Draft for Ahmed's review, 2026-10-27. Starter sets are data (ADR 0024); this fil
 * Werd's presets were not opened. Werd may remind us which kinds of deeds people expect, but the PDFs already cover that, so there was no need.
 * Points from the sheet are dropped: every deed weighs the same (ADR 0008).
 
-Open question for Ahmed: is `جدول المحاسبة` your own sheet, or the academy's? Either way we only take the kinds of deeds, but the answer goes in ADR 0019.
+Answered on 2026-10-27: `جدول المحاسبة` is Ahmed's own sheet, adapted with his own edits from the Werd program he uses on his account. So it is close to Werd's program, and the clean room line holds even more firmly: kinds of deeds only, our own wording, our own order, no points.
 
 ## What the sheet teaches us
 
