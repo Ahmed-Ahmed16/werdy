@@ -80,6 +80,14 @@ _Avoid_: half done, in progress
 The state of the current werdy day until its Fajr ends it. Unmarked deeds on an in progress day are open, not missed.
 _Avoid_: pending, incomplete
 
+**Day note**:
+A short free text note the owner attaches to one werdy day, such as "I was ill". At most one per day.
+_Avoid_: comment, journal, excuse (the excuse is the credit, not the note)
+
+**Excuse credit**:
+An optional value the owner gives a day with a day note: none, half or full. It lifts every due deed on that day that is not Done to at least that value.
+_Avoid_: exemption, skip, pardon
+
 ## Reports
 
 **Score**:

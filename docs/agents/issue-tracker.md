@@ -1,8 +1,8 @@
-# Issue tracker: GitHub (planned)
+# Issue tracker: GitHub
 
 Issues and specs for werdy will live as GitHub issues on `Ahmed-Ahmed16/werdy`. Use the `gh` CLI for all operations.
 
-**Status: planned.** The remote does not exist yet, and pushing needs the owner's OK. Until it exists, a skill that wants to publish an issue writes the draft to `.scratch/<feature>/<slug>.md` instead and tells the owner. Once the repo exists, run `gh label create` for the labels in `docs/agents/triage-labels.md`.
+**Status: live since 2026-10-27.** The repo is public at https://github.com/Ahmed-Ahmed16/werdy, with the labels from `docs/agents/triage-labels.md` plus `spec`. The v1 spec is issue #1; its tickets are sub issues with native blocked by links. Pushing still needs the owner's OK.
 
 ## Conventions
 
@@ -24,7 +24,7 @@ When set to `yes`, PRs go through the same labels and states as issues, using `g
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue (or a `.scratch/` draft while the remote is planned).
+Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 

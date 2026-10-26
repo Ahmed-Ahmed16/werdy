@@ -2,7 +2,7 @@
 
 werdy is an open source, clean room tracker for daily Islamic deeds (and life work), written in Rust. Think of a budget tracker, but for deeds: every day, week and month you can see what you did, what you half did, and what you missed. Read this file first, then `docs/`.
 
-**Status: pre code.** Nothing is built yet. The next steps are a grill session, the design, the spec, and then the skeleton commit.
+**Status: pre code.** The design and the v1 spec are done (issue #1). Next: the skeleton ticket, then the Google sign in spike that picks the UI stack.
 
 ## 1. Orientation
 
@@ -47,7 +47,7 @@ Agent skills installed on 2026-10-27 with `npx skills@latest add <repo> -a claud
 | [mattpocock/skills](https://github.com/mattpocock/skills) | `grill-with-docs`, `grilling`, `domain-modeling`, `wayfinder`, `to-spec`, `to-tickets`, `triage`, `implement-spec`, `implement`, `tdd`, `codebase-design`, `pr`, `prototype`, `research`, `setup-matt-pocock-skills` | Align, spec, tickets, test first implementation. `pr`, `prototype` and `research` are installed because the others call them |
 | [amElnagdy/guard-skills](https://github.com/amElnagdy/guard-skills) | `clean-code-guard`, `test-guard`, `docs-guard` | Review gates after code, tests or docs change |
 | [amElnagdy/review-skills](https://github.com/amElnagdy/review-skills) | `debate-review`, `babysit-pr` | Two model PR review and following a PR through bot reviews |
-| [amElnagdy/delegate-skills](https://github.com/amElnagdy/delegate-skills) | `delegate-setup` and the `*-delegate` skills for each supported CLI | Required by `review-skills`. **Not configured yet:** `delegate-setup` runs only after the owner says which other model CLIs he has |
+| [amElnagdy/delegate-skills](https://github.com/amElnagdy/delegate-skills) | `delegate-setup` and the `*-delegate` skills for each supported CLI | Required by `review-skills`. Lanes set globally on 2026-10-27 (Codex: `coding`, `fast`, `plan-debate`, `review-debate`; Claude: `review-main`). The implementer for a task is whichever of Claude or Codex has more weekly usage left; on a tie, Claude |
 
 Local change: in our copies of eight Pocock skills (`grill-with-docs`, `to-spec`, `to-tickets`, `implement`, `implement-spec`, `triage`, `wayfinder`, `setup-matt-pocock-skills`) the `disable-model-invocation: true` line was removed on 2026-10-27, so the agent can start them when the owner asks. Rule: the agent starts these only on the owner's request, never on its own. `npx skills update` restores the line; remove it again after an update.
 
@@ -59,7 +59,7 @@ Not installed: Pocock's `code-review` (its name clashes with Claude Code's own `
 
 ### Issue tracker
 
-GitHub issues on `Ahmed-Ahmed16/werdy`, planned (the remote does not exist yet). See `docs/agents/issue-tracker.md`.
+GitHub issues on `Ahmed-Ahmed16/werdy` (public). The v1 spec is issue #1 and its tickets are sub issues. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
