@@ -12,7 +12,6 @@ pub fn Rail() -> Element {
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
     let screen = state.read().screen;
-    let later = i18n.t("nav-coming-later");
 
     rsx! {
         nav { class: "rail",
@@ -29,7 +28,8 @@ pub fn Rail() -> Element {
                 onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)),
                 {i18n.t("nav-deeds")}
             }
-            button { class: "rail-item", disabled: true, title: "{later}",
+            button { class: "rail-item", aria_current: if screen == Screen::Settings { Some("page") } else { None },
+                onclick: move |_| actions.view(|state| state.show_screen(Screen::Settings)),
                 {i18n.t("nav-settings")}
             }
         }

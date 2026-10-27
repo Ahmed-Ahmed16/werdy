@@ -4,6 +4,29 @@ use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use std::collections::BTreeSet;
 use unic_langid::LanguageIdentifier;
 use werdy_core::{HijriRange, Schedule, Weekday};
+use werdy_store::Digits;
+
+/// Rewrites decimal glyphs in displayed text. Stored numbers stay unchanged.
+pub fn format_digits(text: &str, digits: Digits) -> String {
+    text.chars()
+        .map(|ch| {
+            let digit_value = match ch {
+                '0'..='9' => Some(u32::from(ch) - u32::from('0')),
+                '٠'..='٩' => Some(u32::from(ch) - u32::from('٠')),
+                '۰'..='۹' => Some(u32::from(ch) - u32::from('۰')),
+                _ => None,
+            };
+            digit_value
+                .and_then(|digit| {
+                    char::from_u32(match digits {
+                        Digits::Western => u32::from('0') + digit,
+                        Digits::ArabicIndic => u32::from('٠') + digit,
+                    })
+                })
+                .unwrap_or(ch)
+        })
+        .collect()
+}
 
 /// Interface language. Arabic is the default (ADR 0014).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -58,6 +81,7 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/deeds.ftl"),
     include_str!("../../../locales/ar/starter-sets.ftl"),
     include_str!("../../../locales/ar/first-run.ftl"),
+    include_str!("../../../locales/ar/settings.ftl"),
 ];
 const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/common.ftl"),
@@ -67,12 +91,15 @@ const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/deeds.ftl"),
     include_str!("../../../locales/en/starter-sets.ftl"),
     include_str!("../../../locales/en/first-run.ftl"),
+    include_str!("../../../locales/en/settings.ftl"),
 ];
 
 /// All translations, loaded once at start.
 pub struct Texts {
     arabic: FluentBundle<FluentResource>,
     english: FluentBundle<FluentResource>,
+    arabic_indic: FluentBundle<FluentResource>,
+    english_indic: FluentBundle<FluentResource>,
 }
 
 /// Reads a schedule back as one sentence in the selected language.
@@ -112,21 +139,19 @@ fn weekdays_sentence(texts: &Texts, language: Language, days: &BTreeSet<Weekday>
 }
 
 fn hijri_sentence(texts: &Texts, language: Language, range: &HijriRange) -> String {
-    let name = crate::editor_data::ranges()
+    let choice = crate::editor_data::ranges()
         .ok()
         .into_iter()
         .flatten()
-        .find(|choice| choice.range().ok().as_ref() == Some(range))
-        .map_or_else(
-            || "___".to_owned(),
-            |choice| {
-                texts.get(
-                    language,
-                    &format!("range-{}", choice.key.replace('_', "-")),
-                    &[],
-                )
-            },
-        );
+        .find(|choice| choice.range().ok().as_ref() == Some(range));
+    let Some(choice) = choice else {
+        return texts.get(language, "schedule-hijri-unavailable", &[]);
+    };
+    let name = texts.get(
+        language,
+        &format!("range-{}", choice.key.replace('_', "-")),
+        &[],
+    );
     texts.get(
         language,
         "schedule-hijri-sentence",
@@ -151,8 +176,10 @@ impl Texts {
     /// messages that parsed; a test makes sure there are no such errors.
     pub fn load() -> Self {
         Self {
-            arabic: bundle(Language::Arabic, ARABIC),
-            english: bundle(Language::English, ENGLISH),
+            arabic: bundle(Language::Arabic, ARABIC, Digits::Western),
+            english: bundle(Language::English, ENGLISH, Digits::Western),
+            arabic_indic: bundle(Language::Arabic, ARABIC, Digits::ArabicIndic),
+            english_indic: bundle(Language::English, ENGLISH, Digits::ArabicIndic),
         }
     }
 
@@ -163,6 +190,31 @@ impl Texts {
             Language::Arabic => &self.arabic,
             Language::English => &self.english,
         };
+        Self::format(bundle, key, args)
+    }
+
+    /// Formats number arguments with chosen digits while preserving text arguments.
+    pub fn get_with_digits(
+        &self,
+        language: Language,
+        digits: Digits,
+        key: &str,
+        args: &[(&str, FluentValue<'_>)],
+    ) -> String {
+        let bundle = match (language, digits) {
+            (Language::Arabic, Digits::Western) => &self.arabic,
+            (Language::English, Digits::Western) => &self.english,
+            (Language::Arabic, Digits::ArabicIndic) => &self.arabic_indic,
+            (Language::English, Digits::ArabicIndic) => &self.english_indic,
+        };
+        Self::format(bundle, key, args)
+    }
+
+    fn format(
+        bundle: &FluentBundle<FluentResource>,
+        key: &str,
+        args: &[(&str, FluentValue<'_>)],
+    ) -> String {
         let Some(pattern) = bundle.get_message(key).and_then(|message| message.value()) else {
             return key.to_owned();
         };
@@ -177,9 +229,17 @@ impl Texts {
     }
 }
 
-fn bundle(language: Language, sources: &[&str]) -> FluentBundle<FluentResource> {
+fn bundle(language: Language, sources: &[&str], digits: Digits) -> FluentBundle<FluentResource> {
     let locale: Vec<LanguageIdentifier> = language.code().parse().into_iter().collect();
     let mut bundle = FluentBundle::new(locale);
+    if digits == Digits::ArabicIndic {
+        bundle.set_formatter(Some(|value, _| match value {
+            FluentValue::Number(number) => {
+                Some(format_digits(&number.as_string(), Digits::ArabicIndic))
+            }
+            _ => None,
+        }));
+    }
     for source in sources {
         let resource = match FluentResource::try_new((*source).to_owned()) {
             Ok(resource) => resource,
@@ -197,6 +257,36 @@ mod tests {
     use fluent_bundle::{FluentResource, FluentValue};
 
     use super::{ARABIC, ENGLISH, Language, Texts};
+    use werdy_store::Digits;
+
+    #[test]
+    fn digits_convert_ascii_fluent_and_existing_arabic_glyphs() {
+        assert_eq!(
+            super::format_digits("2026: ٣ of ۵ ✓", Digits::Western),
+            "2026: 3 of 5 ✓"
+        );
+        assert_eq!(
+            super::format_digits("2026: ٣ of ۵ ✓", Digits::ArabicIndic),
+            "٢٠٢٦: ٣ of ٥ ✓"
+        );
+        let fluent = Texts::load().get(
+            Language::Arabic,
+            "count-progress",
+            &[
+                ("count", FluentValue::from(3)),
+                ("target", FluentValue::from(5)),
+            ],
+        );
+        assert_eq!(
+            super::format_digits(&fluent, Digits::Western).replace(['\u{2068}', '\u{2069}'], ""),
+            "3 من 5"
+        );
+        assert_eq!(
+            super::format_digits(&fluent, Digits::ArabicIndic)
+                .replace(['\u{2068}', '\u{2069}'], ""),
+            "٣ من ٥"
+        );
+    }
 
     fn message_ids(source: &str) -> Result<BTreeSet<String>, String> {
         let resource = FluentResource::try_new(source.to_owned())

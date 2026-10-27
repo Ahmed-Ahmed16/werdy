@@ -10,6 +10,7 @@ mod marks;
 mod note;
 mod rail;
 mod reports;
+mod settings;
 mod sheet;
 mod summary;
 
@@ -116,7 +117,7 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
                 Screen::FirstRunLocation | Screen::SetPicker => "onboarding-content",
                 Screen::Sheet => "panes",
                 Screen::Reports => "report-panes",
-                Screen::Deeds | Screen::Editor(_) => "page-content",
+                Screen::Deeds | Screen::Editor(_) | Screen::Settings => "page-content",
             },
                 summary::StatusBanner {}
                 match state.read().screen {
@@ -129,6 +130,7 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
                     },
                     Screen::Reports => rsx! { reports::ReportsScreen {} },
                     Screen::Deeds => rsx! { deeds::MyDeeds {} },
+                    Screen::Settings => rsx! { settings::SettingsScreen {} },
                     Screen::Editor(id) => rsx! { deeds::DeedEditor { key: "{id:?}", id } },
                 }
             }

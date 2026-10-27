@@ -24,7 +24,7 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
             "location-fajr",
             &[
                 ("city", FluentValue::from(city)),
-                ("time", FluentValue::from(fajr_clock(minutes))),
+                ("time", FluentValue::from(i18n.num(fajr_clock(minutes)))),
             ],
         )),
         _ => Some(i18n.t_with(
@@ -109,8 +109,8 @@ pub fn LocationStep() -> Element {
                     button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("first-run-next")} }
                     button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(Screen::SetPicker); }), {i18n.t("location-skip")} }
                 } else {
-                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("location-back-deeds")} }
-                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(Screen::Deeds); }), {i18n.t("location-remove")} }
+                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(state.location_return)), {i18n.t(if state.read().location_return == Screen::Settings { "settings-back-location" } else { "location-back-deeds" })} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(state.location_return); }), {i18n.t("location-remove")} }
                 }
             }
         }

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_store::Store;
+use werdy_store::{Digits, Store};
 
 use crate::i18n::{Language, Texts};
 use crate::state::AppState;
@@ -17,21 +17,30 @@ pub struct I18n {
     texts: Rc<Texts>,
     /// Current interface language.
     pub language: Language,
+    digits: Digits,
 }
 
 impl I18n {
     /// Text for a key without variables.
     pub fn t(&self, key: &str) -> String {
-        self.texts.get(self.language, key, &[])
+        crate::i18n::format_digits(&self.texts.get(self.language, key, &[]), self.digits)
     }
 
     /// Text for a key with variables.
     pub fn t_with(&self, key: &str, args: &[(&str, FluentValue<'_>)]) -> String {
-        self.texts.get(self.language, key, args)
+        self.texts
+            .get_with_digits(self.language, self.digits, key, args)
+    }
+
+    pub fn num(&self, value: impl std::fmt::Display) -> String {
+        crate::i18n::format_digits(&value.to_string(), self.digits)
     }
 
     pub fn schedule_sentence(&self, schedule: &Schedule) -> String {
-        crate::i18n::schedule_sentence(&self.texts, self.language, schedule)
+        crate::i18n::format_digits(
+            &crate::i18n::schedule_sentence(&self.texts, self.language, schedule),
+            self.digits,
+        )
     }
 }
 
@@ -40,8 +49,13 @@ impl I18n {
 pub fn use_i18n() -> I18n {
     let texts = use_context::<Rc<Texts>>();
     let state = use_context::<Signal<AppState>>();
-    let language = Language::from_code(&state.read().data.settings.language);
-    I18n { texts, language }
+    let settings = &state.read().data.settings;
+    let language = Language::from_code(&settings.language);
+    I18n {
+        texts,
+        language,
+        digits: settings.digits,
+    }
 }
 
 /// Changes to the app state. Data changes are saved right away.
@@ -134,4 +148,32 @@ impl Actions {
 /// Reads the actions handle from context.
 pub fn use_actions() -> Actions {
     use_context::<Actions>()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use fluent_bundle::FluentValue;
+    use werdy_store::Digits;
+
+    use super::{I18n, Language, Texts};
+
+    #[test]
+    fn fluent_arguments_keep_name_digits_and_format_number_digits() {
+        for (digits, count) in [(Digits::Western, "2"), (Digits::ArabicIndic, "٢")] {
+            let i18n = I18n {
+                texts: Rc::new(Texts::load()),
+                language: Language::English,
+                digits,
+            };
+            let name = i18n.t_with(
+                "reports-lead-missed",
+                &[("deed", FluentValue::from("Read 2 pages"))],
+            );
+            let due = i18n.t_with("reports-cell-due", &[("due", FluentValue::from(2))]);
+            assert!(name.contains("Read 2 pages"));
+            assert!(due.contains(count));
+        }
+    }
 }

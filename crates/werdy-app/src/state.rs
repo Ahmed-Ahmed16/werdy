@@ -4,12 +4,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry,
-    Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary, Weekday, WerdyDay,
-    build_report, convert_mark_for_target, daily_sheet, delete_deed, finished_day_summary, score,
-    today_summary,
+    CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, HijriOffset,
+    Mark, MarkEntry, Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary,
+    Weekday, WerdyDay, build_report, convert_mark_for_target, daily_sheet, delete_deed,
+    finished_day_summary, score, today_summary,
 };
-use werdy_store::{DeedName, Location, OwnerData, PrayerMethod, Store, merge_records};
+use werdy_store::{
+    DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, Store, Theme, merge_records,
+};
 
 /// Keeps the owner's past day in view, or follows today when today moves.
 pub fn viewing_after_today_change(
@@ -124,6 +126,8 @@ pub enum Screen {
     Reports,
     /// Deed list.
     Deeds,
+    /// Device settings.
+    Settings,
     /// New or existing deed editor.
     Editor(Option<DeedId>),
 }
@@ -217,6 +221,37 @@ enum DeedChange {
     Delete,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+struct PendingSettings {
+    language: Option<String>,
+    digits: Option<Digits>,
+    theme: Option<Theme>,
+    location: Option<Option<Location>>,
+    prayer_method: Option<PrayerMethod>,
+    offsets: BTreeMap<WerdyDay, HijriOffset>,
+}
+
+impl PendingSettings {
+    fn apply_to(&self, settings: &mut Settings) {
+        if let Some(language) = &self.language {
+            settings.language.clone_from(language);
+        }
+        if let Some(digits) = self.digits {
+            settings.digits = digits;
+        }
+        if let Some(theme) = self.theme {
+            settings.theme = theme;
+        }
+        if let Some(location) = &self.location {
+            settings.location.clone_from(location);
+        }
+        if let Some(method) = self.prayer_method {
+            settings.prayer_method = method;
+        }
+        settings.calendar.merge_changes(&self.offsets);
+    }
+}
+
 /// Everything the screen shows, in one place.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -232,11 +267,13 @@ pub struct AppState {
     pub save_status: SaveStatus,
     /// Screen on view.
     pub screen: Screen,
+    /// Screen to return to after changing location.
+    pub location_return: Screen,
     /// Selected rolling report period.
     pub report_period: Period,
     /// Number of whole periods before the latest one.
     pub report_steps_back: usize,
-    settings_dirty: bool,
+    pending_settings: PendingSettings,
     sets_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
 }
@@ -262,9 +299,10 @@ impl AppState {
             slot_order,
             save_status,
             screen,
+            location_return: Screen::Deeds,
             report_period: Period::Week,
             report_steps_back: 0,
-            settings_dirty: false,
+            pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             deed_changes: BTreeMap::new(),
         }
@@ -370,6 +408,11 @@ impl AppState {
 
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
+        if screen == Screen::FirstRunLocation && self.screen == Screen::Settings {
+            self.location_return = Screen::Settings;
+        } else if screen == Screen::FirstRunLocation {
+            self.location_return = Screen::Deeds;
+        }
         self.screen = screen;
     }
 
@@ -377,19 +420,20 @@ impl AppState {
         let method = crate::location::method_for_country(location.country.as_deref().unwrap_or(""))
             .map_err(|_| EditorError::RuleChange)?;
         self.data.settings.prayer_method = method;
+        self.pending_settings.prayer_method = Some(method);
+        self.pending_settings.location = Some(Some(location.clone()));
         self.data.settings.location = Some(location);
-        self.settings_dirty = true;
         Ok(())
     }
 
     pub fn set_prayer_method(&mut self, method: PrayerMethod) {
         self.data.settings.prayer_method = method;
-        self.settings_dirty = true;
+        self.pending_settings.prayer_method = Some(method);
     }
 
     pub fn clear_location(&mut self) {
         self.data.settings.location = None;
-        self.settings_dirty = true;
+        self.pending_settings.location = Some(None);
     }
 
     pub fn finish_first_run(&mut self, screen: Screen) {
@@ -397,7 +441,6 @@ impl AppState {
             self.redate_setup_deeds();
         }
         self.data.first_run_complete = true;
-        self.settings_dirty = true;
         self.screen = screen;
     }
 
@@ -792,8 +835,29 @@ impl AppState {
 
     /// Switches the interface language and keeps it in settings.
     pub fn set_language(&mut self, code: &str) {
-        code.clone_into(&mut self.data.settings.language);
-        self.settings_dirty = true;
+        if matches!(code, "ar" | "en") {
+            code.clone_into(&mut self.data.settings.language);
+            self.pending_settings.language = Some(code.to_owned());
+        }
+    }
+
+    pub fn set_digits(&mut self, digits: Digits) {
+        self.data.settings.digits = digits;
+        self.pending_settings.digits = Some(digits);
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.data.settings.theme = theme;
+        self.pending_settings.theme = Some(theme);
+    }
+
+    pub fn set_hijri_offset(&mut self, offset: HijriOffset) -> Result<(), Error> {
+        self.data
+            .settings
+            .calendar
+            .change_offset(self.today, offset)?;
+        self.pending_settings.offsets.insert(self.today, offset);
+        Ok(())
     }
 
     fn set_mark(&mut self, deed_id: DeedId, mark: Option<Mark>) {
@@ -956,9 +1020,7 @@ impl AppState {
                     || self.data.clone(),
                     |data| merge_records(&data, &self.data),
                 );
-                if self.settings_dirty {
-                    merged.settings = self.data.settings.clone();
-                }
+                self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
@@ -975,7 +1037,7 @@ impl AppState {
                 match store.save(&merged) {
                     Ok(()) => {
                         self.data = merged;
-                        self.settings_dirty = false;
+                        self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
                         self.deed_changes.clear();
                         SaveStatus::Saved
@@ -999,9 +1061,7 @@ impl AppState {
                     return;
                 }
                 let mut merged = merge_records(&stored, &self.data);
-                if self.settings_dirty {
-                    merged.settings = self.data.settings.clone();
-                }
+                self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
@@ -1011,7 +1071,7 @@ impl AppState {
                     self.data = stored;
                     self.save_status = SaveStatus::Saved;
                     self.deed_changes.clear();
-                    self.settings_dirty = false;
+                    self.pending_settings = PendingSettings::default();
                     self.sets_dirty = false;
                 } else {
                     self.data = merged;
@@ -1027,8 +1087,10 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use werdy_core::{DeedId, Error, ExcuseCredit, Mark, Period, WerdyDay};
-    use werdy_store::{Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError};
+    use werdy_core::{DeedId, Error, ExcuseCredit, HijriOffset, Mark, Period, WerdyDay};
+    use werdy_store::{
+        Digits, Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError, Theme,
+    };
 
     use super::{
         AppState, EditorDraft, EditorError, SaveStatus, Screen, Step, Tap, is_on, stepped, tapped,
@@ -1061,6 +1123,46 @@ mod tests {
             let _ = store.save(&data);
         }
         Ok(AppState::start(store, today()?, slot_order()))
+    }
+
+    #[test]
+    fn settings_save_restart_and_keep_past_hijri_offset() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let yesterday = state.today.previous()?;
+        let original = state.data.settings.calendar.offset_on(yesterday);
+        state.set_language("en");
+        state.set_digits(Digits::ArabicIndic);
+        state.set_theme(Theme::Dark);
+        state.set_location(
+            Location::new(
+                Some("cairo".to_owned()),
+                Some("EG".to_owned()),
+                30.04,
+                31.24,
+            )
+            .ok_or("bad place")?,
+        )?;
+        state.set_prayer_method(PrayerMethod::MuslimWorldLeague);
+        state.set_hijri_offset(HijriOffset::new(-1)?)?;
+        state.save_to(&store);
+        let again = started(&store)?;
+        assert_eq!(again.data.settings.language, "en");
+        assert_eq!(again.data.settings.digits, Digits::ArabicIndic);
+        assert_eq!(again.data.settings.theme, Theme::Dark);
+        assert_eq!(again.data.settings.location, state.data.settings.location);
+        assert_eq!(
+            again.data.settings.prayer_method,
+            PrayerMethod::MuslimWorldLeague
+        );
+        assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
+        assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), -1);
+        state.set_hijri_offset(HijriOffset::new(0)?)?;
+        state.save_to(&store);
+        let again = started(&store)?;
+        assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
+        assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), 0);
+        Ok(())
     }
 
     #[test]
@@ -2001,6 +2103,12 @@ mod tests {
         assert_eq!(state.screen, Screen::Editor(None));
         state.show_screen(Screen::Reports);
         assert_eq!(state.report_period, Period::Month);
+        state.show_screen(Screen::Settings);
+        state.show_screen(Screen::FirstRunLocation);
+        assert_eq!(state.location_return, Screen::Settings);
+        state.show_screen(Screen::Deeds);
+        state.show_screen(Screen::FirstRunLocation);
+        assert_eq!(state.location_return, Screen::Deeds);
         Ok(())
     }
 
@@ -2118,6 +2226,45 @@ mod tests {
         stale.set_language("ar");
         stale.save_to(&store);
         assert_eq!(started(&store)?.data.settings.language, "ar");
+        Ok(())
+    }
+
+    #[test]
+    fn stale_theme_save_keeps_other_tabs_hijri_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        let yesterday = today()?.previous()?;
+        let original = first.data.settings.calendar.offset_on(yesterday);
+
+        first.set_hijri_offset(HijriOffset::new(-1)?)?;
+        first.save_to(&store);
+        stale.set_theme(Theme::Dark);
+        stale.save_to(&store);
+
+        let saved = started(&store)?.data.settings;
+        assert_eq!(saved.theme, Theme::Dark);
+        assert_eq!(saved.calendar.offset_on(yesterday), original);
+        assert_eq!(saved.calendar.offset_on(today()?).days(), -1);
+        Ok(())
+    }
+
+    #[test]
+    fn stale_offset_change_keeps_other_tabs_earlier_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        let next_day = today()?.next()?;
+
+        first.set_hijri_offset(HijriOffset::new(-1)?)?;
+        first.save_to(&store);
+        stale.update_today(next_day);
+        stale.set_hijri_offset(HijriOffset::new(0)?)?;
+        stale.save_to(&store);
+
+        let saved = started(&store)?.data.settings;
+        assert_eq!(saved.calendar.offset_on(today()?).days(), -1);
+        assert_eq!(saved.calendar.offset_on(next_day).days(), 0);
         Ok(())
     }
 }
