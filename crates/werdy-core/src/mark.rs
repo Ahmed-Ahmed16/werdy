@@ -1,4 +1,4 @@
-use crate::{Error, WerdyDay};
+use crate::{DeedRule, Error, WerdyDay};
 
 const LATE_AFTER_DAYS: i64 = 2;
 
@@ -30,15 +30,28 @@ pub enum Mark {
     Partial(Fraction),
     /// Deed was missed.
     Missed,
+    /// Raw count entered for this deed and werdy day.
+    Count(u32),
 }
 
 impl Mark {
-    /// Returns the fraction earned by this mark.
-    pub fn value(self) -> f64 {
+    /// Returns the fixed half mark for a deed without a target.
+    pub fn partial_without_target() -> Self {
+        Self::Partial(Fraction(0.5))
+    }
+
+    /// Returns value under the rule in force on the marked day.
+    /// Count without a target is full if positive, or zero otherwise.
+    pub fn value(self, rule: &DeedRule) -> f64 {
         match self {
             Self::Done => 1.0,
             Self::Partial(fraction) => fraction.value(),
             Self::Missed => 0.0,
+            Self::Count(0) => 0.0,
+            Self::Count(count) => match &rule.target {
+                Some(target) => count.min(target.amount()) as f64 / target.amount() as f64,
+                None => 1.0,
+            },
         }
     }
 }

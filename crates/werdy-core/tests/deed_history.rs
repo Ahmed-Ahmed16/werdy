@@ -11,6 +11,7 @@ fn day(number: u8) -> Result<WerdyDay, Error> {
 fn daily() -> DeedRule {
     DeedRule {
         schedule: Schedule::EveryDay,
+        target: None,
     }
 }
 
@@ -26,6 +27,7 @@ fn score_before_schedule_edit_is_unchanged_after_it() -> Result<(), Error> {
         saturday,
         DeedRule {
             schedule: Schedule::Weekdays(BTreeSet::from([Weekday::Saturday])),
+            target: None,
         },
     )?;
 
@@ -100,6 +102,7 @@ fn rule_change_before_latest_version_is_an_error() -> Result<(), Error> {
         day(24)?,
         DeedRule {
             schedule: Schedule::Weekdays(BTreeSet::new()),
+            target: None,
         },
     )?;
 
@@ -118,6 +121,7 @@ fn same_day_rule_change_replaces_latest_rule() -> Result<(), Error> {
         day(24)?,
         DeedRule {
             schedule: Schedule::Weekdays(BTreeSet::new()),
+            target: None,
         },
     )?;
     deed.change_rule(day(24)?, daily())?;

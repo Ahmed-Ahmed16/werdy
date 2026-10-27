@@ -27,11 +27,11 @@ pub fn score(
             continue;
         }
         for deed in deeds {
-            if deed.is_due_on(*day) {
+            if let Some(rule) = deed.due_rule_on(*day) {
                 due += 1;
                 earned += marks
                     .get(&(deed.id, *day))
-                    .map_or(0.0, |entry| entry.mark.value());
+                    .map_or(0.0, |entry| entry.mark.value(rule));
             }
         }
     }
@@ -69,13 +69,18 @@ pub fn today_summary(
         missed: 0,
     };
     for deed in deeds {
-        if !deed.is_due_on(today) {
+        let Some(rule) = deed.due_rule_on(today) else {
             continue;
-        }
+        };
         match marks.get(&(deed.id, today)).map(|entry| entry.mark) {
             Some(Mark::Done) => summary.done += 1,
             Some(Mark::Partial(_)) => summary.partial += 1,
             Some(Mark::Missed) => summary.missed += 1,
+            Some(mark @ Mark::Count(_)) => match mark.value(rule) {
+                0.0 => summary.missed += 1,
+                1.0 => summary.done += 1,
+                _ => summary.partial += 1,
+            },
             None => summary.open += 1,
         }
     }

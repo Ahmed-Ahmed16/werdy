@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    Deed, DeedId, DeedRule, Error, Fraction, Mark, MarkEntry, Schedule, Score, TodaySummary,
-    WerdyDay, score, today_summary,
+    Deed, DeedId, DeedRule, Error, Mark, MarkEntry, Schedule, Score, TodaySummary, WerdyDay, score,
+    today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -17,6 +17,7 @@ fn deed(id: u64, created_on: WerdyDay) -> Deed {
         created_on,
         DeedRule {
             schedule: Schedule::EveryDay,
+            target: None,
         },
     )
 }
@@ -30,7 +31,7 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
         ((DeedId(1), today), MarkEntry::new(Mark::Done, today)),
         (
             (DeedId(2), today),
-            MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), today),
+            MarkEntry::new(Mark::partial_without_target(), today),
         ),
         ((DeedId(3), today), MarkEntry::new(Mark::Missed, today)),
     ]);
@@ -94,7 +95,7 @@ fn late_mark_counts_like_any_mark() -> Result<(), Error> {
     let finished = day(23)?;
     let marks = Marks::from([(
         (DeedId(1), finished),
-        MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), day(26)?),
+        MarkEntry::new(Mark::partial_without_target(), day(26)?),
     )]);
 
     assert!(marks[&(DeedId(1), finished)].is_late_for(finished));

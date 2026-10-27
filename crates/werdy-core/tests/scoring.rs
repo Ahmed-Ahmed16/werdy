@@ -8,7 +8,14 @@ use werdy_core::{
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
 fn deed(id: u64, schedule: Schedule, created_on: WerdyDay) -> Deed {
-    Deed::new(DeedId(id), created_on, DeedRule { schedule })
+    Deed::new(
+        DeedId(id),
+        created_on,
+        DeedRule {
+            schedule,
+            target: None,
+        },
+    )
 }
 
 fn weekdays(days: &[Weekday]) -> Schedule {
@@ -71,7 +78,7 @@ fn partial_mark_counts_its_fraction() -> Result<(), Error> {
     let mut marks = Marks::new();
     marks.insert(
         (DeedId(1), day),
-        MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), day),
+        MarkEntry::new(Mark::partial_without_target(), day),
     );
 
     let result = score(
@@ -191,7 +198,7 @@ fn werd_week_counts_only_due_days() -> Result<(), Error> {
         let marked_day = WerdyDay::new(2026, 10, day)?;
         marks.insert(
             (DeedId(7), marked_day),
-            MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), marked_day),
+            MarkEntry::new(Mark::partial_without_target(), marked_day),
         );
     }
 
