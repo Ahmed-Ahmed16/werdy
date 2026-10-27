@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use fluent_syntax::{ast, parser};
 use werdy_data::{Error, Schedule, builtin, load, parse};
 
 /// A small valid file. Tests break one part of it at a time.
@@ -125,6 +126,95 @@ fn every_name_key_exists_in_ar_and_en() {
         Err(Error::MissingName {
             locale: "en",
             name: "deed-qiyam".into()
+        })
+    );
+}
+
+#[test]
+fn shipped_names_parse_with_values_for_every_key() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for (locale, source) in [
+        ("ar", include_str!("../../../locales/ar/starter-sets.ftl")),
+        ("en", include_str!("../../../locales/en/starter-sets.ftl")),
+    ] {
+        let resource = parser::parse(source)
+            .unwrap_or_else(|(_, errors)| panic!("{locale}: invalid Fluent: {errors:?}"));
+        let mut ids = BTreeSet::new();
+        for entry in resource.body {
+            if let ast::Entry::Message(message) = entry {
+                assert!(
+                    message
+                        .value
+                        .as_ref()
+                        .is_some_and(|value| !value.elements.is_empty()),
+                    "{locale}: {} has no value",
+                    message.id.name
+                );
+                ids.insert(message.id.name);
+            }
+        }
+        for name in catalog.name_keys() {
+            assert!(ids.contains(name), "{locale}: missing {name}");
+        }
+    }
+}
+
+#[test]
+fn empty_set_is_rejected() {
+    let empty = SMALL.replace("deeds = [\"fajr_on_time\", \"qiyam\"]", "deeds = []");
+    assert_eq!(
+        parse(&empty),
+        Err(Error::EmptySet {
+            set: "basic".into()
+        })
+    );
+}
+
+#[test]
+fn repeated_deed_in_set_is_rejected() {
+    let repeated = SMALL.replace(
+        "deeds = [\"fajr_on_time\", \"qiyam\"]",
+        "deeds = [\"fajr_on_time\", \"fajr_on_time\"]",
+    );
+    assert_eq!(
+        parse(&repeated),
+        Err(Error::DeedTwiceInSet {
+            set: "basic".into(),
+            deed: "fajr_on_time".into()
+        })
+    );
+}
+
+#[test]
+fn empty_weekday_schedule_is_rejected() {
+    let no_days = SMALL.replace("schedule = \"every_day\"", "schedule = { weekdays = [] }");
+    assert_eq!(
+        parse(&no_days),
+        Err(Error::NoWeekdays {
+            deed: "fajr_on_time".into()
+        })
+    );
+}
+
+#[test]
+fn unknown_target_unit_is_rejected() {
+    let unknown = SMALL.replace("unit = \"rakaat\"", "unit = \"pages\"");
+    assert_eq!(
+        parse(&unknown),
+        Err(Error::UnknownUnit {
+            deed: "qiyam".into(),
+            unit: "pages".into()
+        })
+    );
+}
+
+#[test]
+fn repeated_name_key_is_rejected() {
+    let repeated = SMALL.replace("name = \"deed-qiyam\"", "name = \"deed-fajr-on-time\"");
+    assert_eq!(
+        parse(&repeated),
+        Err(Error::DuplicateName {
+            name: "deed-fajr-on-time".into()
         })
     );
 }
