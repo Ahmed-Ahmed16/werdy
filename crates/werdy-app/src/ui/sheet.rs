@@ -5,7 +5,7 @@ use fluent_bundle::FluentValue;
 use werdy_core::{SheetRow, SheetSlot};
 use werdy_store::DeedName;
 
-use super::context::use_i18n;
+use super::context::{use_actions, use_i18n};
 use super::icons::CheckIcon;
 use super::marks::{CountStepper, MarkButton};
 use crate::state::{AppState, Tap};
@@ -16,7 +16,23 @@ use crate::{platform, state};
 pub fn Sheet() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let actions = use_actions();
     let sheet = state.read().sheet();
+    let (welcome, milestone) = {
+        let app = state.read();
+        if app.is_today() {
+            (app.welcome_visible, app.milestone_notice())
+        } else {
+            (false, None)
+        }
+    };
+    let saying = if welcome {
+        crate::consistency_data::notices()
+            .ok()
+            .and_then(|data| data.sayings.into_iter().find(|entry| entry.is_verified()))
+    } else {
+        None
+    };
     let viewed_day = sheet.day;
     let mut last_scroll_day = use_signal(|| None::<(werdy_core::WerdyDay, werdy_core::WerdyDay)>);
     use_effect(move || {
@@ -53,6 +69,29 @@ pub fn Sheet() -> Element {
 
     rsx! {
         section { class: "sheet",
+            if welcome {
+                div { class: "sheet-notice",
+                    p { {i18n.t("sheet-welcome-back")} }
+                    if let Some(saying) = saying {
+                        p { class: "sheet-saying",
+                            {i18n.t_with("sheet-saying", &[("text", FluentValue::from(match i18n.language {
+                                crate::i18n::Language::Arabic => saying.text_ar,
+                                crate::i18n::Language::English => saying.text_en,
+                            }))])}
+                        }
+                        small { {i18n.t_with("sheet-saying-source", &[("source", FluentValue::from(saying.source))])} }
+                    }
+                }
+            }
+            if let Some(level) = milestone {
+                div { class: "sheet-notice sheet-milestone",
+                    p { {i18n.t_with("sheet-milestone", &[("days", FluentValue::from(i18n.num(level)))])} }
+                    button { class: "notice-dismiss", aria_label: i18n.t("sheet-dismiss-milestone"),
+                        onclick: move |_| actions.change(|app| app.dismiss_milestone(level)),
+                        {i18n.t("sheet-dismiss-milestone")}
+                    }
+                }
+            }
             if sheet.slots.is_empty() {
                 p { class: "sheet-empty", {i18n.t("sheet-empty")} }
             }

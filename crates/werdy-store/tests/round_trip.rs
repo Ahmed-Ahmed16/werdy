@@ -62,6 +62,8 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         day_notes,
         note_revisions: BTreeMap::new(),
         cleared_notes: BTreeMap::new(),
+        dismissed_milestones: [7, 30].into(),
+        last_welcome_day: Some(WerdyDay::new(2026, 10, 20)?),
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
@@ -86,6 +88,33 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn older_file_loads_without_notice_history() -> TestResult {
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    old["schema_version"] = 9.into();
+    let object = old.as_object_mut().ok_or("expected object")?;
+    object.remove("dismissed_milestones");
+    object.remove("last_welcome_day");
+    let loaded = from_json(&old.to_string())?;
+    assert!(loaded.dismissed_milestones.is_empty());
+    assert_eq!(loaded.last_welcome_day, None);
+    Ok(())
+}
+
+#[test]
+fn notice_history_merges_from_stale_tabs() -> TestResult {
+    let mut first = sample()?;
+    let mut stale = first.clone();
+    first.dismissed_milestones.insert(100);
+    first.last_welcome_day = Some(WerdyDay::new(2026, 10, 22)?);
+    stale.dismissed_milestones.insert(7);
+    stale.last_welcome_day = Some(WerdyDay::new(2026, 10, 21)?);
+    let merged = werdy_store::merge_records(&first, &stale);
+    assert_eq!(merged.dismissed_milestones, [7, 30, 100].into());
+    assert_eq!(merged.last_welcome_day, first.last_welcome_day);
     Ok(())
 }
 

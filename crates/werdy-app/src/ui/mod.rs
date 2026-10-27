@@ -38,6 +38,7 @@ pub fn App() -> Element {
             if let Ok(day) = platform::today_with_settings(&state.data.settings) {
                 state.update_today(day);
             }
+            state.show_welcome_on_open(store.as_ref());
             state
         })
     });

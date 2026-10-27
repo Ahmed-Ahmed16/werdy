@@ -9,7 +9,7 @@ use werdy_store::{Digits, Store};
 use crate::i18n::{Language, Texts};
 use crate::state::AppState;
 use crate::state::EditorError;
-use werdy_core::{Error, ExcuseCredit, Schedule, WerdyDay};
+use werdy_core::{Consistency, Error, ExcuseCredit, Schedule, WerdyDay};
 
 /// Text lookup in the current language.
 #[derive(Clone)]
@@ -40,6 +40,19 @@ impl I18n {
         crate::i18n::format_digits(
             &crate::i18n::schedule_sentence(&self.texts, self.language, schedule),
             self.digits,
+        )
+    }
+
+    pub fn consistency_line(&self, value: Consistency) -> String {
+        if value.of == 0 {
+            return self.t("consistency-no-due");
+        }
+        self.t_with(
+            "consistency-line",
+            &[
+                ("done", FluentValue::from(self.num(value.done))),
+                ("due", FluentValue::from(self.num(value.of))),
+            ],
         )
     }
 }

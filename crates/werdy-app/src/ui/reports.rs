@@ -6,7 +6,8 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use werdy_core::{
-    Band, DeedDay, DeedId, Fraction, Period, Report, ReportLead, SeriesEntry, WerdyDay, report_lead,
+    Band, Consistency, DEFAULT_CONSISTENCY_WINDOW, DeedDay, DeedId, Fraction, Period, Report,
+    ReportLead, SeriesEntry, WerdyDay, consistency, report_lead,
 };
 use werdy_store::DeedName;
 
@@ -423,6 +424,7 @@ fn MissedList(report: Rc<Report>) -> Element {
 fn PerDeed(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let last_day = report.days.last().copied();
     rsx! {
         section { class: "report-card",
             h2 { class: "card-title", {i18n.t("reports-deeds")} }
@@ -433,6 +435,7 @@ fn PerDeed(report: Rc<Report>) -> Element {
                         if let Some(percent) = score.percent { strong { {percent_text(&i18n, percent)} } }
                     }
                     small { class: "report-muted", {i18n.t_with("reports-deed-due", &[("due", FluentValue::from(score.due))])} }
+                    small { class: "report-muted", {i18n.consistency_line(deed_consistency(&state.read(), *id, last_day))} }
                     if let Some(days) = report.per_deed_days.get(id) {
                         div { class: "report-history",
                             for entry in days { HistoryDay { key: "{entry.day:?}", entry: *entry, noted: report.noted_days.contains(&entry.day) } }
@@ -442,6 +445,19 @@ fn PerDeed(report: Rc<Report>) -> Element {
             }
         }
     }
+}
+
+fn deed_consistency(state: &AppState, id: DeedId, last_day: Option<WerdyDay>) -> Consistency {
+    let cutoff = match last_day.and_then(|day| day.next().ok()) {
+        Some(day) => day,
+        None => state.today,
+    };
+    consistency(
+        &state.data.records(),
+        id,
+        cutoff,
+        DEFAULT_CONSISTENCY_WINDOW,
+    )
 }
 
 #[component]

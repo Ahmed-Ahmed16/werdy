@@ -7,7 +7,7 @@ use werdy_core::{
     CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, HijriOffset,
     Mark, MarkEntry, Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary,
     Weekday, WerdyDay, build_report, convert_mark_for_target, daily_sheet, delete_deed,
-    finished_day_summary, score, today_summary,
+    finished_day_summary, kept_days, milestone_to_show, score, today_summary, welcome_after_gap,
 };
 use werdy_store::{
     DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, Store, Theme, merge_records,
@@ -273,6 +273,8 @@ pub struct AppState {
     pub report_period: Period,
     /// Number of whole periods before the latest one.
     pub report_steps_back: usize,
+    /// Welcome stays visible for this app opening only.
+    pub welcome_visible: bool,
     pending_settings: PendingSettings,
     sets_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
@@ -302,6 +304,7 @@ impl AppState {
             location_return: Screen::Deeds,
             report_period: Period::Week,
             report_steps_back: 0,
+            welcome_visible: false,
             pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             deed_changes: BTreeMap::new(),
@@ -317,6 +320,41 @@ impl AppState {
             &self.slot_order,
             self.data.settings.calendar.clone(),
         )
+    }
+
+    /// Returns the highest reached private milestone that is still new.
+    pub fn milestone_notice(&self) -> Option<usize> {
+        let data = crate::consistency_data::notices().ok()?;
+        milestone_to_show(
+            kept_days(&self.data.records(), self.today),
+            &data.milestones,
+            &self.data.dismissed_milestones,
+        )
+    }
+
+    pub fn dismiss_milestone(&mut self, level: usize) {
+        self.data.dismissed_milestones.insert(level);
+    }
+
+    /// Records a welcome before the first sheet renders on this opening.
+    pub fn show_welcome_on_open(&mut self, store: &dyn Store) {
+        if !self.data.first_run_complete {
+            return;
+        }
+        let Some(gap) = crate::consistency_data::notices()
+            .ok()
+            .map(|data| data.welcome_gap_days)
+        else {
+            return;
+        };
+        if self.data.last_welcome_day == Some(self.today)
+            || !welcome_after_gap(&self.data.records(), self.today, gap)
+        {
+            return;
+        }
+        self.data.last_welcome_day = Some(self.today);
+        self.save_to(store);
+        self.welcome_visible = true;
     }
 
     /// Returns done, partial and open or missed counts for the day on screen.
@@ -1123,6 +1161,61 @@ mod tests {
             let _ = store.save(&data);
         }
         Ok(AppState::start(store, today()?, slot_order()))
+    }
+
+    #[test]
+    fn welcome_is_saved_once_per_day_after_gap() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        data.set_mark(
+            DeedId(1),
+            first,
+            Some(werdy_core::MarkEntry::new(Mark::Missed, first)),
+            1,
+        );
+        store.save(&data)?;
+        let mut first_open = started(&store)?;
+        first_open.show_welcome_on_open(&store);
+        assert!(first_open.welcome_visible);
+        let mut second_open = started(&store)?;
+        second_open.show_welcome_on_open(&store);
+        assert!(!second_open.welcome_visible);
+        assert_eq!(second_open.data.last_welcome_day, Some(today()?));
+        Ok(())
+    }
+
+    #[test]
+    fn kept_day_milestone_can_be_dismissed_across_openings() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        for number in 20..=26 {
+            let day = WerdyDay::new(2026, 10, number)?;
+            for deed in &data.deeds {
+                data.marks.insert(
+                    (deed.id, day),
+                    werdy_core::MarkEntry::new(Mark::Missed, day),
+                );
+            }
+        }
+        store.save(&data)?;
+        let mut app = started(&store)?;
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.dismiss_milestone(7);
+        app.save_to(&store);
+        assert_eq!(started(&store)?.milestone_notice(), None);
+        Ok(())
     }
 
     #[test]

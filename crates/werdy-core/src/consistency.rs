@@ -1,5 +1,7 @@
 //! Quiet counts of due days and days with a kept record. Neither count is a streak.
 
+use std::collections::BTreeSet;
+
 use crate::{Deed, DeedId, ExcuseCredit, Fraction, OwnerRecords, WerdyDay, score};
 
 /// Number of recent due days to count when the caller uses the default window.
@@ -83,4 +85,37 @@ fn day_is_kept(records: &OwnerRecords<'_>, day: WerdyDay) -> bool {
         }
     }
     has_due_deed
+}
+
+/// Highest reached milestone, hidden after that milestone was dismissed.
+pub fn milestone_to_show(
+    kept: usize,
+    milestones: &[usize],
+    dismissed: &BTreeSet<usize>,
+) -> Option<usize> {
+    milestones
+        .iter()
+        .copied()
+        .filter(|level| *level > 0 && *level <= kept)
+        .max()
+        .filter(|level| !dismissed.contains(level))
+}
+
+/// A welcome is due after marked history followed by empty finished days.
+pub fn welcome_after_gap(records: &OwnerRecords<'_>, today: WerdyDay, gap_days: usize) -> bool {
+    let Ok(gap) = i64::try_from(gap_days) else {
+        return false;
+    };
+    if gap == 0 {
+        return false;
+    }
+    let Some(first_empty) = today.checked_sub_days(gap) else {
+        return false;
+    };
+    let has_prior_mark = records.marks.keys().any(|(_, day)| *day < first_empty);
+    let has_recent_mark = records
+        .marks
+        .keys()
+        .any(|(_, day)| *day >= first_empty && *day < today);
+    has_prior_mark && !has_recent_mark
 }
