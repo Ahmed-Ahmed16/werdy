@@ -4,7 +4,7 @@ A daily deeds tracker that gets the numbers right.
 
 Track your daily Islamic deeds and life work, mark each one done, half done or missed, and see clear weekly and monthly totals that only count what was actually due.
 
-**Status:** planning. No code yet.
+**Status:** workspace skeleton exists. See [issue #1](https://github.com/Ahmed-Ahmed16/werdy/issues/1) for the plan.
 
 ## Why
 
