@@ -74,6 +74,30 @@ fn save_then_load_returns_identical_data() -> TestResult {
 }
 
 #[test]
+fn restored_archive_periods_survive_round_trip_and_version_four_still_loads() -> TestResult {
+    let mut data = sample()?;
+    let archived = WerdyDay::new(2026, 10, 6)?;
+    let restored = WerdyDay::new(2026, 10, 9)?;
+    data.deeds[0].archive(archived)?;
+    data.deeds[0].restore(restored)?;
+    let json = to_json(&data)?;
+    assert_eq!(from_json(&json)?, data);
+
+    let older_data = sample()?;
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&older_data)?)?;
+    old["schema_version"] = 4.into();
+    if let Some(deeds) = old["deeds"].as_array_mut() {
+        for deed in deeds {
+            if let Some(fields) = deed.as_object_mut() {
+                fields.remove("past_archives");
+            }
+        }
+    }
+    assert_eq!(from_json(&serde_json::to_string(&old)?)?, older_data);
+    Ok(())
+}
+
+#[test]
 fn an_empty_store_loads_nothing() -> TestResult {
     assert_eq!(MemoryStore::default().load()?, None);
     Ok(())
@@ -119,7 +143,7 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":4", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":5", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
     Ok(())

@@ -8,6 +8,8 @@ use werdy_store::Store;
 
 use crate::i18n::{Language, Texts};
 use crate::state::AppState;
+use crate::state::EditorError;
+use werdy_core::Schedule;
 
 /// Text lookup in the current language.
 #[derive(Clone)]
@@ -26,6 +28,10 @@ impl I18n {
     /// Text for a key with variables.
     pub fn t_with(&self, key: &str, args: &[(&str, FluentValue<'_>)]) -> String {
         self.texts.get(self.language, key, args)
+    }
+
+    pub fn schedule_sentence(&self, schedule: &Schedule) -> String {
+        crate::i18n::schedule_sentence(&self.texts, self.language, schedule)
     }
 }
 
@@ -59,6 +65,23 @@ impl Actions {
         if state.change_on_day(crate::platform::today(), change) {
             state.save_to(store.as_ref());
         }
+    }
+
+    pub fn change_deed<T>(
+        self,
+        change: impl FnOnce(&mut AppState) -> Result<T, EditorError>,
+    ) -> Result<T, EditorError> {
+        let store = self.store.read().clone();
+        let mut state = self.state;
+        let mut state = state.write();
+        let today = crate::platform::today().map_err(|_| {
+            state.save_status = crate::state::SaveStatus::DateFailed;
+            EditorError::RuleChange
+        })?;
+        state.update_today(today);
+        let changed = change(&mut state)?;
+        state.save_to(store.as_ref());
+        Ok(changed)
     }
 
     /// Changes only what is on screen, such as the day shown. Nothing is saved.

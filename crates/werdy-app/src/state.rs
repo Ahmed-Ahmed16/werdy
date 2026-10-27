@@ -1,9 +1,11 @@
 //! App state: the owner's data, the day on screen, and what each tap does.
 //! It calls werdy-core for every number and holds no scoring of its own.
 
+use std::collections::BTreeSet;
+
 use werdy_core::{
-    DailySheet, DeedId, Mark, MarkEntry, SlotKey, TodaySummary, WerdyDay, daily_sheet,
-    finished_day_summary, today_summary,
+    CategoryKey, DailySheet, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule, SlotKey, Target,
+    TodaySummary, Weekday, WerdyDay, daily_sheet, delete_deed, finished_day_summary, today_summary,
 };
 use werdy_store::{DeedName, OwnerData, Store, merge_records};
 
@@ -109,6 +111,81 @@ pub enum SaveStatus {
     DateFailed,
 }
 
+/// Editable fields. A new deed starts daily, at any time, with no target.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EditorDraft {
+    pub name: String,
+    pub category: CategoryKey,
+    pub slot: SlotKey,
+    pub schedule: Schedule,
+    pub target_enabled: bool,
+    pub target_amount: u32,
+    pub target_unit: String,
+}
+
+impl Default for EditorDraft {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
+            schedule: Schedule::EveryDay,
+            target_enabled: false,
+            target_amount: 1,
+            target_unit: "times".to_owned(),
+        }
+    }
+}
+
+impl EditorDraft {
+    pub fn weekdays(&mut self) {
+        self.schedule = Schedule::Weekdays(BTreeSet::new());
+    }
+
+    pub fn toggle_weekday(&mut self, weekday: Weekday) {
+        if let Schedule::Weekdays(days) = &mut self.schedule
+            && !days.insert(weekday)
+        {
+            days.remove(&weekday);
+        }
+    }
+
+    fn rule(&self) -> Result<DeedRule, EditorError> {
+        if matches!(&self.schedule, Schedule::Weekdays(days) if days.is_empty()) {
+            return Err(EditorError::NoWeekday);
+        }
+        let target = self
+            .target_enabled
+            .then(|| Target::new(self.target_amount, &self.target_unit))
+            .transpose()
+            .map_err(|_| EditorError::InvalidTarget)?;
+        Ok(DeedRule {
+            schedule: self.schedule.clone(),
+            target,
+            category: self.category.clone(),
+            slot: self.slot.clone(),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EditorError {
+    EmptyName,
+    NoWeekday,
+    InvalidTarget,
+    MissingDeed,
+    RuleChange,
+    DeleteNotConfirmed,
+}
+
+impl std::fmt::Display for EditorError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for EditorError {}
+
 /// Everything the screen shows, in one place.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -123,6 +200,7 @@ pub struct AppState {
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
     settings_dirty: bool,
+    deeds_dirty: bool,
 }
 
 impl AppState {
@@ -154,6 +232,7 @@ impl AppState {
             slot_order,
             save_status,
             settings_dirty: false,
+            deeds_dirty: false,
         }
     }
 
@@ -191,6 +270,105 @@ impl AppState {
     /// Returns the stored name of a deed.
     pub fn deed_name(&self, deed_id: DeedId) -> Option<&DeedName> {
         self.data.names.get(&deed_id)
+    }
+
+    pub fn draft_for(&self, id: DeedId) -> Option<EditorDraft> {
+        let deed = self.data.deeds.iter().find(|deed| deed.id == id)?;
+        let rule = deed.rule_on(self.today)?;
+        let name = match self.data.names.get(&id)? {
+            DeedName::Text(text) | DeedName::Key(text) => text.clone(),
+        };
+        Some(EditorDraft {
+            name,
+            category: rule.category.clone(),
+            slot: rule.slot.clone(),
+            schedule: rule.schedule.clone(),
+            target_enabled: rule.target.is_some(),
+            target_amount: rule.target.as_ref().map_or(1, Target::amount),
+            target_unit: rule
+                .target
+                .as_ref()
+                .map_or_else(|| "times".to_owned(), |target| target.unit().to_owned()),
+        })
+    }
+
+    pub fn save_deed(
+        &mut self,
+        id: Option<DeedId>,
+        draft: &EditorDraft,
+    ) -> Result<DeedId, EditorError> {
+        let name = draft.name.trim();
+        if name.is_empty() {
+            return Err(EditorError::EmptyName);
+        }
+        let rule = draft.rule()?;
+        let id = if let Some(id) = id {
+            let deed = self
+                .data
+                .deeds
+                .iter_mut()
+                .find(|deed| deed.id == id)
+                .ok_or(EditorError::MissingDeed)?;
+            deed.change_rule(self.today, rule)
+                .map_err(|_| EditorError::RuleChange)?;
+            id
+        } else {
+            let id = self.data.next_deed_id();
+            self.data.deeds.push(Deed::new(id, self.today, rule));
+            id
+        };
+        self.data.names.insert(id, DeedName::Text(name.to_owned()));
+        self.deeds_dirty = true;
+        Ok(id)
+    }
+
+    pub fn archive_deed(&mut self, id: DeedId) -> Result<(), EditorError> {
+        let deed = self
+            .data
+            .deeds
+            .iter_mut()
+            .find(|deed| deed.id == id)
+            .ok_or(EditorError::MissingDeed)?;
+        deed.archive(self.today)
+            .map_err(|_| EditorError::RuleChange)?;
+        self.deeds_dirty = true;
+        Ok(())
+    }
+
+    pub fn restore_deed(&mut self, id: DeedId) -> Result<(), EditorError> {
+        let deed = self
+            .data
+            .deeds
+            .iter_mut()
+            .find(|deed| deed.id == id)
+            .ok_or(EditorError::MissingDeed)?;
+        deed.restore(self.today)
+            .map_err(|_| EditorError::RuleChange)?;
+        self.deeds_dirty = true;
+        Ok(())
+    }
+
+    pub fn delete_deed_confirmed(
+        &mut self,
+        id: DeedId,
+        confirmed: bool,
+    ) -> Result<(), EditorError> {
+        if !confirmed {
+            return Err(EditorError::DeleteNotConfirmed);
+        }
+        if !self.data.deeds.iter().any(|deed| deed.id == id) {
+            return Err(EditorError::MissingDeed);
+        }
+        delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
+        self.data.names.remove(&id);
+        self.data
+            .mark_revisions
+            .retain(|(deed_id, _), _| *deed_id != id);
+        self.data
+            .cleared_marks
+            .retain(|(deed_id, _), _| *deed_id != id);
+        self.deeds_dirty = true;
+        Ok(())
     }
 
     /// Returns the mark for a deed on the day on screen.
@@ -289,10 +467,23 @@ impl AppState {
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
                 }
+                if self.deeds_dirty {
+                    merged.deeds = self.data.deeds.clone();
+                    merged.names = self.data.names.clone();
+                }
+                let live_ids: BTreeSet<_> = merged.deeds.iter().map(|deed| deed.id).collect();
+                merged.marks.retain(|(id, _), _| live_ids.contains(id));
+                merged
+                    .mark_revisions
+                    .retain(|(id, _), _| live_ids.contains(id));
+                merged
+                    .cleared_marks
+                    .retain(|(id, _), _| live_ids.contains(id));
                 match store.save(&merged) {
                     Ok(()) => {
                         self.data = merged;
                         self.settings_dirty = false;
+                        self.deeds_dirty = false;
                         SaveStatus::Saved
                     }
                     Err(_) => SaveStatus::SaveFailed,
@@ -313,6 +504,10 @@ impl AppState {
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
                 }
+                if self.deeds_dirty {
+                    merged.deeds = self.data.deeds.clone();
+                    merged.names = self.data.names.clone();
+                }
                 if merged == stored {
                     self.data = stored;
                     self.save_status = SaveStatus::Saved;
@@ -332,7 +527,9 @@ mod tests {
     use werdy_core::{DeedId, Error, Mark, WerdyDay};
     use werdy_store::{MemoryStore, OwnerData, Store, StoreError};
 
-    use super::{AppState, SaveStatus, Step, Tap, is_on, stepped, tapped};
+    use super::{
+        AppState, EditorDraft, EditorError, SaveStatus, Step, Tap, is_on, stepped, tapped,
+    };
     use crate::starter::{five_prayers, slot_order};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -356,6 +553,120 @@ mod tests {
 
     fn started(store: &dyn Store) -> Result<AppState, Error> {
         Ok(AppState::start(store, today()?, slot_order(), five_prayers))
+    }
+
+    #[test]
+    fn add_and_edit_deed_save_rules_from_today_without_moving_past_due_days() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let mut draft = EditorDraft {
+            name: "Reading".to_owned(),
+            ..EditorDraft::default()
+        };
+        let id = state.save_deed(None, &draft)?;
+        state.save_to(&store);
+        let created = today()?;
+        assert!(
+            state
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == id)
+                .is_some_and(|deed| deed.is_due_on(created, &state.data.settings.calendar))
+        );
+        let later = today()?.next()?;
+        state.update_today(later);
+        draft.name = "Friday reading".to_owned();
+        draft.weekdays();
+        draft.toggle_weekday(werdy_core::Weekday::Friday);
+        state.save_deed(Some(id), &draft)?;
+        state.save_to(&store);
+        let saved = started(&store)?;
+        let deed = saved
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .ok_or("missing deed")?;
+        assert!(deed.is_due_on(today()?, &saved.data.settings.calendar));
+        assert_eq!(
+            deed.rule_on(later).map(|rule| &rule.schedule),
+            Some(&draft.schedule)
+        );
+        assert_eq!(
+            saved.data.names.get(&id),
+            Some(&werdy_store::DeedName::Text("Friday reading".to_owned()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn archive_restore_and_confirmed_delete_change_due_days_and_remove_marks() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let id = DeedId(1);
+        state.tap(id, Tap::Done);
+        let archived = today()?.next()?;
+        state.update_today(archived);
+        state.archive_deed(id)?;
+        state.save_to(&store);
+        assert!(!state.data.deeds[0].is_due_on(archived, &state.data.settings.calendar));
+        let restored = archived.next()?;
+        state.update_today(restored);
+        state.restore_deed(id)?;
+        state.save_to(&store);
+        let loaded = started(&store)?;
+        let deed = &loaded.data.deeds[0];
+        assert!(deed.is_due_on(today()?, &loaded.data.settings.calendar));
+        assert!(!deed.is_due_on(archived, &loaded.data.settings.calendar));
+        assert!(deed.is_due_on(restored, &loaded.data.settings.calendar));
+        assert_eq!(
+            state.delete_deed_confirmed(id, false),
+            Err(EditorError::DeleteNotConfirmed)
+        );
+        assert!(state.data.marks.contains_key(&(id, today()?)));
+        state.delete_deed_confirmed(id, true)?;
+        state.save_to(&store);
+        let loaded = started(&store)?;
+        assert!(!loaded.data.deeds.iter().any(|deed| deed.id == id));
+        assert!(!loaded.data.marks.keys().any(|(deed_id, _)| *deed_id == id));
+        assert!(!loaded.data.names.contains_key(&id));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_tab_cannot_restore_marks_for_a_deleted_deed() -> TestResult {
+        let store = MemoryStore::default();
+        let mut deleting = started(&store)?;
+        let mut stale = started(&store)?;
+        let id = DeedId(1);
+        deleting.delete_deed_confirmed(id, true)?;
+        deleting.save_to(&store);
+        stale.tap(id, Tap::Done);
+        stale.save_to(&store);
+
+        let saved = started(&store)?;
+        assert!(!saved.data.deeds.iter().any(|deed| deed.id == id));
+        assert!(!saved.data.marks.keys().any(|(deed_id, _)| *deed_id == id));
+        Ok(())
+    }
+
+    #[test]
+    fn editor_validation_keeps_bad_changes_out_of_state() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let original = state.data.clone();
+        assert_eq!(
+            state.save_deed(None, &EditorDraft::default()),
+            Err(EditorError::EmptyName)
+        );
+        let mut draft = EditorDraft {
+            name: "Reading".to_owned(),
+            ..EditorDraft::default()
+        };
+        draft.weekdays();
+        assert_eq!(state.save_deed(None, &draft), Err(EditorError::NoWeekday));
+        assert_eq!(state.data, original);
+        Ok(())
     }
 
     #[test]

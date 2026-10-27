@@ -96,6 +96,16 @@ impl Target {
     }
 }
 
+/// Raises a target amount by one without overflow.
+pub fn increase_target_amount(amount: u32) -> u32 {
+    amount.saturating_add(1)
+}
+
+/// Lowers a target amount by one while keeping it positive.
+pub fn decrease_target_amount(amount: u32) -> u32 {
+    amount.saturating_sub(1).max(1)
+}
+
 /// Fields that may change for a deed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -127,6 +137,7 @@ pub struct Deed {
     pub(crate) first_rule: RuleVersion,
     pub(crate) later_rules: Vec<RuleVersion>,
     pub(crate) archived_from: Option<WerdyDay>,
+    pub(crate) past_archives: Vec<(WerdyDay, WerdyDay)>,
 }
 
 impl Deed {
@@ -140,6 +151,7 @@ impl Deed {
             },
             later_rules: Vec::new(),
             archived_from: None,
+            past_archives: Vec::new(),
         }
     }
 
@@ -151,6 +163,15 @@ impl Deed {
     /// Returns the day archiving starts, if any.
     pub fn archived_from(&self) -> Option<WerdyDay> {
         self.archived_from
+    }
+
+    /// Says whether an archive period covers this day.
+    pub fn is_archived_on(&self, day: WerdyDay) -> bool {
+        self.archived_from.is_some_and(|archived| day >= archived)
+            || self
+                .past_archives
+                .iter()
+                .any(|(start, end)| *start <= day && day < *end)
     }
 
     /// Changes the rule from this day onward. Replaces an edit on the same day.
@@ -191,7 +212,27 @@ impl Deed {
         if self.archived_from.is_some() {
             return Err(Error::AlreadyArchived);
         }
+        if self
+            .past_archives
+            .last()
+            .is_some_and(|(_, end)| from_day < *end)
+        {
+            return Err(Error::ArchiveBeforeCreation);
+        }
         self.archived_from = Some(from_day);
+        Ok(())
+    }
+
+    /// Ends an archive period today. Earlier days keep their due status.
+    pub fn restore(&mut self, from_day: WerdyDay) -> Result<(), Error> {
+        let start = self.archived_from.ok_or(Error::NotArchived)?;
+        if from_day < start {
+            return Err(Error::RestoreBeforeArchive);
+        }
+        if from_day > start {
+            self.past_archives.push((start, from_day));
+        }
+        self.archived_from = None;
         Ok(())
     }
 
@@ -219,7 +260,7 @@ impl Deed {
         day: WerdyDay,
         calendar: &CalendarSettings,
     ) -> Option<&DeedRule> {
-        if self.archived_from.is_some_and(|archived| day >= archived) {
+        if self.is_archived_on(day) {
             return None;
         }
         self.rule_on(day)
@@ -235,4 +276,17 @@ pub fn delete_deed(
 ) {
     deeds.retain(|deed| deed.id != id);
     marks.retain(|(deed_id, _), _| *deed_id != id);
+}
+
+/// Number of deeds active on this day, including deeds not due today.
+pub fn active_deed_count(deeds: &[Deed], day: WerdyDay) -> usize {
+    deeds
+        .iter()
+        .filter(|deed| deed.created_on() <= day && !deed.is_archived_on(day))
+        .count()
+}
+
+/// Number of deeds archived on this day.
+pub fn archived_deed_count(deeds: &[Deed], day: WerdyDay) -> usize {
+    deeds.iter().filter(|deed| deed.is_archived_on(day)).count()
 }

@@ -176,6 +176,43 @@ fn archiving_twice_is_an_error() -> Result<(), Error> {
 }
 
 #[test]
+fn restoring_keeps_the_archive_gap_and_allows_another_archive() -> Result<(), Error> {
+    let mut deed = Deed::new(DeedId(1), day(21)?, daily());
+    deed.archive(day(23)?)?;
+    deed.restore(day(25)?)?;
+    deed.archive(day(27)?)?;
+
+    let calendar = CalendarSettings::default();
+    for (date, due) in [
+        (22, true),
+        (23, false),
+        (24, false),
+        (25, true),
+        (26, true),
+        (27, false),
+    ] {
+        assert_eq!(deed.is_due_on(day(date)?, &calendar), due, "day {date}");
+    }
+    assert_eq!(werdy_core::active_deed_count(&[deed.clone()], day(25)?), 1);
+    assert_eq!(
+        werdy_core::archived_deed_count(&[deed.clone()], day(25)?),
+        0
+    );
+    assert_eq!(werdy_core::archived_deed_count(&[deed], day(24)?), 1);
+    Ok(())
+}
+
+#[test]
+fn same_day_restore_makes_deed_due_without_creating_a_gap() -> Result<(), Error> {
+    let mut deed = Deed::new(DeedId(1), day(21)?, daily());
+    deed.archive(day(24)?)?;
+    deed.restore(day(24)?)?;
+    assert!(deed.is_due_on(day(24)?, &CalendarSettings::default()));
+    assert_eq!(werdy_core::active_deed_count(&[deed], day(24)?), 1);
+    Ok(())
+}
+
+#[test]
 fn deleting_a_deed_removes_its_marks() -> Result<(), Error> {
     let first = Deed::new(DeedId(1), day(21)?, daily());
     let second = Deed::new(DeedId(2), day(21)?, daily());

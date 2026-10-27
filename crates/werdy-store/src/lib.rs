@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -343,7 +343,7 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     if !(1..=SCHEMA_VERSION).contains(&probe.schema_version) {
         return Err(StoreError::UnsupportedVersion(probe.schema_version));
     }
-    let file: DataFile = if probe.schema_version < SCHEMA_VERSION {
+    let file: DataFile = if probe.schema_version < 4 {
         let legacy: DataFile<LegacySettings> = serde_json::from_str(text).map_err(corrupt)?;
         legacy.map_settings(Settings::from)
     } else {
