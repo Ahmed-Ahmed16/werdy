@@ -20,3 +20,36 @@ jobs:
       - run: cargo test --workspace
       # The browser only code in werdy-app compiles for wasm alone.
       - run: cargo clippy -p werdy-app --target wasm32-unknown-unknown -- -D warnings
+
+  pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/configure-pages@v5
+      - run: cargo install dioxus-cli --version 0.7.10 --locked
+      - run: dx build --platform web --release --base-path werdy
+        working-directory: crates/werdy-app
+      - name: Prepare Pages files
+        shell: pwsh
+        run: ./scripts/prepare-pages.ps1 -PublicDir target/dx/werdy-app/release/web/public
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: target/dx/werdy-app/release/web/public
+      - id: deployment
+        uses: actions/deploy-pages@v4

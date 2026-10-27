@@ -26,6 +26,12 @@ dx serve --platform web
 
 Run the checks with `cargo test --workspace`.
 
+## Install the web app
+
+Live address: [ahmed-ahmed16.github.io/werdy/](https://ahmed-ahmed16.github.io/werdy/) after the first deployment from `main`. In the GitHub repo settings, select GitHub Actions as the Pages source. Open the site once while online; later visits can load the app shell offline. Marks remain on this device.
+
+On Android, open the address in Chrome, then use the browser menu and choose **Install app** or **Add to Home screen**. On iPhone, open it in Safari, tap **Share**, then **Add to Home Screen**.
+
 ## Why
 
 Existing apps mark a deed as done or not done, and count every deed on every day, even a Friday deed on a Tuesday. werdy fixes that:

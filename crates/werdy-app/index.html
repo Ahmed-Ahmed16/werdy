@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0F5C45">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="/{base_path}/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/{base_path}/icons/icon-192.png">
+    <title>{app_title}</title>
+    {style_include}
+  </head>
+  <body>
+    <div id="main"></div>
+    <script>
+      if ("serviceWorker" in navigator &&
+          (location.protocol === "https:" || location.hostname === "localhost") &&
+          location.pathname.startsWith("/werdy/")) {
+        const manifest = document.querySelector('link[rel="manifest"]');
+        const worker = new URL("service-worker.js", manifest.href);
+        navigator.serviceWorker.register(worker.href, { scope: "/werdy/" })
+          .catch((error) => console.warn("Service worker registration failed", error));
+      }
+    </script>
+  </body>
+</html>
