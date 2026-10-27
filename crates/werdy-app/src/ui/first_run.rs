@@ -38,12 +38,11 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
 pub fn LocationStep() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
-    let mut error = use_signal(|| None::<&'static str>);
     let Ok(cities) = location::cities() else {
         return rsx! { p { class: "editor-error", role: "alert", {i18n.t("location-data-error")} } };
     };
     let countries: BTreeSet<_> = cities.iter().map(|city| city.country.clone()).collect();
-    let state = use_context::<Signal<AppState>>();
+    let mut state = use_context::<Signal<AppState>>();
     let selected = state.read().data.settings.location.clone();
     let first_run = !state.read().data.first_run_complete;
     let confirmation = place_summary(&i18n, &state.read().data.settings);
@@ -58,18 +57,29 @@ pub fn LocationStep() -> Element {
             section { class: "first-run-card",
                 h2 { {i18n.t("first-run-location-title")} }
                 p { {i18n.t("first-run-location-help")} }
-                button { class: "secondary-button", onclick: move |_| {
+                button { class: "secondary-button", disabled: state.read().location_request.is_finding(), onclick: move |_| {
+                    let Some(request_id) = state.write().location_request.start() else { return; };
                     platform::request_location(
-                        move |place| { if actions.change_deed(|state| state.set_location(place)).is_err() { error.set(Some("location-save-error")); } },
-                        move || error.set(Some("location-error")),
+                        move |place| {
+                            if !state.read().location_request.is_current(request_id) { return; }
+                            if actions.change_deed(|state| state.accept_location(request_id, place)).is_err() {
+                                actions.view(|state| { state.location_request.fail_to_save(request_id); });
+                            }
+                        },
+                        move || actions.view(|state| { state.location_request.fail(request_id); }),
                     );
                 }, {i18n.t("location-use-current")} }
+                if state.read().location_request.is_finding() { p { role: "status", {i18n.t("location-finding")} } }
                 label { r#for: "city-choice", {i18n.t("location-choose-city")} }
                 select { id: "city-choice", class: "editor-input", value: selected.as_ref().and_then(|place| place.city_key.clone()).unwrap_or_default(),
                     onchange: move |event| {
                         if let Some(city) = location::cities().ok().and_then(|cities| cities.into_iter().find(|city| city.key == event.value()))
-                            && let Some(place) = city.location()
-                            && actions.change_deed(|state| state.set_location(place)).is_err() { error.set(Some("location-save-error")); }
+                            && let Some(place) = city.location() {
+                            actions.view(|state| state.location_request.cancel());
+                            if actions.change_deed(|state| state.set_location(place)).is_err() {
+                                actions.view(|state| state.location_request.save_error());
+                            }
+                        }
                     },
                     option { value: "", {i18n.t("location-choose-placeholder")} }
                     for city in cities { option { key: "{city.key}", value: "{city.key}", {i18n.t(&format!("city-{}", city.key))} } }
@@ -80,18 +90,19 @@ pub fn LocationStep() -> Element {
                     select { id: "gps-country", class: "editor-input", value: place.country.clone().unwrap_or_default(),
                         onchange: move |event| {
                             let country = event.value();
+                            actions.view(|state| state.location_request.cancel());
                             if actions.change_deed(|state| {
                                 let mut place = state.data.settings.location.clone().ok_or(crate::state::EditorError::RuleChange)?;
                                 place.country = (!country.is_empty()).then_some(country);
                                 state.set_location(place)
-                            }).is_err() { error.set(Some("location-save-error")); }
+                            }).is_err() { actions.view(|state| state.location_request.save_error()); }
                         },
                         option { value: "", {i18n.t("location-country-unknown")} }
                         for country in countries { option { key: "{country}", value: "{country}", {i18n.t(&format!("country-{country}"))} } }
                     }
                 }
                 if selected.as_ref().and_then(|place| place.country.as_deref()) == Some("SA") { p { class: "location-warning", {i18n.t("location-sa-method-unknown")} } }
-                if let Some(key) = error() { p { class: "editor-error", role: "alert", {i18n.t(key)} } }
+                if let Some(key) = state.read().location_request.error_key() { p { class: "editor-error", role: "alert", {i18n.t(key)} } }
                 if selected.is_some() {
                     label { r#for: "prayer-method", {i18n.t("location-method")} }
                     select { id: "prayer-method", class: "editor-input", value: match state.read().data.settings.prayer_method { PrayerMethod::EgyptianGeneralAuthority => "egyptian_general_authority", PrayerMethod::MuslimWorldLeague => "muslim_world_league" },
@@ -107,10 +118,10 @@ pub fn LocationStep() -> Element {
             footer { class: "first-run-footer",
                 if first_run {
                     button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("first-run-next")} }
-                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(Screen::SetPicker); }), {i18n.t("location-skip")} }
+                    button { class: "text-button", onclick: move |_| { actions.view(|state| state.location_request.cancel()); actions.change(|state| { state.clear_location(); state.show_screen(Screen::SetPicker); }); }, {i18n.t("location-skip")} }
                 } else {
                     button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(state.location_return)), {i18n.t(if state.read().location_return == Screen::Settings { "settings-back-location" } else { "location-back-deeds" })} }
-                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(state.location_return); }), {i18n.t("location-remove")} }
+                    button { class: "text-button", onclick: move |_| { actions.view(|state| state.location_request.cancel()); actions.change(|state| { state.clear_location(); state.show_screen(state.location_return); }); }, {i18n.t("location-remove")} }
                 }
             }
         }
