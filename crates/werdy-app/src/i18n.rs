@@ -179,4 +179,17 @@ mod tests {
         assert_eq!(Language::from_code("xx"), Language::Arabic);
         assert_eq!(Language::from_code("en").dir(), "ltr");
     }
+
+    #[test]
+    fn owner_reference_hijri_month_exists_in_both_languages() {
+        let texts = Texts::load();
+        assert_eq!(
+            texts.get(Language::English, "hijri-month-5", &[]),
+            "Jumada al Ula"
+        );
+        assert_eq!(
+            texts.get(Language::Arabic, "hijri-month-5", &[]),
+            "جمادى الأولى"
+        );
+    }
 }

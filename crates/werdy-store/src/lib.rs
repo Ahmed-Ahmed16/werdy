@@ -10,10 +10,12 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use werdy_core::{DayNote, Deed, DeedId, MarkEntry, OwnerRecords, WerdyDay};
+use werdy_core::{
+    CalendarSettings, DayNote, Deed, DeedId, HijriOffset, MarkEntry, OwnerRecords, WerdyDay,
+};
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -74,6 +76,13 @@ pub struct Settings {
     pub language: String,
     /// Colour theme.
     pub theme: Theme,
+    /// Local moon sighting correction for Hijri dates and schedules.
+    #[serde(default = "default_hijri_offset")]
+    pub hijri_offset: HijriOffset,
+}
+
+fn default_hijri_offset() -> HijriOffset {
+    HijriOffset::PLUS_ONE
 }
 
 impl Default for Settings {
@@ -81,6 +90,7 @@ impl Default for Settings {
         Self {
             language: "ar".to_owned(),
             theme: Theme::System,
+            hijri_offset: default_hijri_offset(),
         }
     }
 }
@@ -111,6 +121,9 @@ impl OwnerData {
             deeds: &self.deeds,
             marks: &self.marks,
             day_notes: &self.day_notes,
+            calendar: CalendarSettings {
+                hijri_offset: self.settings.hijri_offset,
+            },
         }
     }
 
@@ -293,7 +306,7 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
 pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     let corrupt = |error: serde_json::Error| StoreError::Corrupt(error.to_string());
     let probe: VersionProbe = serde_json::from_str(text).map_err(corrupt)?;
-    if probe.schema_version != 1 && probe.schema_version != SCHEMA_VERSION {
+    if !(1..=SCHEMA_VERSION).contains(&probe.schema_version) {
         return Err(StoreError::UnsupportedVersion(probe.schema_version));
     }
     let file: DataFile = serde_json::from_str(text).map_err(corrupt)?;

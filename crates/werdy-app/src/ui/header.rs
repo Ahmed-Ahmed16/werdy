@@ -14,11 +14,16 @@ pub fn DayHeader() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let (viewing, is_today) = {
+    let (viewing, is_today, hijri_offset) = {
         let state = state.read();
-        (state.viewing, state.is_today())
+        (
+            state.viewing,
+            state.is_today(),
+            state.data.settings.hijri_offset,
+        )
     };
     let date = date_text(&i18n, viewing);
+    let hijri = hijri_text(&i18n, viewing, hijri_offset);
     let other = i18n.language.other();
 
     rsx! {
@@ -31,7 +36,10 @@ pub fn DayHeader() -> Element {
                     onclick: move |_| actions.view(AppState::show_previous_day),
                     ChevronBack {}
                 }
-                h1 { class: "day-title", "{date}" }
+                div { class: "day-dates",
+                    h1 { class: "day-title", "{date}" }
+                    p { class: "hijri-date", "{hijri}" }
+                }
                 button {
                     class: "icon-button",
                     aria_label: i18n.t("sheet-next-day"),
@@ -58,6 +66,21 @@ pub fn DayHeader() -> Element {
             }
         }
     }
+}
+
+fn hijri_text(i18n: &I18n, day: WerdyDay, offset: werdy_core::HijriOffset) -> String {
+    let Ok(date) = day.hijri(offset) else {
+        return i18n.t("sheet-hijri-unavailable");
+    };
+    let month = i18n.t(&format!("hijri-month-{}", date.month));
+    i18n.t_with(
+        "sheet-hijri-date",
+        &[
+            ("day", FluentValue::from(date.day)),
+            ("month", FluentValue::from(month)),
+            ("year", FluentValue::from(date.year.to_string())),
+        ],
+    )
 }
 
 fn date_text(i18n: &I18n, day: WerdyDay) -> String {

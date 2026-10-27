@@ -162,6 +162,15 @@ button:focus-visible {
   font-weight: var(--weight-bold);
 }
 
+.day-dates {
+  text-align: center;
+}
+
+.hijri-date {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 .header-tools {
   display: flex;
   gap: var(--gap-s);

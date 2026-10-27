@@ -2,13 +2,17 @@
 
 #![forbid(unsafe_code)]
 
-/// Error for an invalid day, mark, or deed change.
+/// Error for invalid input, deed changes, or score overflow.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Calendar day is invalid or outside the supported day count.
     InvalidDate,
-    /// Fraction is not a finite value from zero to one.
+    /// Fraction is outside zero to one, has zero denominator, or has nonfinite float input.
     FractionOutOfRange,
+    /// Exact score cannot fit within u128 values.
+    ScoreOverflow,
+    /// Stored exact score has a zero denominator.
+    InvalidScoreValue,
     /// Target amount must be at least one.
     InvalidTargetAmount,
     /// Target unit key is empty.
@@ -23,6 +27,10 @@ pub enum Error {
     AlreadyArchived,
     /// Day note text is empty and no credit was chosen.
     EmptyDayNote,
+    /// Hijri offset is outside minus one to plus one day.
+    InvalidHijriOffset,
+    /// Hijri range has a month outside 1 to 12 or days outside 1 to 30, or ends before it starts.
+    InvalidHijriRange,
 }
 
 impl std::fmt::Display for Error {
@@ -30,6 +38,8 @@ impl std::fmt::Display for Error {
         let text = match self {
             Self::InvalidDate => "day is invalid or outside the supported range",
             Self::FractionOutOfRange => "fraction is not from zero to one",
+            Self::ScoreOverflow => "exact score is too large",
+            Self::InvalidScoreValue => "exact score denominator must be positive",
             Self::InvalidTargetAmount => "target amount must be at least one",
             Self::EmptyTargetUnit => "target unit is empty",
             Self::RuleBeforeCreation => "rule change starts before the deed was created",
@@ -37,6 +47,8 @@ impl std::fmt::Display for Error {
             Self::ArchiveBeforeCreation => "archive starts before the deed was created",
             Self::AlreadyArchived => "deed was already archived",
             Self::EmptyDayNote => "day note is empty and has no credit",
+            Self::InvalidHijriOffset => "Hijri offset must be from minus one to plus one day",
+            Self::InvalidHijriRange => "Hijri range is invalid",
         };
         formatter.write_str(text)
     }
@@ -47,6 +59,7 @@ impl std::error::Error for Error {}
 mod consistency;
 mod day;
 mod deed;
+mod hijri;
 mod mark;
 mod note;
 mod report;
@@ -58,8 +71,9 @@ mod stored;
 pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
 pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, delete_deed};
+pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
-pub use score::{OwnerRecords, Score, TodaySummary, score, today_summary};
+pub use score::{OwnerRecords, Score, ScoreValue, TodaySummary, score, today_summary};
 pub use sheet::{DailySheet, SheetRow, SheetSlot, daily_sheet};

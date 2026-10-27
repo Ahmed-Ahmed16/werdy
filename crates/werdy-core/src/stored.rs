@@ -2,7 +2,36 @@
 //! rules as the normal constructors, so bad data returns an error.
 
 use crate::deed::RuleVersion;
-use crate::{DayNote, Deed, DeedId, Error, ExcuseCredit, Target, WerdyDay};
+use crate::{DayNote, Deed, DeedId, Error, ExcuseCredit, HijriRange, ScoreValue, Target, WerdyDay};
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ScoreValueData {
+    numerator: u128,
+    denominator: u128,
+}
+
+impl TryFrom<ScoreValueData> for ScoreValue {
+    type Error = Error;
+
+    fn try_from(data: ScoreValueData) -> Result<Self, Error> {
+        Self::from_ratio(data.numerator, data.denominator)
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct HijriRangeData {
+    month: Option<u8>,
+    first_day: u8,
+    last_day: u8,
+}
+
+impl TryFrom<HijriRangeData> for HijriRange {
+    type Error = Error;
+
+    fn try_from(data: HijriRangeData) -> Result<Self, Error> {
+        Self::new(data.month, data.first_day, data.last_day)
+    }
+}
 
 #[derive(serde::Deserialize)]
 pub(crate) struct TargetData {

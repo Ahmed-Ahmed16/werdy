@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Deed, DeedId, Mark, MarkEntry, SlotKey, Target, WerdyDay};
+use crate::{CalendarSettings, Deed, DeedId, Fraction, Mark, MarkEntry, SlotKey, Target, WerdyDay};
 
 /// One due deed on the sheet with its mark for that day.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,14 +42,15 @@ pub fn daily_sheet(
     marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
     day: WerdyDay,
     slot_order: &[SlotKey],
+    calendar: CalendarSettings,
 ) -> DailySheet {
     let mut groups: BTreeMap<(usize, SlotKey), (Vec<SheetRow>, bool)> = BTreeMap::new();
     for deed in deeds {
-        let Some(rule) = deed.due_rule_on(day) else {
+        let Some(rule) = deed.due_rule_on(day, calendar) else {
             continue;
         };
         let mark = marks.get(&(deed.id, day)).map(|entry| entry.mark);
-        let done = mark.is_some_and(|mark| mark.value(rule) == 1.0);
+        let done = mark.is_some_and(|mark| mark.exact_value(rule) == Fraction::ONE);
         let position = slot_order
             .iter()
             .position(|slot| *slot == rule.slot)

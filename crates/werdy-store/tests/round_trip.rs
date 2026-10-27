@@ -57,6 +57,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
+            hijri_offset: werdy_core::HijriOffset::PLUS_ONE,
         },
     })
 }
@@ -105,7 +106,12 @@ fn corrupt_json_is_an_error() {
 
 #[test]
 fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"partial\":0.5", "\"partial\":7.0");
+    let original = to_json(&sample()?)?;
+    let json = original.replace(
+        "\"numerator\":1,\"denominator\":2",
+        "\"numerator\":7,\"denominator\":2",
+    );
+    assert_ne!(json, original);
 
     assert!(matches!(from_json(&json), Err(StoreError::Corrupt(_))));
     Ok(())
@@ -113,7 +119,7 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":2", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":3", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
     Ok(())
@@ -212,5 +218,51 @@ fn two_marks_for_the_same_deed_and_day_are_an_error() -> TestResult {
 fn the_next_deed_id_follows_the_highest_id() -> TestResult {
     assert_eq!(sample()?.next_deed_id(), DeedId(3));
     assert_eq!(OwnerData::default().next_deed_id(), DeedId(1));
+    Ok(())
+}
+
+#[test]
+fn hijri_offset_is_saved_and_old_settings_default_to_plus_one() -> TestResult {
+    let mut data = sample()?;
+    data.settings.hijri_offset = werdy_core::HijriOffset::new(-1)?;
+    let saved = to_json(&data)?;
+    assert_eq!(
+        from_json(&saved)?.records().calendar.hijri_offset.days(),
+        -1
+    );
+
+    let mut old: serde_json::Value = serde_json::from_str(&saved)?;
+    old["settings"]
+        .as_object_mut()
+        .ok_or("settings is not an object")?
+        .remove("hijri_offset");
+    let loaded = from_json(&old.to_string())?;
+    assert_eq!(
+        loaded.records().calendar.hijri_offset,
+        werdy_core::HijriOffset::PLUS_ONE
+    );
+    Ok(())
+}
+
+#[test]
+fn version_two_decimal_marks_still_load() -> TestResult {
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    old["schema_version"] = 2.into();
+    old["settings"]
+        .as_object_mut()
+        .ok_or("settings is not an object")?
+        .remove("hijri_offset");
+    let marks = old["marks"].as_array_mut().ok_or("marks is not a list")?;
+    let partial = marks
+        .iter_mut()
+        .find_map(|record| record["entry"]["mark"].get_mut("partial"))
+        .ok_or("no partial mark")?;
+    *partial = serde_json::json!(0.5);
+    let loaded = from_json(&old.to_string())?;
+    assert_eq!(loaded.marks, sample()?.marks);
+    assert_eq!(
+        loaded.settings.hijri_offset,
+        werdy_core::HijriOffset::PLUS_ONE
+    );
     Ok(())
 }

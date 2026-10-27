@@ -162,12 +162,18 @@ impl AppState {
             &self.data.marks,
             self.viewing,
             &self.slot_order,
+            self.data.records().calendar,
         )
     }
 
     /// Returns done, partial and open counts for the day on screen.
     pub fn summary(&self) -> TodaySummary {
-        today_summary(&self.data.deeds, &self.data.marks, self.viewing)
+        today_summary(
+            &self.data.deeds,
+            &self.data.marks,
+            self.viewing,
+            self.data.records().calendar,
+        )
     }
 
     /// Says whether the day on screen is today.

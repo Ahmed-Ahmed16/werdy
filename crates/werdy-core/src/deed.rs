@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Error, MarkEntry, Weekday, WerdyDay};
+use crate::{CalendarSettings, Error, HijriRange, MarkEntry, Weekday, WerdyDay};
 
 /// Rule that says which calendar days a deed is due.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -11,19 +11,22 @@ pub enum Schedule {
     EveryDay,
     /// Due on the listed weekdays.
     Weekdays(BTreeSet<Weekday>),
+    /// Due on the Hijri days of this range.
+    Hijri(HijriRange),
 }
 
 impl Schedule {
-    /// Says whether the schedule includes this day.
-    pub fn includes(&self, day: WerdyDay) -> bool {
+    /// Says whether the schedule includes this day under the owner's calendar settings.
+    pub fn includes(&self, day: WerdyDay, calendar: CalendarSettings) -> bool {
         match self {
             Self::EveryDay => true,
             Self::Weekdays(weekdays) => weekdays.contains(&day.weekday()),
+            Self::Hijri(range) => day
+                .hijri(calendar.hijri_offset)
+                .is_ok_and(|date| range.contains(date)),
         }
     }
 }
-
-// Hijri date ranges belong to a later ticket.
 
 /// Stable identity for a deed.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -205,17 +208,22 @@ impl Deed {
             .or(Some(&self.first_rule.rule))
     }
 
-    /// Says whether this deed is due on this day.
-    pub fn is_due_on(&self, day: WerdyDay) -> bool {
-        self.due_rule_on(day).is_some()
+    /// Says whether this deed is due on this day under the owner's calendar settings.
+    pub fn is_due_on(&self, day: WerdyDay, calendar: CalendarSettings) -> bool {
+        self.due_rule_on(day, calendar).is_some()
     }
 
     /// Returns the rule if the deed is due on this day.
-    pub(crate) fn due_rule_on(&self, day: WerdyDay) -> Option<&DeedRule> {
+    pub(crate) fn due_rule_on(
+        &self,
+        day: WerdyDay,
+        calendar: CalendarSettings,
+    ) -> Option<&DeedRule> {
         if self.archived_from.is_some_and(|archived| day >= archived) {
             return None;
         }
-        self.rule_on(day).filter(|rule| rule.schedule.includes(day))
+        self.rule_on(day)
+            .filter(|rule| rule.schedule.includes(day, calendar))
     }
 }
 

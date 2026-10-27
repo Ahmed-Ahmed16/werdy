@@ -3,8 +3,8 @@
 #![cfg(feature = "serde")]
 
 use werdy_core::{
-    CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry, Schedule,
-    SlotKey, Target, WerdyDay,
+    CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Fraction,
+    HijriOffset, HijriRange, Mark, MarkEntry, Schedule, ScoreValue, SlotKey, Target, WerdyDay,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -102,4 +102,38 @@ fn errors_have_readable_text() {
         Error::FractionOutOfRange.to_string(),
         "fraction is not from zero to one"
     );
+}
+
+#[test]
+fn exact_fraction_and_score_round_trip_without_float_conversion() -> TestResult {
+    let fraction = Fraction::from_ratio(1, 3)?;
+    let score = ScoreValue::from_ratio(7, 3)?;
+    let json = serde_json::to_string(&(fraction, score))?;
+    assert!(json.contains("\"numerator\":1,\"denominator\":3"));
+    assert_eq!(
+        serde_json::from_str::<(Fraction, ScoreValue)>(&json)?,
+        (fraction, score)
+    );
+    assert_eq!(serde_json::from_str::<Fraction>("0.5")?, Fraction::HALF);
+    assert!(serde_json::from_str::<Fraction>(r#"{"numerator":3,"denominator":2}"#).is_err());
+    assert!(serde_json::from_str::<ScoreValue>(r#"{"numerator":1,"denominator":0}"#).is_err());
+    Ok(())
+}
+
+#[test]
+fn hijri_settings_and_range_are_checked_on_load() -> TestResult {
+    let calendar = CalendarSettings {
+        hijri_offset: HijriOffset::PLUS_ONE,
+    };
+    let range = HijriRange::ramadan();
+    let json = serde_json::to_string(&(calendar, range))?;
+    assert_eq!(
+        serde_json::from_str::<(CalendarSettings, HijriRange)>(&json)?,
+        (calendar, range)
+    );
+    assert!(serde_json::from_str::<HijriOffset>("2").is_err());
+    assert!(
+        serde_json::from_str::<HijriRange>(r#"{"month":13,"first_day":1,"last_day":10}"#).is_err()
+    );
+    Ok(())
 }

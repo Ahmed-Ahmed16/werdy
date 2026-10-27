@@ -1,6 +1,20 @@
 ## The daily sheet.
 
 sheet-date = { $weekday }, { $day } { $month } { $year }
+sheet-hijri-date = { $day } { $month } { $year } AH
+sheet-hijri-unavailable = ___
+hijri-month-1 = Muharram
+hijri-month-2 = Safar
+hijri-month-3 = Rabi al Awwal
+hijri-month-4 = Rabi al Thani
+hijri-month-5 = Jumada al Ula
+hijri-month-6 = Jumada al Akhira
+hijri-month-7 = Rajab
+hijri-month-8 = Shaban
+hijri-month-9 = Ramadan
+hijri-month-10 = Shawwal
+hijri-month-11 = Dhul Qadah
+hijri-month-12 = Dhul Hijjah
 sheet-previous-day = Previous day
 sheet-next-day = Next day
 sheet-back-to-today = Back to today

@@ -78,7 +78,13 @@ mod tests {
         let today = WerdyDay::new(2026, 10, 27)?;
         let data = five_prayers(today)?;
 
-        let sheet = daily_sheet(&data.deeds, &data.marks, today, &slot_order());
+        let sheet = daily_sheet(
+            &data.deeds,
+            &data.marks,
+            today,
+            &slot_order(),
+            data.records().calendar,
+        );
 
         let slots: Vec<_> = sheet
             .slots

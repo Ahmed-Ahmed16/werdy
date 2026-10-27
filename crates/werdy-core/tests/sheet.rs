@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, Schedule, SlotKey, Target,
-    Weekday, WerdyDay, daily_sheet,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, HijriOffset, HijriRange, Mark,
+    MarkEntry, Schedule, SlotKey, Target, Weekday, WerdyDay, daily_sheet,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -35,7 +35,7 @@ fn deed(id: u64, slot: &str, created_on: WerdyDay) -> Deed {
 }
 
 fn slot_keys(deeds: &[Deed], marks: &Marks, on: WerdyDay) -> Vec<String> {
-    daily_sheet(deeds, marks, on, &slot_order())
+    daily_sheet(deeds, marks, on, &slot_order(), CalendarSettings::default())
         .slots
         .into_iter()
         .map(|slot| slot.slot.0)
@@ -64,7 +64,13 @@ fn rows_keep_deed_order_and_carry_their_mark() -> Result<(), Error> {
     let deeds = vec![deed(1, "fajr", today), deed(2, "fajr", today)];
     let marks = Marks::from([((DeedId(2), today), MarkEntry::new(Mark::Missed, today))]);
 
-    let sheet = daily_sheet(&deeds, &marks, today, &slot_order());
+    let sheet = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    );
 
     let rows: Vec<_> = sheet.slots[0]
         .rows
@@ -105,11 +111,17 @@ fn a_slot_folds_only_when_every_deed_in_it_is_done() -> Result<(), Error> {
         ),
     ]);
 
-    let folded: Vec<_> = daily_sheet(&deeds, &marks, today, &slot_order())
-        .slots
-        .iter()
-        .map(|slot| slot.folded)
-        .collect();
+    let folded: Vec<_> = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    )
+    .slots
+    .iter()
+    .map(|slot| slot.folded)
+    .collect();
     assert_eq!(folded, [true, false]);
     Ok(())
 }
@@ -125,7 +137,13 @@ fn a_count_at_its_target_counts_as_done_for_folding() -> Result<(), Error> {
     )];
     let marks = Marks::from([((DeedId(1), today), MarkEntry::new(Mark::Count(5), today))]);
 
-    let sheet = daily_sheet(&deeds, &marks, today, &slot_order());
+    let sheet = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    );
 
     assert!(sheet.slots[0].folded);
     assert_eq!(sheet.slots[0].rows[0].target, Some(pages));
@@ -158,5 +176,40 @@ fn the_slot_is_read_from_the_rule_in_force_that_day() -> Result<(), Error> {
 
     assert_eq!(slot_keys(&deeds, &Marks::new(), today), ["fajr"]);
     assert_eq!(slot_keys(&deeds, &Marks::new(), tomorrow), ["night"]);
+    Ok(())
+}
+
+#[test]
+fn hijri_schedule_uses_the_owner_offset() -> Result<(), Error> {
+    let today = day()?;
+    let created = WerdyDay::new(2026, 10, 1)?;
+    let deeds = [Deed::new(
+        DeedId(1),
+        created,
+        rule(
+            "morning",
+            Schedule::Hijri(HijriRange::new(Some(5), 16, 16)?),
+            None,
+        ),
+    )];
+    let marks = Marks::new();
+    let zero = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    );
+    let plus_one = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings {
+            hijri_offset: HijriOffset::PLUS_ONE,
+        },
+    );
+    assert!(zero.slots.is_empty());
+    assert_eq!(plus_one.slots[0].rows[0].deed_id, DeedId(1));
     Ok(())
 }

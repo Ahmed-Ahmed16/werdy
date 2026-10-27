@@ -1,6 +1,20 @@
 ## The daily sheet.
 
 sheet-date = { $weekday }، { $day } { $month } { $year }
+sheet-hijri-date = { $day } { $month } { $year } هـ
+sheet-hijri-unavailable = ___
+hijri-month-1 = المحرم
+hijri-month-2 = صفر
+hijri-month-3 = ربيع الأول
+hijri-month-4 = ربيع الآخر
+hijri-month-5 = جمادى الأولى
+hijri-month-6 = جمادى الآخرة
+hijri-month-7 = رجب
+hijri-month-8 = شعبان
+hijri-month-9 = رمضان
+hijri-month-10 = شوال
+hijri-month-11 = ذو القعدة
+hijri-month-12 = ذو الحجة
 sheet-previous-day = اليوم السابق
 sheet-next-day = اليوم التالي
 sheet-back-to-today = العودة إلى اليوم
