@@ -48,6 +48,7 @@ fn from_starter_json(text: &str, today: WerdyDay) -> Result<OwnerData, serde_jso
             slot: SlotKey::new(&deed.slot),
         };
         data.deeds.push(Deed::new(id, today, rule));
+        data.last_deed_id = id.0;
         data.names.insert(id, DeedName::Key(deed.name_key));
     }
     Ok(data)

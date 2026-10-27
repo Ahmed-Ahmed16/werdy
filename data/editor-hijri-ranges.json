@@ -1,0 +1,6 @@
+[
+  {"key":"ramadan","month":9,"first_day":1,"last_day":30},
+  {"key":"last_ten_nights","month":9,"first_day":21,"last_day":30},
+  {"key":"dhul_hijjah_first_ten","month":12,"first_day":1,"last_day":10},
+  {"key":"ayyam_al_bid","month":null,"first_day":13,"last_day":15}
+]

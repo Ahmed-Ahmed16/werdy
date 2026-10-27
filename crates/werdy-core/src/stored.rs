@@ -68,6 +68,8 @@ pub(crate) struct DeedData {
     first_rule: RuleVersion,
     later_rules: Vec<RuleVersion>,
     archived_from: Option<WerdyDay>,
+    #[serde(default)]
+    past_archives: Vec<(WerdyDay, WerdyDay)>,
 }
 
 impl TryFrom<DeedData> for Deed {
@@ -84,6 +86,13 @@ impl TryFrom<DeedData> for Deed {
             }
             previous = version.from_day;
             deed.change_rule(version.from_day, version.rule)?;
+        }
+        for (start, end) in data.past_archives {
+            deed.archive(start)?;
+            if end <= start {
+                return Err(Error::RestoreBeforeArchive);
+            }
+            deed.restore(end)?;
         }
         if let Some(day) = data.archived_from {
             deed.archive(day)?;

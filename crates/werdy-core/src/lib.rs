@@ -25,6 +25,10 @@ pub enum Error {
     ArchiveBeforeCreation,
     /// Deed was already archived.
     AlreadyArchived,
+    /// Deed is not archived.
+    NotArchived,
+    /// Restore day comes before the archive day.
+    RestoreBeforeArchive,
     /// Day note text is empty and no credit was chosen.
     EmptyDayNote,
     /// Hijri offset is outside minus one to plus one day.
@@ -48,6 +52,8 @@ impl std::fmt::Display for Error {
             Self::RuleBeforeLatest => "rule change starts before the latest rule",
             Self::ArchiveBeforeCreation => "archive starts before the deed was created",
             Self::AlreadyArchived => "deed was already archived",
+            Self::NotArchived => "deed is not archived",
+            Self::RestoreBeforeArchive => "restore starts before archive",
             Self::EmptyDayNote => "day note is empty and has no credit",
             Self::InvalidHijriOffset => "Hijri offset must be from minus one to plus one day",
             Self::OffsetBeforeLatest => "Hijri offset change starts before the latest change",
@@ -73,9 +79,12 @@ mod stored;
 
 pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
-pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, delete_deed};
+pub use deed::{
+    CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, active_deed_count,
+    archived_deed_count, decrease_target_amount, delete_deed, increase_target_amount,
+};
 pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
-pub use mark::{Fraction, Mark, MarkEntry};
+pub use mark::{Fraction, Mark, MarkEntry, convert_mark_for_target};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
 pub use score::{

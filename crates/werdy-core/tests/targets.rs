@@ -254,3 +254,10 @@ fn target_of_zero_is_an_error() {
 fn empty_target_unit_is_an_error() {
     assert_eq!(Target::new(5, ""), Err(Error::EmptyTargetUnit));
 }
+#[test]
+fn target_stepper_stays_positive_and_does_not_overflow() {
+    assert_eq!(werdy_core::decrease_target_amount(1), 1);
+    assert_eq!(werdy_core::decrease_target_amount(5), 4);
+    assert_eq!(werdy_core::increase_target_amount(5), 6);
+    assert_eq!(werdy_core::increase_target_amount(u32::MAX), u32::MAX);
+}
