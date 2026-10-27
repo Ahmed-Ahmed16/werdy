@@ -204,7 +204,7 @@ fn TodayLink() -> Element {
 }
 
 #[component]
-fn Series(
+pub(super) fn Series(
     entries: Vec<SeriesEntry>,
     noted_days: BTreeSet<WerdyDay>,
     late_noted_days: BTreeSet<WerdyDay>,
@@ -232,7 +232,8 @@ fn Series(
             }
             if show_today {
                 div { class: "report-day-cell report-today-cell", role: "img", aria_label: today_label,
-                    span { {i18n.t("reports-today")} }
+                    span { class: "report-today-label", {i18n.t("reports-today")} }
+                    span { class: "report-today-compact", {i18n.t("reports-today-short")} }
                     if today_noted { small { aria_label: i18n.t("note-sign"), {i18n.t("reports-note-sign")} } }
                 }
             }
@@ -275,8 +276,8 @@ fn SeriesCell(entry: SeriesEntry, noted: bool, late_note: bool) -> Element {
                     }
                     if noted { small { title: i18n.t("reports-note"), {i18n.t("reports-note-sign")} } }
                     if late_note { small { title: i18n.t("mark-added-later"), {i18n.t("reports-late-sign")} } }
-                    if let Some(percent) = score.percent { small { {percent_text(&i18n, percent)} } }
-                    if score.percent.is_some() { small { {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
+                    if let Some(percent) = score.percent { small { class: "report-score-detail", {percent_text(&i18n, percent)} } }
+                    if score.percent.is_some() { small { class: "report-score-detail", {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
                 }
             }
         }

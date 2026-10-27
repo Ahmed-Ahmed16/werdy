@@ -76,6 +76,15 @@ impl PartialEq for StoreHandle {
 #[component]
 fn Shell(initial: AppState, store: StoreHandle) -> Element {
     let mut state = use_signal(|| initial);
+    let mut wide_layout = use_signal(platform::wide_layout);
+    let mut last_screen = use_signal(|| state.read().screen);
+    use_effect(move || {
+        let screen = state.read().screen;
+        if last_screen() != screen {
+            last_screen.set(screen);
+            platform::scroll_to_top();
+        }
+    });
     let mut note_day = use_signal(|| None::<werdy_core::WerdyDay>);
     let store = use_signal(|| store.0);
     let _watch = use_hook(move || {
@@ -92,6 +101,12 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             move || {
                 let saved = store.read().clone();
                 state.write().reload_from(saved.as_ref());
+            },
+            move || {
+                let wide = platform::wide_layout();
+                if wide_layout() != wide {
+                    wide_layout.set(wide);
+                }
             },
         ))
     });
@@ -125,7 +140,10 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
                     Screen::SetPicker => rsx! { first_run::SetPicker {} },
                     Screen::Sheet => rsx! {
                         header::DayHeader { on_open_note: move |day| note_day.set(Some(day)) }
-                        summary::TodayCard {}
+                        div { class: "sheet-aside",
+                            summary::TodayCard {}
+                            if wide_layout() { summary::WeekCard {} }
+                        }
                         sheet::Sheet {}
                     },
                     Screen::Reports => rsx! { reports::ReportsScreen {} },

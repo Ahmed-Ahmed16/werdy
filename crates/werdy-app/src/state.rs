@@ -269,6 +269,8 @@ pub struct AppState {
     pub screen: Screen,
     /// Screen to return to after changing location.
     pub location_return: Screen,
+    /// Whether Settings was opened from My deeds.
+    pub settings_back_to_deeds: bool,
     /// Selected rolling report period.
     pub report_period: Period,
     /// Number of whole periods before the latest one.
@@ -300,6 +302,7 @@ impl AppState {
             save_status,
             screen,
             location_return: Screen::Deeds,
+            settings_back_to_deeds: false,
             report_period: Period::Week,
             report_steps_back: 0,
             pending_settings: PendingSettings::default(),
@@ -395,6 +398,17 @@ impl AppState {
         )
     }
 
+    /// Latest finished week for the summary beside the daily sheet.
+    pub fn recent_week(&self) -> Result<Report, Error> {
+        build_report(
+            &self.data.records(),
+            Period::Week,
+            0,
+            self.today,
+            ScoreBands::default(),
+        )
+    }
+
     /// Builds the adjacent earlier report for comparison.
     pub fn previous_report(&self) -> Result<Report, Error> {
         build_report(
@@ -408,12 +422,24 @@ impl AppState {
 
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
+        if screen == Screen::Settings
+            && self.screen != Screen::Settings
+            && (self.screen != Screen::FirstRunLocation || self.location_return != Screen::Settings)
+        {
+            self.settings_back_to_deeds = false;
+        }
         if screen == Screen::FirstRunLocation && self.screen == Screen::Settings {
             self.location_return = Screen::Settings;
         } else if screen == Screen::FirstRunLocation {
             self.location_return = Screen::Deeds;
         }
         self.screen = screen;
+    }
+
+    /// Opens Settings with a return path to My deeds.
+    pub fn open_settings_from_deeds(&mut self) {
+        self.show_screen(Screen::Settings);
+        self.settings_back_to_deeds = true;
     }
 
     pub fn set_location(&mut self, location: Location) -> Result<(), EditorError> {
@@ -2109,6 +2135,46 @@ mod tests {
         state.show_screen(Screen::Deeds);
         state.show_screen(Screen::FirstRunLocation);
         assert_eq!(state.location_return, Screen::Deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn settings_back_only_follows_my_deeds_entry() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Settings);
+        assert!(!state.settings_back_to_deeds);
+        state.show_screen(Screen::Deeds);
+        state.open_settings_from_deeds();
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::Reports);
+        state.show_screen(Screen::Settings);
+        assert!(!state.settings_back_to_deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn settings_entry_from_my_deeds_survives_location_round_trip() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Deeds);
+        state.open_settings_from_deeds();
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::FirstRunLocation);
+        state.show_screen(state.location_return);
+        assert_eq!(state.screen, Screen::Settings);
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::Deeds);
+        assert_eq!(state.screen, Screen::Deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn daily_week_strip_stays_on_latest_week_when_report_period_changes() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let latest = state.recent_week()?.days;
+        assert_eq!(latest.len(), 7);
+        state.select_report_period(Period::Month);
+        state.show_previous_period();
+        assert_eq!(state.recent_week()?.days, latest);
         Ok(())
     }
 

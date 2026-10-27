@@ -56,7 +56,9 @@ pub fn SettingsScreen() -> Element {
         section { class: "settings-screen",
             header { class: "settings-header",
                 h1 { class: "day-title", {i18n.t("nav-settings")} }
-                button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
+                if app.settings_back_to_deeds {
+                    button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
+                }
             }
             div { class: "settings-card",
                 fieldset { class: "settings-row",

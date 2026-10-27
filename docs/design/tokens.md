@@ -29,6 +29,7 @@ UI text is not a token: it lives in Fluent files per language and feature, `loca
 | `on-mark-missed` | `#FFFFFF` | `#1C0705` | Cross icon on Missed |
 | `mark-open` | `#8A958E` (outline) | `#7C8983` (outline) | Open deeds and today in progress, always dashed or outlined, never filled |
 | `danger` | `#A3332C` | `#E5736A` | Destructive text (stop sharing, delete) |
+| `overlay` | `#16201B` | `#000000` | Day note dialog shade |
 
 Every mark has its own shape too (check, half filled circle, cross, dashed outline), so colour is never the only signal.
 
@@ -57,7 +58,8 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 
 | Token | Value |
 | --- | --- |
-| `touch-min` | 48 px (mark buttons, steppers, list rows); 44 px only for header icons |
+| `touch-min` | 48 px for every interactive control |
+| `rail-width` | 96 px (navigation rail on tablet and wide web) |
 | `gap-xs`, `gap-s`, `gap-m`, `gap-l` | 4, 8, 12, 16 px |
 | `page-gutter` | 16 px (phone), 28 px (tablet) |
 | `radius-control` | 14 px |
@@ -71,6 +73,6 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 | --- | --- | --- |
 | `bp-medium` | 600 dp | Below: phone, one column, bottom tabs |
 | `bp-expanded` | 840 dp | From here: two panes and a navigation rail |
-| `content-max` | `72rem` | First run content width cap on a wide web window. Provisional. ___ Owner to confirm. |
+| `content-max` | `72rem` | Content width cap on a wide web window. Provisional. ___ Owner to confirm. |
 | `dialog-max-width` | 36 rem | Maximum width of the day note dialog |
-| `overlay-opacity` | 45% | Tint of the shade behind the day note dialog |
+| `overlay-opacity` | 45% (light), 65% (dark) | Tint of the shade behind the day note dialog |

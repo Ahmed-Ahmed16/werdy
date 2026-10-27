@@ -68,3 +68,5 @@ note-date-error = Cannot change a note for this day.
 note-save = Save
 note-cancel = Cancel
 note-delete = Delete note
+summary-last-week = Last 7 days
+summary-open-reports = Full report
