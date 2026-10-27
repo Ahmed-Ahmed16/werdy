@@ -166,6 +166,9 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
         {
             draft.name = i18n.t(key);
         }
+        if id.is_some() {
+            draft.original_name = Some(draft.name.clone());
+        }
         draft
     });
     let mut error = use_signal(|| None::<EditorError>);
@@ -173,9 +176,9 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
     let (Ok(catalog), Ok(ranges)) = (editor_data::catalog(), editor_data::ranges()) else {
         return rsx! { p { class: "editor-error", role: "alert", {i18n.t("editor-data-failed")} } };
     };
-    let categories = catalog.categories;
-    let slots = catalog.slots;
-    let units = catalog.units;
+    let categories = catalog.categories.clone();
+    let slots = catalog.slots.clone();
+    let units = catalog.units.clone();
     let first_range = ranges.first().and_then(|choice| choice.range().ok());
     let selected = draft();
     let archived = {

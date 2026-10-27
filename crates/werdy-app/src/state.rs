@@ -1,11 +1,12 @@
 //! App state: the owner's data, the day on screen, and what each tap does.
 //! It calls werdy-core for every number and holds no scoring of its own.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CategoryKey, DailySheet, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule, SlotKey, Target,
-    TodaySummary, Weekday, WerdyDay, daily_sheet, delete_deed, finished_day_summary, today_summary,
+    TodaySummary, Weekday, WerdyDay, convert_mark_for_target, daily_sheet, delete_deed,
+    finished_day_summary, today_summary,
 };
 use werdy_store::{DeedName, OwnerData, Store, merge_records};
 
@@ -115,6 +116,8 @@ pub enum SaveStatus {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EditorDraft {
     pub name: String,
+    /// Name shown when editing began, including its translation.
+    pub original_name: Option<String>,
     pub category: CategoryKey,
     pub slot: SlotKey,
     pub schedule: Schedule,
@@ -127,6 +130,7 @@ impl Default for EditorDraft {
     fn default() -> Self {
         Self {
             name: String::new(),
+            original_name: None,
             category: CategoryKey::new("other"),
             slot: SlotKey::new("any_time"),
             schedule: Schedule::EveryDay,
@@ -186,6 +190,17 @@ impl std::fmt::Display for EditorError {
 
 impl std::error::Error for EditorError {}
 
+/// One pending change to a deed until storage accepts it.
+#[derive(Clone, Debug, PartialEq)]
+enum DeedChange {
+    Upsert {
+        deed: Box<Deed>,
+        name: DeedName,
+        created: bool,
+    },
+    Delete,
+}
+
 /// Everything the screen shows, in one place.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -200,7 +215,7 @@ pub struct AppState {
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
     settings_dirty: bool,
-    deeds_dirty: bool,
+    deed_changes: BTreeMap<DeedId, DeedChange>,
 }
 
 impl AppState {
@@ -232,7 +247,7 @@ impl AppState {
             slot_order,
             save_status,
             settings_dirty: false,
-            deeds_dirty: false,
+            deed_changes: BTreeMap::new(),
         }
     }
 
@@ -280,6 +295,7 @@ impl AppState {
         };
         Some(EditorDraft {
             name,
+            original_name: None,
             category: rule.category.clone(),
             slot: rule.slot.clone(),
             schedule: rule.schedule.clone(),
@@ -302,6 +318,7 @@ impl AppState {
             return Err(EditorError::EmptyName);
         }
         let rule = draft.rule()?;
+        let created = id.is_none();
         let id = if let Some(id) = id {
             let deed = self
                 .data
@@ -309,16 +326,61 @@ impl AppState {
                 .iter_mut()
                 .find(|deed| deed.id == id)
                 .ok_or(EditorError::MissingDeed)?;
+            let old_target = deed
+                .rule_on(self.today)
+                .and_then(|rule| rule.target.clone());
+            let new_target = rule.target.clone();
             deed.change_rule(self.today, rule)
                 .map_err(|_| EditorError::RuleChange)?;
+            if old_target.is_some() != new_target.is_some()
+                && let Some(entry) = self.data.marks.get(&(id, self.today)).copied()
+            {
+                let mark =
+                    convert_mark_for_target(entry.mark, old_target.as_ref(), new_target.as_ref());
+                self.data.set_mark(
+                    id,
+                    self.today,
+                    Some(MarkEntry::new(mark, self.today)),
+                    crate::platform::change_time(),
+                );
+            }
             id
         } else {
             let id = self.data.next_deed_id();
+            if id.0 <= self.data.last_deed_id
+                || self.data.deleted_deeds.contains(&id)
+                || self.data.deeds.iter().any(|deed| deed.id == id)
+            {
+                return Err(EditorError::RuleChange);
+            }
+            self.data.last_deed_id = id.0;
             self.data.deeds.push(Deed::new(id, self.today, rule));
             id
         };
-        self.data.names.insert(id, DeedName::Text(name.to_owned()));
-        self.deeds_dirty = true;
+        let name = match self.data.names.get(&id) {
+            Some(DeedName::Key(key))
+                if draft.original_name.as_deref() == Some(name) || key == name =>
+            {
+                DeedName::Key(key.clone())
+            }
+            _ => DeedName::Text(name.to_owned()),
+        };
+        self.data.names.insert(id, name.clone());
+        if let Some(deed) = self.data.deeds.iter().find(|deed| deed.id == id) {
+            let created = created
+                || matches!(
+                    self.deed_changes.get(&id),
+                    Some(DeedChange::Upsert { created: true, .. })
+                );
+            self.deed_changes.insert(
+                id,
+                DeedChange::Upsert {
+                    deed: Box::new(deed.clone()),
+                    name,
+                    created,
+                },
+            );
+        }
         Ok(id)
     }
 
@@ -331,7 +393,7 @@ impl AppState {
             .ok_or(EditorError::MissingDeed)?;
         deed.archive(self.today)
             .map_err(|_| EditorError::RuleChange)?;
-        self.deeds_dirty = true;
+        self.record_upsert(id);
         Ok(())
     }
 
@@ -344,7 +406,7 @@ impl AppState {
             .ok_or(EditorError::MissingDeed)?;
         deed.restore(self.today)
             .map_err(|_| EditorError::RuleChange)?;
-        self.deeds_dirty = true;
+        self.record_upsert(id);
         Ok(())
     }
 
@@ -359,6 +421,10 @@ impl AppState {
         if !self.data.deeds.iter().any(|deed| deed.id == id) {
             return Err(EditorError::MissingDeed);
         }
+        let unsaved = matches!(
+            self.deed_changes.get(&id),
+            Some(DeedChange::Upsert { created: true, .. })
+        );
         delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
         self.data.names.remove(&id);
         self.data
@@ -367,7 +433,12 @@ impl AppState {
         self.data
             .cleared_marks
             .retain(|(deed_id, _), _| *deed_id != id);
-        self.deeds_dirty = true;
+        if unsaved {
+            self.deed_changes.remove(&id);
+        } else {
+            self.data.deleted_deeds.insert(id);
+            self.deed_changes.insert(id, DeedChange::Delete);
+        }
         Ok(())
     }
 
@@ -453,6 +524,124 @@ impl AppState {
         );
     }
 
+    fn record_upsert(&mut self, id: DeedId) {
+        if let Some(deed) = self.data.deeds.iter().find(|deed| deed.id == id)
+            && let Some(name) = self.data.names.get(&id)
+        {
+            let created = matches!(
+                self.deed_changes.get(&id),
+                Some(DeedChange::Upsert { created: true, .. })
+            );
+            self.deed_changes.insert(
+                id,
+                DeedChange::Upsert {
+                    deed: Box::new(deed.clone()),
+                    name: name.clone(),
+                    created,
+                },
+            );
+        }
+    }
+
+    fn rebase_new_deeds(&mut self, stored: &OwnerData) -> bool {
+        let collisions: Vec<_> = self
+            .deed_changes
+            .iter()
+            .filter_map(|(id, change)| {
+                (matches!(change, DeedChange::Upsert { created: true, .. })
+                    && (stored.deeds.iter().any(|deed| deed.id == *id)
+                        || stored.deleted_deeds.contains(id)))
+                .then_some(*id)
+            })
+            .collect();
+        for old_id in collisions {
+            let new_id = DeedId(self.data.next_deed_id().0.max(stored.next_deed_id().0));
+            if new_id == old_id || new_id.0 <= self.data.last_deed_id.max(stored.last_deed_id) {
+                return false;
+            }
+            self.move_deed_id(old_id, new_id);
+        }
+        true
+    }
+
+    fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        self.data.last_deed_id = new_id.0;
+        if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == old_id) {
+            deed.id = new_id;
+        }
+        if let Some(name) = self.data.names.remove(&old_id) {
+            self.data.names.insert(new_id, name);
+        }
+        self.move_mark_ids(old_id, new_id);
+        if let Some(DeedChange::Upsert { mut deed, name, .. }) = self.deed_changes.remove(&old_id) {
+            deed.id = new_id;
+            self.deed_changes.insert(
+                new_id,
+                DeedChange::Upsert {
+                    deed,
+                    name,
+                    created: true,
+                },
+            );
+        }
+    }
+
+    fn move_mark_ids(&mut self, old_id: DeedId, new_id: DeedId) {
+        let days: Vec<_> = self
+            .data
+            .marks
+            .keys()
+            .filter_map(|(id, day)| (*id == old_id).then_some(*day))
+            .collect();
+        for day in days {
+            if let Some(entry) = self.data.marks.remove(&(old_id, day)) {
+                self.data.marks.insert((new_id, day), entry);
+            }
+            if let Some(revision) = self.data.mark_revisions.remove(&(old_id, day)) {
+                self.data.mark_revisions.insert((new_id, day), revision);
+            }
+        }
+        let cleared: Vec<_> = self
+            .data
+            .cleared_marks
+            .keys()
+            .filter_map(|(id, day)| (*id == old_id).then_some(*day))
+            .collect();
+        for day in cleared {
+            if let Some(revision) = self.data.cleared_marks.remove(&(old_id, day)) {
+                self.data.cleared_marks.insert((new_id, day), revision);
+            }
+        }
+    }
+
+    fn apply_deed_changes(&self, merged: &mut OwnerData) {
+        for (id, change) in &self.deed_changes {
+            match change {
+                DeedChange::Upsert { deed, name, .. } if !merged.deleted_deeds.contains(id) => {
+                    if let Some(existing) =
+                        merged.deeds.iter_mut().find(|existing| existing.id == *id)
+                    {
+                        *existing = *deed.clone();
+                    } else {
+                        merged.deeds.push(*deed.clone());
+                    }
+                    merged.names.insert(*id, name.clone());
+                }
+                DeedChange::Delete => {
+                    merged.deleted_deeds.insert(*id);
+                    delete_deed(&mut merged.deeds, &mut merged.marks, *id);
+                    merged.names.remove(id);
+                    merged
+                        .mark_revisions
+                        .retain(|(deed_id, _), _| deed_id != id);
+                    merged.cleared_marks.retain(|(deed_id, _), _| deed_id != id);
+                }
+                _ => {}
+            }
+        }
+        merged.last_deed_id = merged.last_deed_id.max(self.data.last_deed_id);
+    }
+
     /// Saves the data, unless saved data could not be read at start.
     pub fn save_to(&mut self, store: &dyn Store) {
         if self.save_status == SaveStatus::LoadFailed {
@@ -460,6 +649,12 @@ impl AppState {
         }
         self.save_status = match store.load() {
             Ok(stored) => {
+                if let Some(ref data) = stored
+                    && !self.rebase_new_deeds(data)
+                {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                }
                 let mut merged = stored.map_or_else(
                     || self.data.clone(),
                     |data| merge_records(&data, &self.data),
@@ -467,10 +662,7 @@ impl AppState {
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
                 }
-                if self.deeds_dirty {
-                    merged.deeds = self.data.deeds.clone();
-                    merged.names = self.data.names.clone();
-                }
+                self.apply_deed_changes(&mut merged);
                 let live_ids: BTreeSet<_> = merged.deeds.iter().map(|deed| deed.id).collect();
                 merged.marks.retain(|(id, _), _| live_ids.contains(id));
                 merged
@@ -483,7 +675,7 @@ impl AppState {
                     Ok(()) => {
                         self.data = merged;
                         self.settings_dirty = false;
-                        self.deeds_dirty = false;
+                        self.deed_changes.clear();
                         SaveStatus::Saved
                     }
                     Err(_) => SaveStatus::SaveFailed,
@@ -500,17 +692,20 @@ impl AppState {
         }
         match store.load() {
             Ok(Some(stored)) => {
+                if !self.rebase_new_deeds(&stored) {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                }
                 let mut merged = merge_records(&stored, &self.data);
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
                 }
-                if self.deeds_dirty {
-                    merged.deeds = self.data.deeds.clone();
-                    merged.names = self.data.names.clone();
-                }
+                self.apply_deed_changes(&mut merged);
                 if merged == stored {
                     self.data = stored;
                     self.save_status = SaveStatus::Saved;
+                    self.deed_changes.clear();
+                    self.settings_dirty = false;
                 } else {
                     self.data = merged;
                     self.save_to(store);
@@ -524,6 +719,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use werdy_core::{DeedId, Error, Mark, WerdyDay};
     use werdy_store::{MemoryStore, OwnerData, Store, StoreError};
 
@@ -648,6 +844,186 @@ mod tests {
         let saved = started(&store)?;
         assert!(!saved.data.deeds.iter().any(|deed| deed.id == id));
         assert!(!saved.data.marks.keys().any(|(deed_id, _)| *deed_id == id));
+        Ok(())
+    }
+
+    struct FailOnceStore {
+        inner: MemoryStore,
+        fail_next: Cell<bool>,
+    }
+
+    impl Store for FailOnceStore {
+        fn load(&self) -> Result<Option<OwnerData>, StoreError> {
+            self.inner.load()
+        }
+
+        fn save(&self, data: &OwnerData) -> Result<(), StoreError> {
+            if self.fail_next.replace(false) {
+                Err(StoreError::Backend("test".to_owned()))
+            } else {
+                self.inner.save(data)
+            }
+        }
+    }
+
+    #[test]
+    fn failed_deed_save_retry_keeps_another_tabs_deed_and_mark() -> TestResult {
+        let store = FailOnceStore {
+            inner: MemoryStore::default(),
+            fail_next: Cell::new(false),
+        };
+        let mut first = started(&store)?;
+        let mut second = started(&store)?;
+        let local = first.save_deed(
+            None,
+            &EditorDraft {
+                name: "Local".to_owned(),
+                ..EditorDraft::default()
+            },
+        )?;
+        first.tap(local, Tap::Missed);
+        store.fail_next.set(true);
+        first.save_to(&store);
+        assert_eq!(first.save_status, SaveStatus::SaveFailed);
+        let other = second.save_deed(
+            None,
+            &EditorDraft {
+                name: "Other".to_owned(),
+                ..EditorDraft::default()
+            },
+        )?;
+        second.tap(other, Tap::Done);
+        second.save_to(&store);
+        first.save_to(&store);
+        let saved = started(&store)?;
+        assert_eq!(
+            saved.data.names.get(&other),
+            Some(&werdy_store::DeedName::Text("Other".to_owned()))
+        );
+        assert_eq!(saved.mark(other), Some(Mark::Done));
+        let local_id = saved
+            .data
+            .names
+            .iter()
+            .find_map(|(id, name)| {
+                (name == &werdy_store::DeedName::Text("Local".to_owned())).then_some(*id)
+            })
+            .ok_or("missing local deed")?;
+        assert_ne!(local_id, other);
+        assert_eq!(saved.mark(local_id), Some(Mark::Missed));
+        Ok(())
+    }
+
+    #[test]
+    fn local_edit_does_not_undo_another_tabs_delete() -> TestResult {
+        let store = MemoryStore::default();
+        let mut deleting = started(&store)?;
+        let mut editing = started(&store)?;
+        deleting.delete_deed_confirmed(DeedId(5), true)?;
+        deleting.save_to(&store);
+        let mut draft = editing.draft_for(DeedId(1)).ok_or("missing draft")?;
+        draft.name = "Changed".to_owned();
+        editing.save_deed(Some(DeedId(1)), &draft)?;
+        editing.save_to(&store);
+        assert!(
+            !started(&store)?
+                .data
+                .deeds
+                .iter()
+                .any(|deed| deed.id == DeedId(5))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deleting_unsaved_deed_does_not_delete_another_tabs_new_deed() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut second = started(&store)?;
+        let unused = first.save_deed(
+            None,
+            &EditorDraft {
+                name: "Unused".to_owned(),
+                ..EditorDraft::default()
+            },
+        )?;
+        first.delete_deed_confirmed(unused, true)?;
+        let other = second.save_deed(
+            None,
+            &EditorDraft {
+                name: "Other".to_owned(),
+                ..EditorDraft::default()
+            },
+        )?;
+        second.save_to(&store);
+        first.save_to(&store);
+        assert_eq!(
+            started(&store)?.data.names.get(&other),
+            Some(&werdy_store::DeedName::Text("Other".to_owned()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deleting_highest_id_does_not_attach_stale_mark_to_new_deed() -> TestResult {
+        let store = MemoryStore::default();
+        let mut deleting = started(&store)?;
+        let mut stale = started(&store)?;
+        deleting.delete_deed_confirmed(DeedId(5), true)?;
+        deleting.save_to(&store);
+        let new_id = deleting.save_deed(
+            None,
+            &EditorDraft {
+                name: "New".to_owned(),
+                ..EditorDraft::default()
+            },
+        )?;
+        deleting.save_to(&store);
+        stale.tap(DeedId(5), Tap::Done);
+        stale.save_to(&store);
+        let saved = started(&store)?;
+        assert_ne!(new_id, DeedId(5));
+        assert!(!saved.data.marks.keys().any(|(id, _)| *id == new_id));
+        Ok(())
+    }
+
+    #[test]
+    fn unchanged_starter_name_stays_a_key() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let mut draft = state.draft_for(DeedId(1)).ok_or("missing draft")?;
+        draft.name = "Translated name".to_owned();
+        draft.original_name = Some(draft.name.clone());
+        state.save_deed(Some(DeedId(1)), &draft)?;
+        state.save_to(&store);
+        assert!(matches!(
+            started(&store)?.deed_name(DeedId(1)),
+            Some(werdy_store::DeedName::Key(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn target_edit_converts_todays_mark_and_keeps_past_mark() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let id = DeedId(1);
+        state.tap(id, Tap::Done);
+        state.save_to(&store);
+        let past = today()?;
+        state.update_today(past.next()?);
+        state.tap(id, Tap::Done);
+        let mut draft = state.draft_for(id).ok_or("missing draft")?;
+        draft.target_enabled = true;
+        draft.target_amount = 5;
+        state.save_deed(Some(id), &draft)?;
+        assert_eq!(state.mark(id), Some(Mark::Count(5)));
+        assert_eq!(state.data.marks[&(id, past)].mark, Mark::Done);
+        state.save_to(&store);
+        assert_eq!(
+            started(&store)?.data.marks[&(id, past.next()?)].mark,
+            Mark::Count(5)
+        );
         Ok(())
     }
 

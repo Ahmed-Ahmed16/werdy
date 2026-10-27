@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -99,6 +99,10 @@ impl Default for Settings {
 pub struct OwnerData {
     /// Deeds with their dated rules.
     pub deeds: Vec<Deed>,
+    /// Highest id issued, including deeds removed later.
+    pub last_deed_id: u64,
+    /// Deleted deed ids. A stale tab cannot restore these deeds or their marks.
+    pub deleted_deeds: BTreeSet<DeedId>,
     /// Display name of each deed.
     pub names: BTreeMap<DeedId, DeedName>,
     /// Marks keyed by deed and werdy day.
@@ -124,9 +128,16 @@ impl OwnerData {
         }
     }
 
-    /// Returns an id one above the highest deed id, so ids are never reused.
+    /// Returns the next id candidate. Callers reject it when ids are exhausted.
     pub fn next_deed_id(&self) -> DeedId {
-        let highest = self.deeds.iter().map(|deed| deed.id.0).max().unwrap_or(0);
+        let highest = self
+            .deeds
+            .iter()
+            .map(|deed| deed.id.0)
+            .chain(self.deleted_deeds.iter().map(|id| id.0))
+            .max()
+            .unwrap_or(0)
+            .max(self.last_deed_id);
         DeedId(highest.saturating_add(1))
     }
 
@@ -155,14 +166,32 @@ impl OwnerData {
     }
 }
 
-/// Combines mark changes from tab copies. Other records use the stored copy.
+/// Combines marks, deleted deeds and issued ids from tab copies.
+/// Live deeds, names and settings use the stored copy.
 /// For each deed and day, the greater change time wins.
 /// A clear has a saved tombstone. Equal times keep the first, stored copy.
 /// Version one marks have time zero, so any new change wins over them.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     let mut merged = stored.clone();
+    merged.last_deed_id = merged.last_deed_id.max(local.last_deed_id);
+    merged.deleted_deeds.extend(&local.deleted_deeds);
     merge_live_marks(&mut merged, local);
     merge_clears(&mut merged, local);
+    merged
+        .deeds
+        .retain(|deed| !merged.deleted_deeds.contains(&deed.id));
+    merged
+        .names
+        .retain(|id, _| !merged.deleted_deeds.contains(id));
+    merged
+        .marks
+        .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
+    merged
+        .mark_revisions
+        .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
+    merged
+        .cleared_marks
+        .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
     merged
 }
 
@@ -208,6 +237,10 @@ fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
 struct DataFile<S = Settings> {
     schema_version: u32,
     deeds: Vec<Deed>,
+    #[serde(default)]
+    last_deed_id: u64,
+    #[serde(default)]
+    deleted_deeds: Vec<DeedId>,
     names: Vec<NameEntry>,
     marks: Vec<MarkRecord>,
     #[serde(default)]
@@ -244,6 +277,8 @@ impl<S> DataFile<S> {
         DataFile {
             schema_version: self.schema_version,
             deeds: self.deeds,
+            last_deed_id: self.last_deed_id,
+            deleted_deeds: self.deleted_deeds,
             names: self.names,
             marks: self.marks,
             cleared_marks: self.cleared_marks,
@@ -292,6 +327,10 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
     let file = DataFile {
         schema_version: SCHEMA_VERSION,
         deeds: data.deeds.clone(),
+        last_deed_id: data
+            .last_deed_id
+            .max(data.deeds.iter().map(|deed| deed.id.0).max().unwrap_or(0)),
+        deleted_deeds: data.deleted_deeds.iter().copied().collect(),
         names: data
             .names
             .iter()
@@ -356,6 +395,20 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
             return Err(StoreError::DuplicateEntry);
         }
     }
+    let mut deleted_deeds = BTreeSet::new();
+    for id in file.deleted_deeds {
+        if deed_ids.contains(&id) || !deleted_deeds.insert(id) {
+            return Err(StoreError::DuplicateEntry);
+        }
+    }
+    let last_deed_id = file.last_deed_id.max(
+        deed_ids
+            .iter()
+            .chain(&deleted_deeds)
+            .map(|id| id.0)
+            .max()
+            .unwrap_or(0),
+    );
 
     let mut marks = BTreeMap::new();
     let mut mark_revisions = BTreeMap::new();
@@ -391,6 +444,8 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     }
     Ok(OwnerData {
         deeds: file.deeds,
+        last_deed_id,
+        deleted_deeds,
         names,
         marks,
         mark_revisions,

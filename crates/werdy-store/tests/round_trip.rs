@@ -46,6 +46,8 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
 
     Ok(OwnerData {
         deeds: vec![fajr, quran],
+        last_deed_id: 2,
+        deleted_deeds: Default::default(),
         names: BTreeMap::from([
             (DeedId(1), DeedName::Key("starter-fajr-on-time".to_owned())),
             (DeedId(2), DeedName::Text("ورد القرآن".to_owned())),
@@ -143,7 +145,7 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":5", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":6", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
     Ok(())
@@ -261,6 +263,33 @@ fn two_deeds_with_the_same_id_are_an_error_on_load() -> TestResult {
 fn the_next_deed_id_follows_the_highest_id() -> TestResult {
     assert_eq!(sample()?.next_deed_id(), DeedId(3));
     assert_eq!(OwnerData::default().next_deed_id(), DeedId(1));
+    Ok(())
+}
+
+#[test]
+fn deleted_highest_id_stays_reserved_after_round_trip_and_merge() -> TestResult {
+    let mut data = sample()?;
+    data.deleted_deeds.insert(DeedId(2));
+    data.deeds.retain(|deed| deed.id != DeedId(2));
+    let loaded = from_json(&to_json(&data)?)?;
+    assert_eq!(loaded.next_deed_id(), DeedId(3));
+    let merged = werdy_store::merge_records(&loaded, &sample()?);
+    assert_eq!(merged.next_deed_id(), DeedId(3));
+    assert!(!merged.deeds.iter().any(|deed| deed.id == DeedId(2)));
+    Ok(())
+}
+
+#[test]
+fn old_version_derives_issued_id_from_live_deeds() -> TestResult {
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    old["schema_version"] = 5.into();
+    old.as_object_mut()
+        .ok_or("file is not an object")?
+        .remove("last_deed_id");
+    old.as_object_mut()
+        .ok_or("file is not an object")?
+        .remove("deleted_deeds");
+    assert_eq!(from_json(&old.to_string())?.next_deed_id(), DeedId(3));
     Ok(())
 }
 

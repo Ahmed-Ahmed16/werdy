@@ -84,7 +84,7 @@ pub use deed::{
     archived_deed_count, decrease_target_amount, delete_deed, increase_target_amount,
 };
 pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
-pub use mark::{Fraction, Mark, MarkEntry};
+pub use mark::{Fraction, Mark, MarkEntry, convert_mark_for_target};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
 pub use score::{
