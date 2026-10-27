@@ -77,7 +77,10 @@ mod sheet;
 #[cfg(feature = "serde")]
 mod stored;
 
-pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
+pub use consistency::{
+    Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days, milestone_to_show,
+    welcome_after_gap,
+};
 pub use day::{Weekday, WerdyDay};
 pub use deed::{
     CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, active_deed_count,

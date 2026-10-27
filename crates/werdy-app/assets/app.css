@@ -468,6 +468,37 @@ textarea:focus-visible {
   gap: var(--gap-m);
 }
 
+.sheet-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  padding: var(--gap-m) var(--gap-l);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.sheet-notice p {
+  margin: 0;
+}
+
+.sheet-saying {
+  flex-basis: 100%;
+}
+
+.notice-dismiss {
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-l);
+  border: var(--stroke-thin) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
 .sheet-empty {
   margin: 0;
   padding: var(--gap-l);

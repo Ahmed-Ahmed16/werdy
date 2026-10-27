@@ -129,12 +129,32 @@ fn weekdays_sentence(texts: &Texts, language: Language, days: &BTreeSet<Weekday>
         .into_iter()
         .filter(|day| days.contains(day))
         .map(|day| texts.get(language, weekday_key(day), &[]))
-        .collect::<Vec<_>>()
-        .join(&texts.get(language, "schedule-list-separator", &[]));
+        .collect::<Vec<_>>();
+    let names = join_weekday_names(texts, language, &names);
     texts.get(
         language,
         "schedule-weekdays-sentence",
         &[("days", FluentValue::from(names))],
+    )
+}
+
+fn join_weekday_names(texts: &Texts, language: Language, names: &[String]) -> String {
+    let Some((last, first)) = names.split_last() else {
+        return String::new();
+    };
+    if first.is_empty() {
+        return last.clone();
+    }
+    let separator = if first.len() == 1 {
+        "schedule-pair-separator"
+    } else {
+        "schedule-final-separator"
+    };
+    format!(
+        "{}{}{}",
+        first.join(&texts.get(language, "schedule-list-separator", &[])),
+        texts.get(language, separator, &[]),
+        last
     )
 }
 
@@ -321,6 +341,16 @@ mod tests {
     }
 
     #[test]
+    fn fluent_copy_has_no_streak_or_badge_terms() {
+        for source in ARABIC.iter().chain(ENGLISH) {
+            let lower = source.to_lowercase();
+            for forbidden in ["streak", "badge", "سلسلة", "شارة"] {
+                assert!(!lower.contains(forbidden), "found {forbidden}");
+            }
+        }
+    }
+
+    #[test]
     fn variables_are_filled_in() {
         let texts = Texts::load();
 
@@ -395,8 +425,22 @@ mod tests {
             (Schedule::EveryDay, "Due every day.", "مستحق كل يوم."),
             (
                 Schedule::Weekdays(BTreeSet::from([Weekday::Monday, Weekday::Thursday])),
-                "Due every Monday, Thursday.",
-                "مستحق كل الاثنين، الخميس.",
+                "Due every Monday and Thursday.",
+                "مستحق كل الاثنين والخميس.",
+            ),
+            (
+                Schedule::Weekdays(BTreeSet::from([Weekday::Saturday])),
+                "Due every Saturday.",
+                "مستحق كل السبت.",
+            ),
+            (
+                Schedule::Weekdays(BTreeSet::from([
+                    Weekday::Saturday,
+                    Weekday::Monday,
+                    Weekday::Thursday,
+                ])),
+                "Due every Saturday, Monday, and Thursday.",
+                "مستحق كل السبت، الاثنين، والخميس.",
             ),
             (
                 Schedule::Hijri(HijriRange::ramadan()),

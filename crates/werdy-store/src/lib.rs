@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
 
 /// Device only coordinates, stored as hundredths of a degree.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -191,6 +191,10 @@ pub struct OwnerData {
     pub note_revisions: BTreeMap<WerdyDay, u64>,
     /// Deleted notes and their change times.
     pub cleared_notes: BTreeMap<WerdyDay, u64>,
+    /// Private milestone notices the owner has dismissed.
+    pub dismissed_milestones: BTreeSet<usize>,
+    /// Last werdy day when a welcome was shown.
+    pub last_welcome_day: Option<WerdyDay>,
     /// Settings.
     pub settings: Settings,
 }
@@ -274,6 +278,10 @@ impl OwnerData {
 /// Version one marks have time zero, so any new change wins over them.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     let mut merged = stored.clone();
+    merged
+        .dismissed_milestones
+        .extend(&local.dismissed_milestones);
+    merged.last_welcome_day = merged.last_welcome_day.max(local.last_welcome_day);
     merged.last_deed_id = merged.last_deed_id.max(local.last_deed_id);
     merged.deleted_deeds.extend(&local.deleted_deeds);
     merge_live_marks(&mut merged, local);
@@ -398,6 +406,10 @@ struct DataFile<S = Settings> {
     day_notes: Vec<NoteRecord>,
     #[serde(default)]
     cleared_notes: Vec<NoteClearRecord>,
+    #[serde(default)]
+    dismissed_milestones: Vec<usize>,
+    #[serde(default)]
+    last_welcome_day: Option<WerdyDay>,
     settings: S,
 }
 
@@ -452,6 +464,8 @@ impl<S> DataFile<S> {
             cleared_marks: self.cleared_marks,
             day_notes: self.day_notes,
             cleared_notes: self.cleared_notes,
+            dismissed_milestones: self.dismissed_milestones,
+            last_welcome_day: self.last_welcome_day,
             settings: convert(self.settings),
         }
     }
@@ -566,6 +580,8 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
                 changed_at: *changed_at,
             })
             .collect(),
+        dismissed_milestones: data.dismissed_milestones.iter().copied().collect(),
+        last_welcome_day: data.last_welcome_day,
         settings: data.settings.clone(),
     };
     serde_json::to_string(&file).map_err(|error| StoreError::Corrupt(error.to_string()))
@@ -672,6 +688,10 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
             return Err(StoreError::DuplicateEntry);
         }
     }
+    let dismissed_milestones: BTreeSet<_> = file.dismissed_milestones.iter().copied().collect();
+    if dismissed_milestones.len() != file.dismissed_milestones.len() {
+        return Err(StoreError::DuplicateEntry);
+    }
     Ok(OwnerData {
         first_run_complete: file.first_run_complete,
         chosen_sets,
@@ -686,6 +706,8 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         day_notes,
         note_revisions,
         cleared_notes,
+        dismissed_milestones,
+        last_welcome_day: file.last_welcome_day,
         settings: file.settings,
     })
 }
