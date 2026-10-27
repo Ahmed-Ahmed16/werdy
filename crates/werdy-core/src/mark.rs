@@ -1,4 +1,6 @@
-use crate::Error;
+use crate::{Error, WerdyDay};
+
+const LATE_AFTER_DAYS: i64 = 2;
 
 /// Value from zero to one inclusive.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,5 +40,26 @@ impl Mark {
             Self::Partial(fraction) => fraction.value(),
             Self::Missed => 0.0,
         }
+    }
+}
+
+/// Mark and the werdy day when the owner entered it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkEntry {
+    /// The owner's mark for a due deed.
+    pub mark: Mark,
+    /// Werdy day when the owner entered the mark.
+    pub entered_on: WerdyDay,
+}
+
+impl MarkEntry {
+    /// Records a mark and its entry day.
+    pub fn new(mark: Mark, entered_on: WerdyDay) -> Self {
+        Self { mark, entered_on }
+    }
+
+    /// Says whether the mark was entered more than two days after its werdy day.
+    pub fn is_late_for(self, marked_day: WerdyDay) -> bool {
+        self.entered_on.days_since(marked_day) > LATE_AFTER_DAYS
     }
 }

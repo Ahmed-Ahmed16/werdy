@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    Deed, DeedId, DeedRule, Error, Fraction, Mark, Schedule, Score, Weekday, WerdyDay, score,
+    Deed, DeedId, DeedRule, Error, Fraction, Mark, MarkEntry, Schedule, Score, Weekday, WerdyDay,
+    score,
 };
 
-type Marks = BTreeMap<(DeedId, WerdyDay), Mark>;
+type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
 fn deed(id: u64, schedule: Schedule, created_on: WerdyDay) -> Deed {
     Deed::new(DeedId(id), created_on, DeedRule { schedule })
@@ -23,7 +24,10 @@ fn friday_deed_is_due_only_on_fridays() -> Result<(), Error> {
     let deeds = [deed(1, weekdays(&[Weekday::Friday]), friday)];
     let marks = Marks::new();
 
-    assert_eq!(score(&deeds, &marks, &[friday, saturday]).due, 1);
+    assert_eq!(
+        score(&deeds, &marks, &[friday, saturday], saturday.next()?).due,
+        1
+    );
     Ok(())
 }
 
@@ -32,14 +36,28 @@ fn every_day_deed_is_due_each_day() -> Result<(), Error> {
     let first = WerdyDay::new(2026, 10, 23)?;
     let deeds = [deed(1, Schedule::EveryDay, first)];
 
-    assert_eq!(score(&deeds, &Marks::new(), &[first, first.next()?]).due, 2);
+    assert_eq!(
+        score(
+            &deeds,
+            &Marks::new(),
+            &[first, first.next()?],
+            first.next()?.next()?
+        )
+        .due,
+        2
+    );
     Ok(())
 }
 
 #[test]
 fn unmarked_due_deed_counts_zero() -> Result<(), Error> {
     let day = WerdyDay::new(2026, 10, 23)?;
-    let result = score(&[deed(1, Schedule::EveryDay, day)], &Marks::new(), &[day]);
+    let result = score(
+        &[deed(1, Schedule::EveryDay, day)],
+        &Marks::new(),
+        &[day],
+        day.next()?,
+    );
 
     assert_eq!(result.earned, 0.0);
     assert_eq!(result.due, 1);
@@ -51,9 +69,17 @@ fn unmarked_due_deed_counts_zero() -> Result<(), Error> {
 fn partial_mark_counts_its_fraction() -> Result<(), Error> {
     let day = WerdyDay::new(2026, 10, 23)?;
     let mut marks = Marks::new();
-    marks.insert((DeedId(1), day), Mark::Partial(Fraction::new(0.5)?));
+    marks.insert(
+        (DeedId(1), day),
+        MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), day),
+    );
 
-    let result = score(&[deed(1, Schedule::EveryDay, day)], &marks, &[day]);
+    let result = score(
+        &[deed(1, Schedule::EveryDay, day)],
+        &marks,
+        &[day],
+        day.next()?,
+    );
     assert_eq!(result.earned, 0.5);
     assert_eq!(result.due, 1);
     assert_eq!(result.percent, Some(50));
@@ -67,6 +93,7 @@ fn nothing_due_gives_no_percent() -> Result<(), Error> {
         &[deed(1, weekdays(&[Weekday::Friday]), day)],
         &Marks::new(),
         &[day],
+        day.next()?,
     );
 
     assert_eq!(
@@ -92,15 +119,24 @@ fn percent_rounds_never_truncates() -> Result<(), Error> {
         (0.4249, 42),
         (0.424_999_999_999, 42),
     ] {
-        marks.insert((DeedId(1), day), Mark::Partial(Fraction::new(fraction)?));
-        assert_eq!(score(&deeds, &marks, &[day]).percent, Some(expected));
+        marks.insert(
+            (DeedId(1), day),
+            MarkEntry::new(Mark::Partial(Fraction::new(fraction)?), day),
+        );
+        assert_eq!(
+            score(&deeds, &marks, &[day], day.next()?).percent,
+            Some(expected)
+        );
     }
 
     let eight_deeds: Vec<_> = (1..=8)
         .map(|id| deed(id, Schedule::EveryDay, day))
         .collect();
-    marks.insert((DeedId(1), day), Mark::Done);
-    assert_eq!(score(&eight_deeds, &marks, &[day]).percent, Some(13));
+    marks.insert((DeedId(1), day), MarkEntry::new(Mark::Done, day));
+    assert_eq!(
+        score(&eight_deeds, &marks, &[day], day.next()?).percent,
+        Some(13)
+    );
     Ok(())
 }
 
@@ -116,10 +152,14 @@ fn thursday_lesson_month() -> Result<(), Error> {
         .collect::<Result<_, _>>()?;
     let mut marks = Marks::new();
     for day in [1, 8, 15] {
-        marks.insert((lesson.id, WerdyDay::new(2026, 10, day)?), Mark::Done);
+        let marked_day = WerdyDay::new(2026, 10, day)?;
+        marks.insert(
+            (lesson.id, marked_day),
+            MarkEntry::new(Mark::Done, marked_day),
+        );
     }
 
-    let result = score(&[lesson], &marks, &days);
+    let result = score(&[lesson], &marks, &days, WerdyDay::new(2026, 10, 28)?);
     assert_eq!(result.earned, 3.0);
     assert_eq!(result.due, 4);
     assert_eq!(result.percent, Some(75));
@@ -142,19 +182,21 @@ fn werd_week_counts_only_due_days() -> Result<(), Error> {
     let mut marks = Marks::new();
     for day in &days {
         for id in 1..=5 {
-            marks.insert((DeedId(id), *day), Mark::Done);
+            marks.insert((DeedId(id), *day), MarkEntry::new(Mark::Done, *day));
         }
     }
-    marks.insert((DeedId(6), WerdyDay::new(2026, 10, 23)?), Mark::Done);
+    let friday = WerdyDay::new(2026, 10, 23)?;
+    marks.insert((DeedId(6), friday), MarkEntry::new(Mark::Done, friday));
     for day in [22, 26] {
+        let marked_day = WerdyDay::new(2026, 10, day)?;
         marks.insert(
-            (DeedId(7), WerdyDay::new(2026, 10, day)?),
-            Mark::Partial(Fraction::new(0.5)?),
+            (DeedId(7), marked_day),
+            MarkEntry::new(Mark::Partial(Fraction::new(0.5)?), marked_day),
         );
     }
 
     // 35 daily + 1 Friday + 2 Monday and Thursday due; earned 35 + 1 + 0.5 + 0.5 = 37.
-    let result = score(&deeds, &marks, &days);
+    let result = score(&deeds, &marks, &days, WerdyDay::new(2026, 10, 28)?);
     assert_eq!(result.earned, 37.0);
     assert_eq!(result.due, 38);
     assert_eq!(result.percent, Some(97));

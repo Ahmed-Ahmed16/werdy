@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Error, Mark, Weekday, WerdyDay};
+use crate::{Error, MarkEntry, Weekday, WerdyDay};
 
 /// Rule that says which calendar days a deed is due.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,7 +141,7 @@ impl Deed {
 /// Removes a deed and all its marks from caller owned collections.
 pub fn delete_deed(
     deeds: &mut Vec<Deed>,
-    marks: &mut BTreeMap<(DeedId, WerdyDay), Mark>,
+    marks: &mut BTreeMap<(DeedId, WerdyDay), MarkEntry>,
     id: DeedId,
 ) {
     deeds.retain(|deed| deed.id != id);
