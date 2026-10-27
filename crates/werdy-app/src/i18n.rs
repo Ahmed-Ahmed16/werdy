@@ -1,7 +1,9 @@
 //! UI text from Fluent files (ADR 0025). Code asks for keys, never for text.
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
+use std::collections::BTreeSet;
 use unic_langid::LanguageIdentifier;
+use werdy_core::{HijriRange, Schedule, Weekday};
 
 /// Interface language. Arabic is the default (ADR 0014).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -53,18 +55,91 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/sheet.ftl"),
     include_str!("../../../locales/ar/starter.ftl"),
     include_str!("../../../locales/ar/reports.ftl"),
+    include_str!("../../../locales/ar/deeds.ftl"),
 ];
 const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/common.ftl"),
     include_str!("../../../locales/en/sheet.ftl"),
     include_str!("../../../locales/en/starter.ftl"),
     include_str!("../../../locales/en/reports.ftl"),
+    include_str!("../../../locales/en/deeds.ftl"),
 ];
 
 /// All translations, loaded once at start.
 pub struct Texts {
     arabic: FluentBundle<FluentResource>,
     english: FluentBundle<FluentResource>,
+}
+
+/// Reads a schedule back as one sentence in the selected language.
+pub fn schedule_sentence(texts: &Texts, language: Language, schedule: &Schedule) -> String {
+    match schedule {
+        Schedule::EveryDay => texts.get(language, "schedule-every-day-sentence", &[]),
+        Schedule::Weekdays(days) => weekdays_sentence(texts, language, days),
+        Schedule::Hijri(range) => hijri_sentence(texts, language, range),
+    }
+}
+
+pub const WEEKDAY_ORDER: [Weekday; 7] = [
+    Weekday::Saturday,
+    Weekday::Sunday,
+    Weekday::Monday,
+    Weekday::Tuesday,
+    Weekday::Wednesday,
+    Weekday::Thursday,
+    Weekday::Friday,
+];
+
+fn weekdays_sentence(texts: &Texts, language: Language, days: &BTreeSet<Weekday>) -> String {
+    if days.is_empty() {
+        return texts.get(language, "schedule-no-weekdays", &[]);
+    }
+    let names = WEEKDAY_ORDER
+        .into_iter()
+        .filter(|day| days.contains(day))
+        .map(|day| texts.get(language, weekday_key(day), &[]))
+        .collect::<Vec<_>>()
+        .join(&texts.get(language, "schedule-list-separator", &[]));
+    texts.get(
+        language,
+        "schedule-weekdays-sentence",
+        &[("days", FluentValue::from(names))],
+    )
+}
+
+fn hijri_sentence(texts: &Texts, language: Language, range: &HijriRange) -> String {
+    let name = crate::editor_data::ranges()
+        .ok()
+        .into_iter()
+        .flatten()
+        .find(|choice| choice.range().ok().as_ref() == Some(range))
+        .map_or_else(
+            || "___".to_owned(),
+            |choice| {
+                texts.get(
+                    language,
+                    &format!("range-{}", choice.key.replace('_', "-")),
+                    &[],
+                )
+            },
+        );
+    texts.get(
+        language,
+        "schedule-hijri-sentence",
+        &[("range", FluentValue::from(name))],
+    )
+}
+
+pub fn weekday_key(day: Weekday) -> &'static str {
+    match day {
+        Weekday::Monday => "weekday-monday",
+        Weekday::Tuesday => "weekday-tuesday",
+        Weekday::Wednesday => "weekday-wednesday",
+        Weekday::Thursday => "weekday-thursday",
+        Weekday::Friday => "weekday-friday",
+        Weekday::Saturday => "weekday-saturday",
+        Weekday::Sunday => "weekday-sunday",
+    }
 }
 
 impl Texts {
@@ -216,5 +291,36 @@ mod tests {
             arabic.replace(['\u{2068}', '\u{2069}'], ""),
             "أكثر ما فاتك: الوتر."
         );
+    }
+
+    #[test]
+    fn schedule_sentences_read_back_daily_weekdays_and_hijri_in_both_languages() {
+        use werdy_core::{HijriRange, Schedule, Weekday};
+        let texts = Texts::load();
+        let cases = [
+            (Schedule::EveryDay, "Due every day.", "مستحق كل يوم."),
+            (
+                Schedule::Weekdays(BTreeSet::from([Weekday::Monday, Weekday::Thursday])),
+                "Due every Monday, Thursday.",
+                "مستحق كل الاثنين، الخميس.",
+            ),
+            (
+                Schedule::Hijri(HijriRange::ramadan()),
+                "Due during Ramadan.",
+                "مستحق خلال رمضان.",
+            ),
+        ];
+        for (schedule, english, arabic) in cases {
+            assert_eq!(
+                super::schedule_sentence(&texts, Language::English, &schedule)
+                    .replace(['\u{2068}', '\u{2069}'], ""),
+                english
+            );
+            assert_eq!(
+                super::schedule_sentence(&texts, Language::Arabic, &schedule)
+                    .replace(['\u{2068}', '\u{2069}'], ""),
+                arabic
+            );
+        }
     }
 }

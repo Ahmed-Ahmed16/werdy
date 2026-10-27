@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 werdy-core = { path = "../werdy-core", features = ["serde"] }
 werdy-store = { path = "../werdy-store" }
+werdy-data = { path = "../werdy-data" }
 dioxus = "0.7.10"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"

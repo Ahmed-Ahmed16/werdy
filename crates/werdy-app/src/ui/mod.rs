@@ -2,6 +2,7 @@
 //! back to it; they hold no scoring.
 
 mod context;
+mod deeds;
 mod header;
 mod icons;
 mod marks;
@@ -108,15 +109,21 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             lang: language.code(),
             "data-theme": theme,
             rail::Rail {}
-            main { class: if state.read().screen == Screen::Sheet { "panes" } else { "report-panes" },
-                if state.read().screen == Screen::Sheet {
-                    header::DayHeader {}
-                    summary::StatusBanner {}
-                    summary::TodayCard {}
-                    sheet::Sheet {}
-                } else {
-                    summary::StatusBanner {}
-                    reports::ReportsScreen {}
+            main { class: match state.read().screen {
+                Screen::Sheet => "panes",
+                Screen::Reports => "report-panes",
+                Screen::Deeds | Screen::Editor(_) => "page-content",
+            },
+                summary::StatusBanner {}
+                match state.read().screen {
+                    Screen::Sheet => rsx! {
+                        header::DayHeader {}
+                        summary::TodayCard {}
+                        sheet::Sheet {}
+                    },
+                    Screen::Reports => rsx! { reports::ReportsScreen {} },
+                    Screen::Deeds => rsx! { deeds::MyDeeds {} },
+                    Screen::Editor(id) => rsx! { deeds::DeedEditor { key: "{id:?}", id } },
                 }
             }
             rail::BottomNav {}

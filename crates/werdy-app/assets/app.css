@@ -434,7 +434,6 @@ button:focus-visible {
   flex: 1;
   min-width: 0;
   padding: var(--page-gutter);
-  padding-bottom: calc(var(--touch-min) + var(--gap-l) + var(--page-gutter));
 }
 
 .reports,
@@ -696,43 +695,11 @@ button:focus-visible {
   border-style: dashed;
 }
 
-.bottom-nav {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--gap-s);
-  padding: var(--gap-s) var(--page-gutter);
-  border-top: var(--stroke-thin) solid var(--border);
-  background: var(--surface);
-}
-
-.bottom-nav button {
-  min-height: var(--touch-min);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.bottom-nav button[aria-current="page"] {
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-weight: var(--weight-bold);
-}
-
 .sr-only {
   position: absolute;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-@media (max-width: 839px) {
-  .panes {
-    padding-bottom: calc(var(--touch-min) + var(--gap-l) + var(--page-gutter));
-  }
 }
 
 @media (min-width: 600px) {
@@ -741,12 +708,244 @@ button:focus-visible {
   }
 }
 
-@media (min-width: 840px) {
-  .report-panes {
-    padding-bottom: var(--page-gutter);
-  }
+.page-content {
+  flex: 1;
+  min-width: 0;
+  padding: var(--page-gutter);
+}
 
-  .bottom-nav {
-    display: none;
-  }
+.deeds-screen,
+.editor-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-l);
+  margin-inline: auto;
+}
+
+.deeds-header,
+.editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-m);
+}
+
+.deeds-subtitle,
+.deeds-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.choice-chip,
+.weekday-chip,
+.archived-toggle {
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-l);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.primary-button {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.danger-button,
+.editor-error {
+  color: var(--danger);
+}
+
+.deeds-group,
+.deeds-list,
+.editor-field,
+.target-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+}
+
+.deeds-list,
+.editor-card,
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.deeds-list-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-s);
+  padding: var(--gap-s) var(--gap-m);
+}
+
+.deeds-list-row + .deeds-list-row {
+  border-top: 1px solid var(--border);
+}
+
+.deeds-row-main {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch-min);
+  border: none;
+  background: transparent;
+  text-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+}
+
+.not-due-tag {
+  padding: var(--gap-xs) var(--gap-s);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.archived-toggle {
+  text-align: start;
+  border-style: dashed;
+}
+
+.editor-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.editor-field legend,
+.editor-label {
+  font-size: var(--size-label);
+  font-weight: var(--weight-semibold);
+}
+
+.editor-card,
+.confirm-box {
+  padding: var(--gap-l);
+}
+
+.editor-input {
+  width: 100%;
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-m);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.chip-list,
+.range-list,
+.target-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.choice-chip {
+  border-radius: var(--radius-pill);
+}
+
+.choice-chip[aria-pressed="true"],
+.weekday-chip[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.weekday-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap-xs);
+}
+
+.weekday-chip {
+  min-width: 0;
+  padding-inline: var(--gap-xs);
+  font-size: var(--size-caption);
+}
+
+.schedule-sentence {
+  margin: 0;
+  padding: var(--gap-m);
+  border-radius: var(--radius-control);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.target-toggle {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  gap: var(--gap-s);
+  font-weight: var(--weight-semibold);
+}
+
+.target-controls output {
+  min-width: var(--touch-min);
+  text-align: center;
+}
+
+.target-controls select {
+  flex: 1;
+}
+
+.bottom-nav {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: var(--gap-s);
+}
+
+.bottom-item {
+  min-height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.bottom-item[aria-current="page"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+@media (min-width: 600px) {
+  .weekday-list { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+}
+
+@media (min-width: 840px) {
+  .bottom-nav { display: none; }
+  .deeds-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .deeds-header, .deeds-screen > .archived-toggle, .deeds-screen > .deeds-list { grid-column: 1 / -1; }
+  .editor-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .editor-header,
+  .editor-screen > .editor-label,
+  .editor-screen > .editor-input,
+  .editor-screen > .editor-error,
+  .editor-screen > .editor-card,
+  .editor-screen > .deeds-meta,
+  .editor-screen > .confirm-box { grid-column: 1 / -1; }
+}
+
+@media (max-width: 839px) {
+  .werdy-root { flex-direction: column; }
+  .page-content { flex: 1; }
 }

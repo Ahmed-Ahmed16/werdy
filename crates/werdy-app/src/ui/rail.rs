@@ -5,8 +5,7 @@ use dioxus::prelude::*;
 use super::context::{use_actions, use_i18n};
 use crate::state::{AppState, Screen};
 
-/// Navigation rail, shown from the expanded breakpoint up. Other screens come
-/// with their own tickets.
+/// Navigation rail, shown from the expanded breakpoint up.
 #[component]
 pub fn Rail() -> Element {
     let i18n = use_i18n();
@@ -26,16 +25,18 @@ pub fn Rail() -> Element {
                 onclick: move |_| actions.view(|state| state.show_screen(Screen::Reports)),
                 {i18n.t("nav-reports")}
             }
-            for key in ["nav-deeds", "nav-settings"] {
-                button { key: "{key}", class: "rail-item", disabled: true, title: "{later}",
-                    {i18n.t(key)}
-                }
+            button { class: "rail-item", aria_current: if matches!(screen, Screen::Deeds | Screen::Editor(_)) { Some("page") } else { None },
+                onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)),
+                {i18n.t("nav-deeds")}
+            }
+            button { class: "rail-item", disabled: true, title: "{later}",
+                {i18n.t("nav-settings")}
             }
         }
     }
 }
 
-/// Navigation below the expanded breakpoint. The deeds screen has its own ticket.
+/// Navigation below the expanded breakpoint.
 #[component]
 pub fn BottomNav() -> Element {
     let i18n = use_i18n();
@@ -45,15 +46,18 @@ pub fn BottomNav() -> Element {
 
     rsx! {
         nav { class: "bottom-nav", aria_label: i18n.t("nav-label"),
-            button { aria_current: if screen == Screen::Sheet { Some("page") } else { None },
+            button { class: "bottom-item", aria_current: if screen == Screen::Sheet { Some("page") } else { None },
                 onclick: move |_| actions.view(|state| state.show_screen(Screen::Sheet)),
                 {i18n.t("nav-sheet")}
             }
-            button { aria_current: if screen == Screen::Reports { Some("page") } else { None },
+            button { class: "bottom-item", aria_current: if screen == Screen::Reports { Some("page") } else { None },
                 onclick: move |_| actions.view(|state| state.show_screen(Screen::Reports)),
                 {i18n.t("nav-reports")}
             }
-            button { disabled: true, title: i18n.t("nav-coming-later"), {i18n.t("nav-deeds")} }
+            button { class: "bottom-item", aria_current: if matches!(screen, Screen::Deeds | Screen::Editor(_)) { Some("page") } else { None },
+                onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)),
+                {i18n.t("nav-deeds")}
+            }
         }
     }
 }

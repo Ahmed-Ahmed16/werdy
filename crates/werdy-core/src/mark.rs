@@ -1,4 +1,4 @@
-use crate::{DeedRule, Error, WerdyDay};
+use crate::{DeedRule, Error, Target, WerdyDay};
 use std::cmp::Ordering;
 
 const LATE_AFTER_DAYS: i64 = 2;
@@ -234,6 +234,29 @@ impl Mark {
                 None => Fraction::ONE,
             },
         }
+    }
+}
+
+/// Converts a mark when a deed switches between button and count input.
+pub fn convert_mark_for_target(mark: Mark, old: Option<&Target>, new: Option<&Target>) -> Mark {
+    match (old, new) {
+        (None, Some(target)) => match mark {
+            Mark::Done | Mark::Count(1..) => Mark::Count(target.amount()),
+            Mark::Partial(fraction) if fraction == Fraction::ZERO => Mark::Missed,
+            Mark::Partial(fraction) => {
+                let count = (fraction.value() * f64::from(target.amount())).round() as u32;
+                Mark::Count(count.clamp(1, target.amount()))
+            }
+            Mark::Missed | Mark::Count(0) => Mark::Missed,
+        },
+        (Some(target), None) => match mark {
+            Mark::Count(0) => Mark::Missed,
+            Mark::Count(count) if count >= target.amount() => Mark::Done,
+            // Button input has one partial value, so any positive short count becomes half.
+            Mark::Count(_) => Mark::partial_without_target(),
+            other => other,
+        },
+        _ => mark,
     }
 }
 
