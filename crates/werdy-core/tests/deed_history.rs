@@ -7,6 +7,7 @@ use werdy_core::{
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
@@ -18,6 +19,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn day(number: u8) -> Result<WerdyDay, Error> {

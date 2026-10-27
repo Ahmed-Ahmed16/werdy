@@ -8,6 +8,7 @@ use werdy_core::{
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
@@ -19,6 +20,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn deed(id: u64, schedule: Schedule, created_on: WerdyDay) -> Deed {
@@ -31,6 +33,18 @@ fn deed(id: u64, schedule: Schedule, created_on: WerdyDay) -> Deed {
             category: CategoryKey::new("other"),
         },
     )
+}
+
+fn targeted_deed(id: u64, target: u32, day: WerdyDay) -> Result<Deed, Error> {
+    Ok(Deed::new(
+        DeedId(id),
+        day,
+        DeedRule {
+            schedule: Schedule::EveryDay,
+            target: Some(Target::new(target, "pages")?),
+            category: CategoryKey::new("other"),
+        },
+    ))
 }
 
 fn weekdays(days: &[Weekday]) -> Schedule {
@@ -135,15 +149,18 @@ fn percent_rounds_never_truncates() -> Result<(), Error> {
     let deeds = [deed(1, Schedule::EveryDay, day)];
     let mut marks = Marks::new();
 
-    for (fraction, expected) in [
-        (0.4261, 43),
-        (0.425, 43),
-        (0.4249, 42),
-        (0.424_999_999_999, 42),
+    for (numerator, denominator, expected) in [
+        (4261, 10_000, 43),
+        (425, 1000, 43),
+        (4249, 10_000, 42),
+        (424_999_999_999, 1_000_000_000_000, 42),
     ] {
         marks.insert(
             (DeedId(1), day),
-            MarkEntry::new(Mark::Partial(Fraction::new(fraction)?), day),
+            MarkEntry::new(
+                Mark::Partial(Fraction::from_ratio(numerator, denominator)?),
+                day,
+            ),
         );
         assert_eq!(
             score(&deeds, &marks, &[day], day.next()?).percent,
@@ -177,16 +194,17 @@ fn many_partials_summing_to_a_half_round_up() -> Result<(), Error> {
         .flat_map(|day| deeds.iter().map(move |deed| (day, deed)))
         .enumerate()
     {
-        let fraction = if index < 104 { 0.6 } else { 0.1 };
+        let numerator = if index < 104 { 6 } else { 1 };
         marks.insert(
             (deed.id, *day),
-            MarkEntry::new(Mark::Partial(Fraction::new(fraction)?), *day),
+            MarkEntry::new(Mark::Partial(Fraction::from_ratio(numerator, 10)?), *day),
         );
     }
 
     let result = score(&deeds, &marks, &days, WerdyDay::new(2026, 10, 11)?);
     assert_eq!(result.due, 160);
-    assert_eq!(result.earned.parts(), 68_000_000_000_000);
+    assert_eq!(result.earned.numerator(), 68);
+    assert_eq!(result.earned.denominator(), 1);
     assert_eq!(result.percent, Some(43));
     Ok(())
 }
@@ -211,13 +229,14 @@ fn exact_values_have_no_float_drift_over_a_year() -> Result<(), Error> {
         marks.insert((count_deed.id, *day), MarkEntry::new(Mark::Count(3), *day));
         marks.insert(
             (partial_deed.id, *day),
-            MarkEntry::new(Mark::Partial(Fraction::new(0.1)?), *day),
+            MarkEntry::new(Mark::Partial(Fraction::from_ratio(1, 10)?), *day),
         );
     }
 
     let result = score(&[count_deed, partial_deed], &marks, &days, today);
     assert_eq!(result.due, 730);
-    assert_eq!(result.earned.parts(), 255_500_000_000_000);
+    assert_eq!(result.earned.numerator(), 511);
+    assert_eq!(result.earned.denominator(), 2);
     assert_eq!(result.percent, Some(35));
     Ok(())
 }
@@ -313,9 +332,106 @@ fn invalid_date_is_an_error() {
 }
 
 #[test]
-fn fraction_above_one_is_an_error() {
+fn fraction_input_is_checked_and_converted_once() -> Result<(), Error> {
     assert_eq!(Fraction::new(1.01), Err(Error::FractionOutOfRange));
     assert_eq!(Fraction::new(f64::NAN), Err(Error::FractionOutOfRange));
+    assert_eq!(Fraction::from_ratio(1, 0), Err(Error::FractionOutOfRange));
     assert!(Fraction::new(0.0).is_ok());
     assert!(Fraction::new(1.0).is_ok());
+    assert_eq!(Fraction::new(0.425)?, Fraction::from_ratio(17, 40)?);
+    Ok(())
+}
+
+#[test]
+fn thirds_sum_to_one_deed_exactly() -> Result<(), Error> {
+    let day = WerdyDay::new(2026, 10, 23)?;
+    let deeds: Vec<_> = (1..=3)
+        .map(|id| targeted_deed(id, 3, day))
+        .collect::<Result<_, _>>()?;
+    let marks = deeds
+        .iter()
+        .map(|deed| ((deed.id, day), MarkEntry::new(Mark::Count(1), day)))
+        .collect();
+    let result = score(&deeds, &marks, &[day], day.next()?);
+    assert_eq!(result.earned.as_f64(), 1.0);
+    assert_eq!(result.earned.numerator(), 1);
+    assert_eq!(result.earned.denominator(), 1);
+    Ok(())
+}
+
+#[test]
+fn percent_built_from_thirds_rounds_half_up() -> Result<(), Error> {
+    let day = WerdyDay::new(2026, 10, 23)?;
+    let deeds: Vec<_> = (1..=20)
+        .map(|id| targeted_deed(id, 3, day))
+        .collect::<Result<_, _>>()?;
+    let marks = deeds
+        .iter()
+        .map(|deed| {
+            let mark = match deed.id.0 {
+                1..=7 => Mark::Done,
+                8..=10 => Mark::Count(1),
+                11 => Mark::partial_without_target(),
+                _ => Mark::Missed,
+            };
+            ((deed.id, day), MarkEntry::new(mark, day))
+        })
+        .collect();
+    let result = score(&deeds, &marks, &[day], day.next()?);
+    assert_eq!(result.earned.numerator(), 17);
+    assert_eq!(result.earned.denominator(), 2);
+    assert_eq!(result.percent, Some(43));
+    Ok(())
+}
+
+#[test]
+fn mixed_targets_sum_exactly() -> Result<(), Error> {
+    let day = WerdyDay::new(2026, 10, 23)?;
+    let counts = [(3, 1), (7, 2), (100, 38)];
+    let deeds: Vec<_> = counts
+        .iter()
+        .enumerate()
+        .map(|(index, (target, _))| targeted_deed(index as u64 + 1, *target, day))
+        .collect::<Result<_, _>>()?;
+    let marks = deeds
+        .iter()
+        .zip(counts)
+        .map(|(deed, (_, count))| ((deed.id, day), MarkEntry::new(Mark::Count(count), day)))
+        .collect();
+    let result = score(&deeds, &marks, &[day], day.next()?);
+    assert_eq!(result.earned.numerator(), 1049);
+    assert_eq!(result.earned.denominator(), 1050);
+    Ok(())
+}
+
+#[test]
+fn score_returns_error_when_exact_sum_exceeds_u128() -> Result<(), Error> {
+    let day = WerdyDay::new(2026, 10, 23)?;
+    let targets = [
+        1_000_000_007,
+        1_000_000_009,
+        1_000_000_021,
+        1_000_000_033,
+        1_000_000_087,
+    ];
+    let deeds = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| targeted_deed(index as u64 + 1, *target, day))
+        .collect::<Result<Vec<_>, _>>()?;
+    let marks = deeds
+        .iter()
+        .map(|deed| ((deed.id, day), MarkEntry::new(Mark::Count(1), day)))
+        .collect();
+    let records = OwnerRecords {
+        deeds: &deeds,
+        marks: &marks,
+        day_notes: &BTreeMap::new(),
+        calendar: CalendarSettings::default(),
+    };
+    assert_eq!(
+        score_records(&records, &[day], day.next()?),
+        Err(Error::ScoreOverflow)
+    );
+    Ok(())
 }

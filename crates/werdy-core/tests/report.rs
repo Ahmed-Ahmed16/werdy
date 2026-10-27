@@ -22,6 +22,7 @@ fn deed(id: u64, schedule: Schedule, category: &str, created_on: WerdyDay) -> De
     )
 }
 
+#[allow(clippy::expect_used)]
 fn report(
     deeds: &[Deed],
     marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
@@ -42,6 +43,7 @@ fn report(
         today,
         bands,
     )
+    .expect("test report fits")
 }
 
 #[test]
@@ -318,7 +320,7 @@ fn full_day_credit_removes_deed_from_missed_list() -> Result<(), Error> {
         0,
         today,
         ScoreBands::default(),
-    );
+    )?;
     assert_eq!(result.overall.earned.as_f64(), 1.0);
     assert_eq!(
         result.by_category[&CategoryKey::new("other")]

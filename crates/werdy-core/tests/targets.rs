@@ -7,6 +7,7 @@ use werdy_core::{
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
@@ -18,6 +19,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -51,7 +53,7 @@ fn three_of_five_pages_is_worth_point_six() -> Result<(), Error> {
 }
 
 #[test]
-fn count_over_three_rounds_to_nearest_trillionth_part() -> Result<(), Error> {
+fn count_over_three_stays_exact() -> Result<(), Error> {
     let marked_day = day(23)?;
     let target = Some(Target::new(3, "pages")?);
     let deeds = [
@@ -69,23 +71,20 @@ fn count_over_three_rounds_to_nearest_trillionth_part() -> Result<(), Error> {
         ),
     ]);
 
+    let first = score(&deeds[..1], &marks, &[marked_day], day(24)?);
+    let second = score(&deeds[1..], &marks, &[marked_day], day(24)?);
+    let total = score(&deeds, &marks, &[marked_day], day(24)?);
     assert_eq!(
-        score(&deeds[..1], &marks, &[marked_day], day(24)?)
-            .earned
-            .parts(),
-        333_333_333_333
+        (first.earned.numerator(), first.earned.denominator()),
+        (1, 3)
     );
     assert_eq!(
-        score(&deeds[1..], &marks, &[marked_day], day(24)?)
-            .earned
-            .parts(),
-        666_666_666_667
+        (second.earned.numerator(), second.earned.denominator()),
+        (2, 3)
     );
     assert_eq!(
-        score(&deeds, &marks, &[marked_day], day(24)?)
-            .earned
-            .parts(),
-        1_000_000_000_000
+        (total.earned.numerator(), total.earned.denominator()),
+        (1, 1)
     );
     Ok(())
 }

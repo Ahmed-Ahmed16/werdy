@@ -2,13 +2,15 @@
 
 #![forbid(unsafe_code)]
 
-/// Error for an invalid day, mark, or deed change.
+/// Error for invalid input, deed changes, or score overflow.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Calendar day is invalid or outside the supported day count.
     InvalidDate,
-    /// Fraction is not a finite value from zero to one.
+    /// Fraction is outside zero to one, has zero denominator, or has nonfinite float input.
     FractionOutOfRange,
+    /// Exact score cannot fit within u128 values.
+    ScoreOverflow,
     /// Target amount must be at least one.
     InvalidTargetAmount,
     /// Target unit key is empty.

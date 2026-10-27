@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords,
-    Schedule, Score, ScoreValue, TodaySummary, WerdyDay, score as score_records, today_summary,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Fraction, Mark, MarkEntry,
+    OwnerRecords, Schedule, Score, ScoreValue, TodaySummary, WerdyDay, score as score_records,
+    today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
@@ -18,6 +20,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -57,6 +60,32 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
             partial: 1,
             open: 1,
             missed: 1,
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn partial_marks_at_zero_and_one_use_exact_value() -> Result<(), Error> {
+    let today = day(24)?;
+    let deeds = [deed(1, today), deed(2, today)];
+    let marks = Marks::from([
+        (
+            (DeedId(1), today),
+            MarkEntry::new(Mark::Partial(Fraction::ONE), today),
+        ),
+        (
+            (DeedId(2), today),
+            MarkEntry::new(Mark::Partial(Fraction::ZERO), today),
+        ),
+    ]);
+    assert_eq!(
+        today_summary(&deeds, &marks, today, CalendarSettings::default()),
+        TodaySummary {
+            done: 1,
+            partial: 0,
+            open: 0,
+            missed: 1
         }
     );
     Ok(())

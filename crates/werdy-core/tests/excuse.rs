@@ -24,6 +24,7 @@ fn deed(id: u64, created_on: WerdyDay, target: Option<Target>) -> Deed {
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 type DayNotes = BTreeMap<WerdyDay, DayNote>;
 
+#[allow(clippy::expect_used)]
 fn score_day(
     deeds: &[Deed],
     marks: &Marks,
@@ -41,6 +42,7 @@ fn score_day(
         &[scored_day],
         today,
     )
+    .expect("test score fits")
 }
 
 #[test]

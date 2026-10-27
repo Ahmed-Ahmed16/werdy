@@ -115,7 +115,7 @@ fn ramadan_deed_counts_only_ramadan_days_in_a_score() -> Result<(), Error> {
     };
     let days = days_from(day(2027, 1, 1)?, 120)?;
 
-    let result = score(&records, &days, day(2027, 6, 1)?);
+    let result = score(&records, &days, day(2027, 6, 1)?)?;
 
     assert_eq!(result.due, 30);
     assert_eq!(result.percent, Some(0));
