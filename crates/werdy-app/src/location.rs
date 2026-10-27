@@ -62,7 +62,7 @@ mod tests {
             method_for_country("EG")?,
             PrayerMethod::EgyptianGeneralAuthority
         );
-        assert_eq!(method_for_country("SA")?, PrayerMethod::MuslimWorldLeague);
+        assert_eq!(method_for_country("SA")?, PrayerMethod::UmmAlQura);
         assert_eq!(method_for_country("GB")?, PrayerMethod::MuslimWorldLeague);
         Ok(())
     }
