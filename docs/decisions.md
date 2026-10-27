@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0030 (2026-10-27): Our own Fajr calculation, Egyptian method by default
+Fajr times come from our own small calculation of the sun's position (the NOAA solar equations), in the `werdy-calendar` crate, with no dependencies. Methods are data: Egyptian General Authority (Fajr 19.5 degrees, Isha 17.5) is the default in Egypt, Muslim World League elsewhere for now. Tests compare Cairo and Alexandria against published times for the Egyptian method (read 2026-10-27 from the AlAdhan API, method 5) within 2 minutes; all were within 1. The caller supplies the UTC offset for each date, so daylight saving is decided outside the crate. Why: Fajr is all werdy needs from prayer times today, the formula is short and testable, it builds for the web, and it avoids a date library. Rejected for now: adhaan and salah (both maintained and MIT, but they pull in a date crate for one number). Revisit: if werdy needs all five prayer times for reminders, or official Egyptian tables disagree by more than 2 minutes.
+
 ## 0029 (2026-10-27): Dioxus, web first, for the MVP
 The owner chose Dioxus 0.7 (all Rust) for the UI, and to ship the web build first so a usable MVP exists within days. The same Dioxus code later builds for Android and desktop. All logic stays in `werdy-core` (and saving in `werdy-store`); the UI crate holds no scoring. So if the Android sign in spike (#13) fails for Dioxus, only the UI crate moves to Tauri 2. Rejected: waiting for the spike before building any UI. Revisit: if the spike shows Dioxus cannot do Google sign in on Android.
 

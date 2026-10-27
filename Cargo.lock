@@ -3331,6 +3331,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "werdy-calendar"
+version = "0.1.0"
+
+[[package]]
 name = "werdy-core"
 version = "0.1.0"
 dependencies = [
