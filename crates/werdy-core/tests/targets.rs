@@ -7,6 +7,7 @@ use werdy_core::{
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
@@ -18,6 +19,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -42,8 +44,47 @@ fn three_of_five_pages_is_worth_point_six() -> Result<(), Error> {
 
     assert_eq!(mark.value(&daily(Some(target))), 3.0 / 5.0);
     assert_eq!(
-        score(&[deed], &marks, &[marked_day], day(24)?).earned,
+        score(&[deed], &marks, &[marked_day], day(24)?)
+            .earned
+            .as_f64(),
         3.0 / 5.0
+    );
+    Ok(())
+}
+
+#[test]
+fn count_over_three_stays_exact() -> Result<(), Error> {
+    let marked_day = day(23)?;
+    let target = Some(Target::new(3, "pages")?);
+    let deeds = [
+        Deed::new(DeedId(1), marked_day, daily(target.clone())),
+        Deed::new(DeedId(2), marked_day, daily(target)),
+    ];
+    let marks = BTreeMap::from([
+        (
+            (DeedId(1), marked_day),
+            MarkEntry::new(Mark::Count(1), marked_day),
+        ),
+        (
+            (DeedId(2), marked_day),
+            MarkEntry::new(Mark::Count(2), marked_day),
+        ),
+    ]);
+
+    let first = score(&deeds[..1], &marks, &[marked_day], day(24)?);
+    let second = score(&deeds[1..], &marks, &[marked_day], day(24)?);
+    let total = score(&deeds, &marks, &[marked_day], day(24)?);
+    assert_eq!(
+        (first.earned.numerator(), first.earned.denominator()),
+        (1, 3)
+    );
+    assert_eq!(
+        (second.earned.numerator(), second.earned.denominator()),
+        (2, 3)
+    );
+    assert_eq!(
+        (total.earned.numerator(), total.earned.denominator()),
+        (1, 1)
     );
     Ok(())
 }
@@ -82,7 +123,12 @@ fn partial_without_target_is_worth_a_half() -> Result<(), Error> {
     let marks = BTreeMap::from([((deed.id, marked_day), MarkEntry::new(mark, marked_day))]);
 
     assert_eq!(mark.value(&daily(None)), 0.5);
-    assert_eq!(score(&[deed], &marks, &[marked_day], day(24)?).earned, 0.5);
+    assert_eq!(
+        score(&[deed], &marks, &[marked_day], day(24)?)
+            .earned
+            .as_f64(),
+        0.5
+    );
     Ok(())
 }
 
@@ -95,7 +141,7 @@ fn target_change_does_not_move_past_scores() -> Result<(), Error> {
     let mut deed = Deed::new(DeedId(1), first, daily(Some(old_target.clone())));
     let marks = BTreeMap::from([((deed.id, first), MarkEntry::new(Mark::Count(3), day(25)?))]);
     let before = score(&[deed.clone()], &marks, &[first], day(25)?);
-    assert_eq!(before.earned, 3.0 / 5.0);
+    assert_eq!(before.earned.as_f64(), 3.0 / 5.0);
 
     deed.change_rule(second, daily(Some(new_target.clone())))?;
 
@@ -104,7 +150,9 @@ fn target_change_does_not_move_past_scores() -> Result<(), Error> {
     assert_eq!(score(&[deed.clone()], &marks, &[first], day(25)?), before);
     let later_marks = BTreeMap::from([((deed.id, second), MarkEntry::new(Mark::Count(3), second))]);
     assert_eq!(
-        score(&[deed], &later_marks, &[second], day(25)?).earned,
+        score(&[deed], &later_marks, &[second], day(25)?)
+            .earned
+            .as_f64(),
         3.0 / 10.0
     );
     Ok(())
@@ -144,7 +192,7 @@ fn today_counts_zero_partial_and_full_counts() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today, CalendarSettings::default()),
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
         TodaySummary {
             done: 2,
             partial: 1,
@@ -174,7 +222,8 @@ fn count_without_target_uses_binary_value() -> Result<(), Error> {
             &[first, second],
             day(25)?
         )
-        .earned,
+        .earned
+        .as_f64(),
         1.0
     );
     assert_eq!(
@@ -182,13 +231,13 @@ fn count_without_target_uses_binary_value() -> Result<(), Error> {
             std::slice::from_ref(&deed),
             &marks,
             first,
-            CalendarSettings::default()
+            &CalendarSettings::default()
         )
         .missed,
         1
     );
     assert_eq!(
-        today_summary(&[deed], &marks, second, CalendarSettings::default()).done,
+        today_summary(&[deed], &marks, second, &CalendarSettings::default()).done,
         1
     );
     Ok(())

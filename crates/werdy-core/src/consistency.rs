@@ -1,6 +1,6 @@
 //! Quiet counts of due days and days with a kept record. Neither count is a streak.
 
-use crate::{Deed, DeedId, ExcuseCredit, OwnerRecords, WerdyDay, score};
+use crate::{Deed, DeedId, ExcuseCredit, Fraction, OwnerRecords, WerdyDay, score};
 
 /// Number of recent due days to count when the caller uses the default window.
 pub const DEFAULT_CONSISTENCY_WINDOW: usize = 7;
@@ -31,9 +31,9 @@ pub fn consistency(
     };
 
     while day >= deed.created_on() && tally.of < window {
-        if let Some(rule) = deed.due_rule_on(day, records.calendar) {
+        if let Some(rule) = deed.due_rule_on(day, &records.calendar) {
             tally.of = tally.of.saturating_add(1);
-            if score::due_value(records, deed, day, rule) == 1.0 {
+            if score::due_value(records, deed, day, rule) == Fraction::ONE {
                 tally.done = tally.done.saturating_add(1);
             }
         }
@@ -75,7 +75,7 @@ fn day_is_kept(records: &OwnerRecords<'_>, day: WerdyDay) -> bool {
         .is_some_and(|note| note.credit() != ExcuseCredit::None);
     let mut has_due_deed = false;
     for deed in records.deeds {
-        if deed.is_due_on(day, records.calendar) {
+        if deed.is_due_on(day, &records.calendar) {
             has_due_deed = true;
             if !has_credit && !records.marks.contains_key(&(deed.id, day)) {
                 return false;

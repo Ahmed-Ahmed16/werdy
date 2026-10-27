@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::{CategoryKey, DeedId, OwnerRecords, Score, WerdyDay, score};
+use crate::{
+    CategoryKey, DeedId, Error, Fraction, OwnerRecords, Score, ScoreValue, WerdyDay, score,
+};
 
 const THREE_DAYS: i64 = 3;
 const WEEK_DAYS: i64 = 7;
@@ -131,7 +133,7 @@ pub struct MissedDeed {
     /// Due days worth less than one after any credit.
     pub days_not_done: usize,
     /// Sum of value lost across due days.
-    pub lost: f64,
+    pub lost: ScoreValue,
 }
 
 /// Scores and history for one rolling period.
@@ -152,31 +154,32 @@ pub struct Report {
 }
 
 /// Builds scores for a rolling period ending yesterday.
+/// Returns `ScoreOverflow` if any exact total or due count cannot fit.
 pub fn build_report(
     records: &OwnerRecords<'_>,
     period: Period,
     steps_back: usize,
     today: WerdyDay,
     bands: ScoreBands,
-) -> Report {
+) -> Result<Report, Error> {
     let days = period.days(today, steps_back);
-    let overall = score(records, &days, today);
+    let overall = score(records, &days, today)?;
     let series = match period {
         Period::ThreeDays | Period::Week | Period::Month => {
-            build_day_series(records, &days, today, bands)
+            build_day_series(records, &days, today, bands)?
         }
-        Period::SixMonths | Period::Year => build_month_series(records, &days, today, bands),
+        Period::SixMonths | Period::Year => build_month_series(records, &days, today, bands)?,
     };
-    let by_category = category_scores(records, &days);
-    let (missed, per_deed) = deed_summaries(records, &days, today);
-    Report {
+    let by_category = category_scores(records, &days)?;
+    let (missed, per_deed) = deed_summaries(records, &days, today)?;
+    Ok(Report {
         days,
         overall,
         series,
         by_category,
         missed,
         per_deed,
-    }
+    })
 }
 
 fn build_day_series(
@@ -184,15 +187,15 @@ fn build_day_series(
     days: &[WerdyDay],
     today: WerdyDay,
     bands: ScoreBands,
-) -> Vec<SeriesEntry> {
+) -> Result<Vec<SeriesEntry>, Error> {
     days.iter()
         .map(|day| {
-            let day_score = score(records, &[*day], today);
-            SeriesEntry::Day {
+            let day_score = score(records, &[*day], today)?;
+            Ok(SeriesEntry::Day {
                 day: *day,
                 score: day_score,
                 band: day_score.percent.map(|percent| bands.band(percent)),
-            }
+            })
         })
         .collect()
 }
@@ -202,7 +205,7 @@ fn build_month_series(
     days: &[WerdyDay],
     today: WerdyDay,
     bands: ScoreBands,
-) -> Vec<SeriesEntry> {
+) -> Result<Vec<SeriesEntry>, Error> {
     let mut buckets: BTreeMap<(i32, u8), Vec<WerdyDay>> = BTreeMap::new();
     for day in days {
         buckets.entry(day.year_month()).or_default().push(*day);
@@ -210,40 +213,43 @@ fn build_month_series(
     buckets
         .into_iter()
         .map(|((year, month), bucket_days)| {
-            let month_score = score(records, &bucket_days, today);
-            SeriesEntry::Month {
+            let month_score = score(records, &bucket_days, today)?;
+            Ok(SeriesEntry::Month {
                 year,
                 month,
                 score: month_score,
                 band: month_score.percent.map(|percent| bands.band(percent)),
-            }
+            })
         })
         .collect()
 }
 
-fn category_scores(records: &OwnerRecords<'_>, days: &[WerdyDay]) -> BTreeMap<CategoryKey, Score> {
-    let mut totals: BTreeMap<CategoryKey, (f64, usize)> = BTreeMap::new();
+fn category_scores(
+    records: &OwnerRecords<'_>,
+    days: &[WerdyDay],
+) -> Result<BTreeMap<CategoryKey, Score>, Error> {
+    let mut totals: BTreeMap<CategoryKey, (ScoreValue, usize)> = BTreeMap::new();
     for day in days {
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
+            if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
                 let value = crate::score::due_value(records, deed, *day, rule);
                 let category = totals.entry(rule.category.clone()).or_default();
-                category.0 += value;
-                category.1 += 1;
+                category.0.add_fraction(value)?;
+                category.1 = category.1.checked_add(1).ok_or(Error::ScoreOverflow)?;
             }
         }
     }
-    totals
+    Ok(totals
         .into_iter()
         .map(|(key, (earned, due))| (key, crate::score::score_from_totals(earned, due)))
-        .collect()
+        .collect())
 }
 
 fn deed_summaries(
     records: &OwnerRecords<'_>,
     days: &[WerdyDay],
     today: WerdyDay,
-) -> (Vec<MissedDeed>, BTreeMap<DeedId, Score>) {
+) -> Result<(Vec<MissedDeed>, BTreeMap<DeedId, Score>), Error> {
     let mut missed = Vec::new();
     let mut per_deed = BTreeMap::new();
     for deed in records.deeds {
@@ -252,47 +258,47 @@ fn deed_summaries(
                 deeds: std::slice::from_ref(deed),
                 marks: records.marks,
                 day_notes: records.day_notes,
-                calendar: records.calendar,
+                calendar: records.calendar.clone(),
             },
             days,
             today,
-        );
+        )?;
         if deed_score.due == 0 {
             continue;
         }
         per_deed.insert(deed.id, deed_score);
-        if let Some(missed_deed) = missed_deed(records, deed, days) {
+        if let Some(missed_deed) = missed_deed(records, deed, days)? {
             missed.push(missed_deed);
         }
     }
     missed.sort_by(|left, right| {
         right
             .lost
-            .total_cmp(&left.lost)
+            .cmp(&left.lost)
             .then_with(|| left.deed_id.cmp(&right.deed_id))
     });
-    (missed, per_deed)
+    Ok((missed, per_deed))
 }
 
 fn missed_deed(
     records: &OwnerRecords<'_>,
     deed: &crate::Deed,
     days: &[WerdyDay],
-) -> Option<MissedDeed> {
-    let mut days_not_done = 0;
-    let mut lost = 0.0;
+) -> Result<Option<MissedDeed>, Error> {
+    let mut days_not_done = 0usize;
+    let mut lost = ScoreValue::ZERO;
     for day in days {
-        if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
+        if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
             let value = crate::score::due_value(records, deed, *day, rule);
-            if value < 1.0 {
-                days_not_done += 1;
-                lost += 1.0 - value;
+            if value < Fraction::ONE {
+                days_not_done = days_not_done.checked_add(1).ok_or(Error::ScoreOverflow)?;
+                lost.add_fraction(value.complement())?;
             }
         }
     }
-    (days_not_done > 0).then_some(MissedDeed {
+    Ok((days_not_done > 0).then_some(MissedDeed {
         deed_id: deed.id,
         days_not_done,
         lost,
-    })
+    }))
 }

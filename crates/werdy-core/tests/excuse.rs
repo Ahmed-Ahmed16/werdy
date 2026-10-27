@@ -24,6 +24,7 @@ fn deed(id: u64, created_on: WerdyDay, target: Option<Target>) -> Deed {
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 type DayNotes = BTreeMap<WerdyDay, DayNote>;
 
+#[allow(clippy::expect_used)]
 fn score_day(
     deeds: &[Deed],
     marks: &Marks,
@@ -41,6 +42,7 @@ fn score_day(
         &[scored_day],
         today,
     )
+    .expect("test score fits")
 }
 
 #[test]
@@ -57,7 +59,9 @@ fn day_without_credit_scores_as_usual() -> Result<(), Error> {
     )]);
 
     assert_eq!(
-        score_day(&deeds, &marks, &day_notes, scored_day, day(24)?).earned,
+        score_day(&deeds, &marks, &day_notes, scored_day, day(24)?)
+            .earned
+            .as_f64(),
         1.0
     );
     Ok(())
@@ -77,7 +81,7 @@ fn half_credit_lifts_missed_to_a_half() -> Result<(), Error> {
     )]);
 
     let result = score_day(&deeds, &marks, &day_notes, scored_day, day(24)?);
-    assert_eq!(result.earned, 1.0);
+    assert_eq!(result.earned.as_f64(), 1.0);
     assert_eq!(result.due, 2);
     assert_eq!(result.percent, Some(50));
     Ok(())
@@ -97,7 +101,7 @@ fn half_credit_keeps_a_higher_partial() -> Result<(), Error> {
     )]);
 
     let result = score_day(&deeds, &marks, &day_notes, scored_day, day(24)?);
-    assert_eq!(result.earned, 0.6);
+    assert_eq!(result.earned.as_f64(), 0.6);
     assert_eq!(result.percent, Some(60));
     Ok(())
 }
@@ -126,7 +130,7 @@ fn full_credit_makes_every_due_deed_worth_one() -> Result<(), Error> {
     )]);
 
     let result = score_day(&deeds, &marks, &day_notes, scored_day, day(24)?);
-    assert_eq!(result.earned, 3.0);
+    assert_eq!(result.earned.as_f64(), 3.0);
     assert_eq!(result.due, 3);
     assert_eq!(result.percent, Some(100));
     Ok(())
@@ -146,7 +150,9 @@ fn credit_never_changes_the_stored_marks() -> Result<(), Error> {
     )]);
 
     assert_eq!(
-        score_day(&[deed], &marks, &day_notes, scored_day, day(24)?).earned,
+        score_day(&[deed], &marks, &day_notes, scored_day, day(24)?)
+            .earned
+            .as_f64(),
         1.0
     );
     assert_eq!(marks[&(DeedId(1), scored_day)].mark, Mark::Missed);
@@ -164,11 +170,15 @@ fn credit_affects_only_its_werdy_day() -> Result<(), Error> {
     )]);
 
     assert_eq!(
-        score_day(&deeds, &Marks::new(), &day_notes, credited_day, day(25)?).earned,
+        score_day(&deeds, &Marks::new(), &day_notes, credited_day, day(25)?)
+            .earned
+            .as_f64(),
         1.0
     );
     assert_eq!(
-        score_day(&deeds, &Marks::new(), &day_notes, next_day, day(25)?).earned,
+        score_day(&deeds, &Marks::new(), &day_notes, next_day, day(25)?)
+            .earned
+            .as_f64(),
         0.0
     );
     Ok(())

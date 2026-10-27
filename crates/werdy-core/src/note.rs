@@ -1,4 +1,4 @@
-use crate::{Error, WerdyDay, mark};
+use crate::{Error, Fraction, WerdyDay, mark};
 
 /// Credit applied to each due deed on a werdy day.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,6 +18,14 @@ impl ExcuseCredit {
             Self::None => 0.0,
             Self::Half => 0.5,
             Self::Full => 1.0,
+        }
+    }
+
+    pub(crate) fn exact_value(self) -> Fraction {
+        match self {
+            Self::None => Fraction::ZERO,
+            Self::Half => Fraction::HALF,
+            Self::Full => Fraction::ONE,
         }
     }
 }

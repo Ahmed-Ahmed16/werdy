@@ -2,13 +2,15 @@
 
 #![forbid(unsafe_code)]
 
-/// Error for an invalid day, mark, or deed change.
+/// Error for invalid input, deed changes, or score overflow.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Calendar day is invalid or outside the supported day count.
     InvalidDate,
-    /// Fraction is not a finite value from zero to one.
+    /// Fraction is outside zero to one, has zero denominator, or has nonfinite float input.
     FractionOutOfRange,
+    /// Exact score cannot fit within u128 values.
+    ScoreOverflow,
     /// Target amount must be at least one.
     InvalidTargetAmount,
     /// Target unit key is empty.
@@ -25,6 +27,8 @@ pub enum Error {
     EmptyDayNote,
     /// Hijri offset is outside minus one to plus one day.
     InvalidHijriOffset,
+    /// Hijri offset change starts before the latest change.
+    OffsetBeforeLatest,
     /// Hijri range has a month outside 1 to 12 or days outside 1 to 30, or ends before it starts.
     InvalidHijriRange,
 }
@@ -45,4 +49,4 @@ pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
-pub use score::{OwnerRecords, Score, TodaySummary, score, today_summary};
+pub use score::{OwnerRecords, Score, ScoreValue, TodaySummary, score, today_summary};
