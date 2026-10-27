@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{Error, HijriDate, HijriOffset};
 
 /// Calendar label for a werdy day, stored as days since 1970-01-01.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -63,6 +63,16 @@ impl WerdyDay {
         let month = month_from_march + if month_from_march < 10 { 3 } else { -9 };
         let year = year + i64::from(month <= 2);
         (year as i32, month as u8)
+    }
+
+    /// Returns the tabular Hijri date of this day, moved by the owner's offset.
+    /// Errors only at the day count limit.
+    pub fn hijri(self, offset: HijriOffset) -> Result<HijriDate, Error> {
+        HijriDate::from_day(self, offset)
+    }
+
+    pub(crate) fn days_since_unix_epoch(self) -> i64 {
+        i64::from(self.0)
     }
 
     pub(crate) fn checked_sub_days(self, days: i64) -> Option<Self> {

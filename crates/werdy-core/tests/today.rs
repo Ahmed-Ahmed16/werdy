@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    TodaySummary, WerdyDay, score as score_records, today_summary,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords,
+    Schedule, Score, TodaySummary, WerdyDay, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -13,6 +13,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
             deeds,
             marks,
             day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
         },
         days,
         today,
@@ -50,7 +51,7 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today),
+        today_summary(&deeds, &marks, today, CalendarSettings::default()),
         TodaySummary {
             done: 1,
             partial: 1,
@@ -64,7 +65,12 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
 #[test]
 fn open_deed_today_is_not_missed() -> Result<(), Error> {
     let today = day(24)?;
-    let summary = today_summary(&[deed(1, today)], &Marks::new(), today);
+    let summary = today_summary(
+        &[deed(1, today)],
+        &Marks::new(),
+        today,
+        CalendarSettings::default(),
+    );
 
     assert_eq!(summary.open, 1);
     assert_eq!(summary.missed, 0);
