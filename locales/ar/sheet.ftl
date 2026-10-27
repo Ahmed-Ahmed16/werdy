@@ -71,7 +71,21 @@ note-delete = حذف الملاحظة
 sheet-welcome-back = أهلًا بعودتك. ابدأ من يومك هذا.
 sheet-saying-source = المصدر: { $source }
 sheet-saying = { $text }
-sheet-milestone = دوّنت ما فعلت في { $days } يومًا. شكرًا لعودتك إلى التدوين.
+sheet-milestone =
+    { $days ->
+        [one] دوّنت ما فعلت في يوم واحد. شكرًا لعودتك إلى التدوين.
+        [two] دوّنت ما فعلت في يومين. شكرًا لعودتك إلى التدوين.
+        [few] دوّنت ما فعلت في { $days } أيام. شكرًا لعودتك إلى التدوين.
+        [many] دوّنت ما فعلت في { $days } يومًا. شكرًا لعودتك إلى التدوين.
+       *[other] دوّنت ما فعلت في { $days } يوم. شكرًا لعودتك إلى التدوين.
+    }
 sheet-dismiss-milestone = إخفاء
-consistency-line = تمّ في { $done } من آخر { $due } أيام مستحقة.
+consistency-line =
+    { $due ->
+        [one] تمّ في { $done } من آخر يوم مستحق.
+        [two] تمّ في { $done } من آخر يومين مستحقين.
+        [few] تمّ في { $done } من آخر { $due } أيام مستحقة.
+        [many] تمّ في { $done } من آخر { $due } يومًا مستحقًا.
+       *[other] تمّ في { $done } من آخر { $due } يوم مستحق.
+    }
 consistency-no-due = لا توجد أيام مستحقة منتهية بعد.

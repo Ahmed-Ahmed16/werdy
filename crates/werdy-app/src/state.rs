@@ -1,6 +1,7 @@
 //! App state: the owner's data, the day on screen, and what each tap does.
 //! It calls werdy-core for every number and holds no scoring of its own.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
@@ -275,6 +276,7 @@ pub struct AppState {
     pub report_steps_back: usize,
     /// Welcome stays visible for this app opening only.
     pub welcome_visible: bool,
+    kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
     pending_settings: PendingSettings,
     sets_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
@@ -305,6 +307,7 @@ impl AppState {
             report_period: Period::Week,
             report_steps_back: 0,
             welcome_visible: false,
+            kept_days_cache: RefCell::new(None),
             pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             deed_changes: BTreeMap::new(),
@@ -325,11 +328,34 @@ impl AppState {
     /// Returns the highest reached private milestone that is still new.
     pub fn milestone_notice(&self) -> Option<usize> {
         let data = crate::consistency_data::notices().ok()?;
-        milestone_to_show(
-            kept_days(&self.data.records(), self.today),
-            &data.milestones,
-            &self.data.dismissed_milestones,
-        )
+        if data
+            .milestones
+            .iter()
+            .all(|level| self.data.dismissed_milestones.contains(level))
+        {
+            return None;
+        }
+        let cached = *self.kept_days_cache.borrow();
+        let kept = if let Some((day, kept)) = cached {
+            if day == self.today {
+                kept
+            } else {
+                self.count_kept_days()
+            }
+        } else {
+            self.count_kept_days()
+        };
+        milestone_to_show(kept, &data.milestones, &self.data.dismissed_milestones)
+    }
+
+    fn count_kept_days(&self) -> usize {
+        let kept = kept_days(&self.data.records(), self.today);
+        self.kept_days_cache.replace(Some((self.today, kept)));
+        kept
+    }
+
+    fn invalidate_kept_days(&self) {
+        self.kept_days_cache.replace(None);
     }
 
     pub fn dismiss_milestone(&mut self, level: usize) {
@@ -413,6 +439,9 @@ impl AppState {
         let note = DayNote::new(text, credit, self.today)?;
         self.data
             .set_day_note(day, Some(note), crate::platform::change_time());
+        if day < self.today {
+            self.invalidate_kept_days();
+        }
         Ok(())
     }
 
@@ -420,6 +449,9 @@ impl AppState {
     pub fn delete_day_note(&mut self, day: WerdyDay) {
         self.data
             .set_day_note(day, None, crate::platform::change_time());
+        if day < self.today {
+            self.invalidate_kept_days();
+        }
     }
 
     /// Builds the selected report from saved records before it is rendered.
@@ -765,6 +797,7 @@ impl AppState {
             Some(DeedChange::Upsert { created: true, .. })
         );
         delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
+        self.invalidate_kept_days();
         self.data.names.remove(&id);
         self.data.starter_keys.remove(&id);
         self.data
@@ -816,6 +849,9 @@ impl AppState {
         let moved = today != self.today;
         self.viewing = viewing_after_today_change(self.today, today, self.viewing);
         self.today = today;
+        if moved {
+            self.invalidate_kept_days();
+        }
         if moved && !self.data.first_run_complete {
             self.redate_setup_deeds();
         }
@@ -906,6 +942,9 @@ impl AppState {
             mark.map(|mark| MarkEntry::new(mark, self.today)),
             crate::platform::change_time(),
         );
+        if self.viewing < self.today {
+            self.invalidate_kept_days();
+        }
     }
 
     fn record_upsert(&mut self, id: DeedId) {
@@ -949,6 +988,7 @@ impl AppState {
     }
 
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        self.invalidate_kept_days();
         self.data.last_deed_id = new_id.0;
         if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == old_id) {
             deed.id = new_id;
@@ -1072,8 +1112,15 @@ impl AppState {
                 merged
                     .cleared_marks
                     .retain(|(id, _), _| live_ids.contains(id));
+                let history_changed = merged.marks != self.data.marks
+                    || merged.day_notes != self.data.day_notes
+                    || merged.deeds != self.data.deeds
+                    || merged.settings.calendar != self.data.settings.calendar;
                 match store.save(&merged) {
                     Ok(()) => {
+                        if history_changed {
+                            self.invalidate_kept_days();
+                        }
                         self.data = merged;
                         self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
@@ -1107,12 +1154,14 @@ impl AppState {
                 self.apply_deed_changes(&mut merged);
                 if merged == stored {
                     self.data = stored;
+                    self.invalidate_kept_days();
                     self.save_status = SaveStatus::Saved;
                     self.deed_changes.clear();
                     self.pending_settings = PendingSettings::default();
                     self.sets_dirty = false;
                 } else {
                     self.data = merged;
+                    self.invalidate_kept_days();
                     self.save_to(store);
                 }
             }
@@ -1215,6 +1264,58 @@ mod tests {
         app.dismiss_milestone(7);
         app.save_to(&store);
         assert_eq!(started(&store)?.milestone_notice(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn milestone_count_reuses_today_cache_and_rechecks_changed_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        for number in 20..=26 {
+            let day = WerdyDay::new(2026, 10, number)?;
+            for deed in &data.deeds {
+                if number != 26 || deed.id != DeedId(1) {
+                    data.marks.insert(
+                        (deed.id, day),
+                        werdy_core::MarkEntry::new(Mark::Missed, day),
+                    );
+                }
+            }
+        }
+        store.save(&data)?;
+        let mut app = started(&store)?;
+        assert_eq!(app.milestone_notice(), None);
+        assert_eq!(*app.kept_days_cache.borrow(), Some((today()?, 6)));
+        app.tap(DeedId(1), Tap::Done);
+        assert_eq!(*app.kept_days_cache.borrow(), Some((today()?, 6)));
+        app.show_previous_day();
+        app.tap(DeedId(1), Tap::Missed);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.save_day_note(app.viewing, "Rested", ExcuseCredit::None)?;
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.delete_day_note(app.viewing);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.update_today(app.today.next()?);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn dismissed_milestones_skip_kept_day_count() -> TestResult {
+        let store = MemoryStore::default();
+        let mut app = started(&store)?;
+        app.data.dismissed_milestones.extend([7, 30, 100]);
+        assert_eq!(app.milestone_notice(), None);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
         Ok(())
     }
 

@@ -41,29 +41,34 @@ pub fn Sheet() -> Element {
         if last_scroll_day() == Some(day) {
             return;
         }
+        if !app.is_today() {
+            last_scroll_day.set(Some(day));
+            return;
+        }
+        if !should_scroll_to_slot(app.is_today(), welcome, milestone.is_some()) {
+            return;
+        }
         last_scroll_day.set(Some(day));
-        if app.is_today() {
-            let (hour, minute) = platform::local_time();
-            let wanted = state::current_slot(hour, minute);
-            let slots = app.sheet().slots;
-            let order = &app.slot_order;
-            let target = slots
-                .iter()
-                .find(|slot| slot.slot.0 == wanted)
-                .or_else(|| {
-                    let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
-                    slots.iter().find(|slot| {
-                        order
-                            .iter()
-                            .position(|key| key == &slot.slot)
-                            .unwrap_or(order.len())
-                            >= wanted_index
-                    })
+        let (hour, minute) = platform::local_time();
+        let wanted = state::current_slot(hour, minute);
+        let slots = app.sheet().slots;
+        let order = &app.slot_order;
+        let target = slots
+            .iter()
+            .find(|slot| slot.slot.0 == wanted)
+            .or_else(|| {
+                let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
+                slots.iter().find(|slot| {
+                    order
+                        .iter()
+                        .position(|key| key == &slot.slot)
+                        .unwrap_or(order.len())
+                        >= wanted_index
                 })
-                .or_else(|| slots.last());
-            if let Some(slot) = target {
-                platform::scroll_slot(&slot.slot.0);
-            }
+            })
+            .or_else(|| slots.last());
+        if let Some(slot) = target {
+            platform::scroll_slot(&slot.slot.0);
         }
     });
 
@@ -85,7 +90,7 @@ pub fn Sheet() -> Element {
             }
             if let Some(level) = milestone {
                 div { class: "sheet-notice sheet-milestone",
-                    p { {i18n.t_with("sheet-milestone", &[("days", FluentValue::from(i18n.num(level)))])} }
+                    p { {i18n.t_with("sheet-milestone", &[("days", FluentValue::from(level))])} }
                     button { class: "notice-dismiss", aria_label: i18n.t("sheet-dismiss-milestone"),
                         onclick: move |_| actions.change(|app| app.dismiss_milestone(level)),
                         {i18n.t("sheet-dismiss-milestone")}
@@ -100,6 +105,10 @@ pub fn Sheet() -> Element {
             }
         }
     }
+}
+
+fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool {
+    is_today && !welcome && !milestone
 }
 
 /// One time slot. A fully done slot folds into one line until it is opened.
@@ -180,5 +189,19 @@ fn DeedRow(row: SheetRow) -> Element {
                 MarkButton { deed_id, tap: Tap::Missed, mark }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_scroll_to_slot;
+
+    #[test]
+    fn notices_keep_sheet_at_the_top_until_they_are_gone() {
+        assert!(!should_scroll_to_slot(true, true, false));
+        assert!(!should_scroll_to_slot(true, false, true));
+        assert!(!should_scroll_to_slot(true, true, true));
+        assert!(!should_scroll_to_slot(false, false, false));
+        assert!(should_scroll_to_slot(true, false, false));
     }
 }

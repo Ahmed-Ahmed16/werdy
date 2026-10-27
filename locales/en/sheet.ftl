@@ -71,7 +71,15 @@ note-delete = Delete note
 sheet-welcome-back = Welcome back. Pick up where you are today.
 sheet-saying-source = Source: { $source }
 sheet-saying = { $text }
-sheet-milestone = You kept a record on { $days } days. Thank you for coming back to it.
+sheet-milestone =
+    { $days ->
+        [one] You kept a record on { $days } day. Thank you for coming back to it.
+       *[other] You kept a record on { $days } days. Thank you for coming back to it.
+    }
 sheet-dismiss-milestone = Dismiss
-consistency-line = Done on { $done } of the last { $due } due days.
+consistency-line =
+    { $due ->
+        [one] Done on { $done } of the last { $due } due day.
+       *[other] Done on { $done } of the last { $due } due days.
+    }
 consistency-no-due = No finished due days yet.

@@ -50,8 +50,8 @@ impl I18n {
         self.t_with(
             "consistency-line",
             &[
-                ("done", FluentValue::from(self.num(value.done))),
-                ("due", FluentValue::from(self.num(value.of))),
+                ("done", FluentValue::from(value.done)),
+                ("due", FluentValue::from(value.of)),
             ],
         )
     }
@@ -171,6 +171,7 @@ mod tests {
     use werdy_store::Digits;
 
     use super::{I18n, Language, Texts};
+    use werdy_core::Consistency;
 
     #[test]
     fn fluent_arguments_keep_name_digits_and_format_number_digits() {
@@ -187,6 +188,53 @@ mod tests {
             let due = i18n.t_with("reports-cell-due", &[("due", FluentValue::from(2))]);
             assert!(name.contains("Read 2 pages"));
             assert!(due.contains(count));
+        }
+    }
+
+    #[test]
+    fn notice_and_consistency_counts_use_language_plural_forms() {
+        let texts = Rc::new(Texts::load());
+        let cases = [
+            (1, "يوم واحد", "يوم مستحق", "1 due day"),
+            (2, "يومين", "يومين مستحقين", "2 due days"),
+            (7, "7 أيام", "7 أيام مستحقة", "7 due days"),
+            (11, "11 يومًا", "11 يومًا مستحقًا", "11 due days"),
+            (30, "30 يومًا", "30 يومًا مستحقًا", "30 due days"),
+            (100, "100 يوم", "100 يوم مستحق", "100 due days"),
+        ];
+        for language in [Language::Arabic, Language::English] {
+            for digits in [Digits::Western, Digits::ArabicIndic] {
+                let i18n = I18n {
+                    texts: texts.clone(),
+                    language,
+                    digits,
+                };
+                for (days, arabic_milestone, arabic_due, english_due) in cases {
+                    let milestone =
+                        i18n.t_with("sheet-milestone", &[("days", FluentValue::from(days))]);
+                    let consistency = i18n.consistency_line(Consistency {
+                        done: 0,
+                        of: days as usize,
+                    });
+                    let milestone = milestone.replace(['\u{2068}', '\u{2069}'], "");
+                    let consistency = consistency.replace(['\u{2068}', '\u{2069}'], "");
+                    match language {
+                        Language::Arabic => {
+                            let expected_milestone =
+                                crate::i18n::format_digits(arabic_milestone, digits);
+                            let expected_due = crate::i18n::format_digits(arabic_due, digits);
+                            assert!(milestone.contains(&expected_milestone), "{milestone}");
+                            assert!(consistency.contains(&expected_due), "{consistency}");
+                        }
+                        Language::English => {
+                            let expected = crate::i18n::format_digits(english_due, digits);
+                            assert!(consistency.contains(&expected), "{consistency}");
+                            let count = crate::i18n::format_digits(&days.to_string(), digits);
+                            assert!(milestone.contains(&count), "{milestone}");
+                        }
+                    }
+                }
+            }
         }
     }
 }
