@@ -165,6 +165,8 @@ impl Default for Settings {
 /// Everything the app keeps for one owner, in the shapes core works with.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OwnerData {
+    /// Demo seed identity. Normal records leave this empty.
+    pub demo_generation: Option<String>,
     /// Setup is complete. Older saved records count as complete.
     pub first_run_complete: bool,
     /// Set keys currently chosen by the owner.
@@ -387,6 +389,8 @@ fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
 #[derive(Serialize, Deserialize)]
 struct DataFile<S = Settings> {
     schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    demo_generation: Option<String>,
     #[serde(default = "legacy_complete")]
     first_run_complete: bool,
     #[serde(default)]
@@ -453,6 +457,7 @@ impl<S> DataFile<S> {
     fn map_settings<T>(self, convert: impl FnOnce(S) -> T) -> DataFile<T> {
         DataFile {
             schema_version: self.schema_version,
+            demo_generation: self.demo_generation,
             first_run_complete: self.first_run_complete,
             chosen_sets: self.chosen_sets,
             starter_keys: self.starter_keys,
@@ -517,6 +522,7 @@ struct VersionProbe {
 pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
     let file = DataFile {
         schema_version: SCHEMA_VERSION,
+        demo_generation: data.demo_generation.clone(),
         first_run_complete: data.first_run_complete,
         chosen_sets: data.chosen_sets.iter().cloned().collect(),
         starter_keys: data
@@ -693,6 +699,7 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         return Err(StoreError::DuplicateEntry);
     }
     Ok(OwnerData {
+        demo_generation: file.demo_generation,
         first_run_complete: file.first_run_complete,
         chosen_sets,
         starter_keys,

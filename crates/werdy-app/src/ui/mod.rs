@@ -44,7 +44,10 @@ fn start_app_state(
     let seed_failed = mode == platform::DataMode::Demo
         && !matches!(store.load(), Ok(Some(_)))
         && demo::demo_records(today)
-            .and_then(|data| store.save(&data).map_err(Into::into))
+            .and_then(|mut demo_data| {
+                demo_data.demo_generation = Some(platform::demo_generation());
+                store.save(&demo_data).map_err(Into::into)
+            })
             .is_err();
     let mut state = AppState::start(store, today, starter::slot_order());
     if let Ok(day) = platform::today_with_settings(&state.data.settings) {
@@ -59,9 +62,70 @@ fn start_app_state(
 
 fn reset_demo(store: &dyn werdy_store::Store) -> Result<AppState, String> {
     let today = demo_today()?;
-    let records = demo::demo_records(today).map_err(|error| error.to_string())?;
+    let mut records = demo::demo_records(today).map_err(|error| error.to_string())?;
+    records.demo_generation = Some(platform::demo_generation());
     store.save(&records).map_err(|error| error.to_string())?;
     Ok(AppState::start(store, today, starter::slot_order()))
+}
+
+#[cfg(test)]
+mod tests {
+    use werdy_core::Mark;
+    use werdy_store::{MemoryStore, Store};
+
+    use super::{reset_demo, start_app_state};
+    use crate::platform::DataMode;
+    use crate::state::Tap;
+
+    #[test]
+    fn reset_demo_replaces_stale_tabs_without_restoring_marks_or_deleted_deeds()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryStore::default();
+        let mut first = start_app_state(DataMode::Demo, &store)?;
+        let mut second = start_app_state(DataMode::Demo, &store)?;
+        assert!(second.data == first.data);
+        let marked = first.data.deeds[0].id;
+        let deleted = first.data.deeds[1].id;
+        first.tap(marked, Tap::Done);
+        first.delete_deed_confirmed(deleted, true)?;
+        first.save_to(&store);
+        assert_eq!(first.mark(marked), Some(Mark::Done));
+
+        second = reset_demo(&store)?;
+        let fresh = store.load()?.ok_or("missing demo records")?;
+        first.reload_from(&store);
+        second.reload_from(&store);
+
+        assert!(first.data == fresh, "stale tab kept old demo data");
+        assert!(second.data == fresh, "reset tab changed fresh demo data");
+        assert!(
+            store.load()?.as_ref() == Some(&fresh),
+            "store changed after reload"
+        );
+        assert_eq!(first.mark(marked), None);
+        assert!(fresh.deeds.iter().any(|deed| deed.id == deleted));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_demo_save_after_reset_keeps_fresh_seed() -> Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryStore::default();
+        let mut stale = start_app_state(DataMode::Demo, &store)?;
+        let deed_id = stale.data.deeds[0].id;
+        stale.tap(deed_id, Tap::Done);
+        stale.save_to(&store);
+
+        let fresh = reset_demo(&store)?;
+        stale.save_to(&store);
+
+        assert!(stale.data == fresh.data, "stale save kept old demo data");
+        assert!(
+            store.load()?.as_ref() == Some(&fresh.data),
+            "stale save changed demo store"
+        );
+        assert_eq!(stale.mark(deed_id), None);
+        Ok(())
+    }
 }
 
 /// Root component: loads texts and data, then shows the shell.

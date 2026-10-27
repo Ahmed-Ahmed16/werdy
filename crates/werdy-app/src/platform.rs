@@ -317,6 +317,21 @@ pub fn change_time() -> u64 {
     }
 }
 
+/// Distinguishes a reset from stale browser tabs that still hold old demo marks.
+pub fn demo_generation() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        format!("{}-{}", change_time(), js_sys::Math::random())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        format!("{}-{}", change_time(), NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 /// Local hour and minute for the temporary time slot boundaries.
 pub fn local_time() -> (u8, u8) {
     #[cfg(target_arch = "wasm32")]
