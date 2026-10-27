@@ -112,7 +112,7 @@ fn raw_colours(css: &str) -> Vec<String> {
 #[test]
 fn every_colour_token_has_its_light_and_dark_value_in_css() {
     let tokens = colour_tokens();
-    assert_eq!(tokens.len(), 19, "colour table rows in tokens.md");
+    assert_eq!(tokens.len(), 20, "colour table rows in tokens.md");
     for (name, light, dark) in tokens {
         let light_rule = format!("--{name}: {light};");
         let dark_rule = format!("--{name}: {dark};");
@@ -140,4 +140,52 @@ fn the_raw_colour_check_finds_hex_and_functions() {
         raw_colours("a { color: #fff; b: rgb(0 0 0); c: #21 }"),
         ["#fff", "rgb("]
     );
+}
+
+#[test]
+fn responsive_rules_cover_phone_tablet_and_wide_web() {
+    assert!(APP_CSS.contains("@media (min-width: 600px)"));
+    assert!(APP_CSS.contains("@media (min-width: 840px)"));
+    assert!(APP_CSS.contains("@media (min-width: 1280px)"));
+    assert!(APP_CSS.contains("grid-template-columns: minmax(0, 1fr)"));
+    assert!(APP_CSS.contains(".rail"));
+    assert!(APP_CSS.contains("position: sticky"));
+    assert!(APP_CSS.contains("max-width: var(--content-max)"));
+    for selector in [
+        ".werdy-root",
+        ".panes",
+        ".report-panes",
+        ".page-content",
+        ".onboarding-content",
+    ] {
+        for block in APP_CSS.split(&format!("{selector} {{")).skip(1) {
+            let declarations = block.split('}').next().unwrap_or_default();
+            assert!(
+                !declarations.lines().any(|line| {
+                    let rule = line.trim();
+                    rule.starts_with("width:") && rule.ends_with("px;")
+                }),
+                "{selector} must stay fluid"
+            );
+        }
+    }
+}
+
+#[test]
+fn interactive_controls_keep_touch_size_and_visible_focus() {
+    assert!(TOKENS_CSS.contains("--touch-min: 48px;"));
+    assert!(APP_CSS.contains("button:focus-visible"));
+    assert!(APP_CSS.contains("input:focus-visible"));
+    assert!(APP_CSS.contains("select:focus-visible"));
+    assert!(APP_CSS.contains("textarea:focus-visible"));
+    assert!(APP_CSS.contains("a:focus-visible"));
+    for selector in [
+        ".mark-button",
+        ".step-button",
+        ".rail-item",
+        ".bottom-item",
+        ".period-chip",
+    ] {
+        assert!(APP_CSS.contains(selector), "missing {selector}");
+    }
 }

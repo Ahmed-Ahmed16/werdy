@@ -1,6 +1,6 @@
 /*
  * Layout and components. Only token variables from tokens.css, never raw
- * colours (a test checks this). Reports split into two panes from 600px.
+ * colours (a test checks this). Reports split into two panes from 840px.
  * The side rail appears from 840px (ADR 0022).
  */
 
@@ -30,9 +30,13 @@ button:disabled {
   opacity: 0.4;
 }
 
-button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: var(--stroke-strong) solid var(--primary);
+  outline-offset: var(--stroke-strong);
 }
 
 .icon {
@@ -78,8 +82,13 @@ button:focus-visible {
   grid-area: status;
 }
 
-.today-card {
+.sheet-aside {
   grid-area: summary;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: var(--gap-l);
 }
 
 .sheet {
@@ -95,8 +104,13 @@ button:focus-visible {
     display: flex;
     flex-direction: column;
     gap: var(--gap-s);
-    width: 96px;
+    width: var(--rail-width);
     flex-shrink: 0;
+    align-self: flex-start;
+    position: sticky;
+    top: 0;
+    block-size: 100dvh;
+    overflow-y: auto;
     padding: var(--gap-l) var(--gap-s);
     background: var(--surface);
     border-inline-end: 1px solid var(--border);
@@ -109,11 +123,15 @@ button:focus-visible {
       "status status"
       "sheet summary";
   }
+}
 
-  .today-card {
-    align-self: start;
-    position: sticky;
-    top: var(--page-gutter);
+@media (min-width: 1280px) {
+  .panes,
+  .report-panes,
+  .page-content {
+    width: 100%;
+    max-width: var(--content-max);
+    margin-inline: auto;
   }
 }
 
@@ -191,7 +209,7 @@ button:focus-visible {
 }
 
 .note-dialog::backdrop {
-  background: color-mix(in srgb, var(--text) var(--overlay-opacity), transparent);
+  background: color-mix(in srgb, var(--overlay) var(--overlay-opacity), transparent);
 }
 
 .note-dialog {
@@ -403,6 +421,34 @@ button:focus-visible {
   margin: var(--gap-m) 0 0;
   font-size: var(--size-caption);
   color: var(--text-muted);
+}
+
+.week-card {
+  display: none;
+}
+
+.week-card .report-days {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  overflow-x: visible;
+}
+
+.week-card .report-day-cell {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.week-card .report-day-cell small {
+  display: none;
+}
+
+.week-card .report-link {
+  width: 100%;
+}
+
+@media (min-width: 840px) {
+  .week-card {
+    display: block;
+  }
 }
 
 /* Sheet */
@@ -841,7 +887,7 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 840px) {
   .report-layout {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   }

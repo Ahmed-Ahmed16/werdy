@@ -198,4 +198,12 @@ mod tests {
             assert!(add_prayer.contains(&texts.get(language, "set-five-prayers", &[])));
         }
     }
+
+    #[test]
+    fn starter_set_contents_use_spaced_language_separator() {
+        let texts = Texts::load();
+        for (language, separator) in [(Language::Arabic, "، "), (Language::English, ", ")] {
+            assert_eq!(texts.get(language, "sets-separator", &[]), separator);
+        }
+    }
 }

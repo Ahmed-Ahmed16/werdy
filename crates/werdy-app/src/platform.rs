@@ -280,6 +280,25 @@ pub fn scroll_slot(slot: &str) {
     let _ = slot;
 }
 
+/// Restores the top after a new screen has rendered its content.
+pub fn scroll_to_top() {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(window) = web_sys::window() {
+        use wasm_bindgen::JsCast;
+
+        let scrolling_window = window.clone();
+        let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
+            scrolling_window.scroll_to_with_x_and_y(0.0, 0.0);
+        });
+        if window
+            .request_animation_frame(callback.unchecked_ref())
+            .is_err()
+        {
+            window.scroll_to_with_x_and_y(0.0, 0.0);
+        }
+    }
+}
+
 /// Opens the browser's modal dialog and puts focus on its note field.
 pub fn open_note_dialog() {
     #[cfg(target_arch = "wasm32")]

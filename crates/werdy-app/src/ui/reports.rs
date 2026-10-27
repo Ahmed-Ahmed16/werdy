@@ -204,7 +204,7 @@ fn TodayLink() -> Element {
 }
 
 #[component]
-fn Series(
+pub(super) fn Series(
     entries: Vec<SeriesEntry>,
     noted_days: BTreeSet<WerdyDay>,
     late_noted_days: BTreeSet<WerdyDay>,

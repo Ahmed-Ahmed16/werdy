@@ -68,3 +68,5 @@ note-date-error = لا يمكن تغيير ملاحظة هذا اليوم.
 note-save = حفظ
 note-cancel = إلغاء
 note-delete = حذف الملاحظة
+summary-last-week = آخر 7 أيام
+summary-open-reports = التقرير كاملًا
