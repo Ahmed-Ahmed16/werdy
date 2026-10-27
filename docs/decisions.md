@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0034 (2026-10-28): Demo data behind ?demo
+Adding `?demo` opens a complete sample sheet with history in a separate browser storage key. The app does not read, write or delete real records in this mode. The sample is deterministic and relative to the current werdy day. Why: testers and people seeing werdy for the first time need reports and history to inspect without setting up months of records. Approved by the owner on 2026-10-28. Revisit: if testers need more sample cases.
+
 ## 0031 (2026-10-27): GitHub Pages hosts the web app
 The web app will be served from this repo at `https://ahmed-ahmed16.github.io/werdy/`. The release build uses `werdy` as its base path, and a service worker keeps the app shell for offline visits. Why: GitHub Pages is free, serves over HTTPS, needs no server, and keeps the site with its source. The app stores marks locally first. Cost: Pages cannot run server code for sign in or sync, and Pages settings must use GitHub Actions as the deployment source. Revisit: when sign in and sync change hosting needs, or when the owner adds a custom domain.
 

@@ -30,6 +30,8 @@ Run the checks with `cargo test --workspace`.
 
 Live address: [ahmed-ahmed16.github.io/werdy/](https://ahmed-ahmed16.github.io/werdy/) after the first deployment from `main`. In the GitHub repo settings, select GitHub Actions as the Pages source. Open the site once while online; later visits can load the app shell offline. Marks remain on this device.
 
+Add `?demo` to the address to open werdy with sample history in separate storage.
+
 On Android, open the address in Chrome, then use the browser menu and choose **Install app** or **Add to Home screen**. On iPhone, open it in Safari, tap **Share**, then **Add to Home Screen**.
 
 ## Why

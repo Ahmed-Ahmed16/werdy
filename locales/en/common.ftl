@@ -1,6 +1,11 @@
 ## Shared text used on more than one screen.
 
 app-name = werdy
+demo-banner = Demo data. Your own records are not touched.
+demo-reset = Reset demo
+demo-leave = Leave demo
+demo-note-half = Travel day.
+demo-note-full = Illness day.
 
 nav-sheet = Today
 nav-reports = Reports

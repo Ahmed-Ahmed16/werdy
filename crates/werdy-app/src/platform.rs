@@ -8,15 +8,78 @@ use werdy_core::{Error, WerdyDay};
 use werdy_store::Store;
 use werdy_store::{Location, PrayerMethod, Settings};
 
-/// Opens the store for this platform: browser localStorage on the web, and an
-/// in memory store elsewhere until a file or SQLite store exists.
-pub fn open_store() -> Rc<dyn Store> {
+#[cfg(any(test, target_arch = "wasm32"))]
+const RECORDS_KEY: &str = "werdy.records";
+#[cfg(any(test, target_arch = "wasm32"))]
+const DEMO_RECORDS_KEY: &str = "werdy.demo.records";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataMode {
+    Normal,
+    Demo,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+impl DataMode {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Normal => RECORDS_KEY,
+            Self::Demo => DEMO_RECORDS_KEY,
+        }
+    }
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn mode_from_query(query: &str) -> DataMode {
+    if query
+        .trim_start_matches('?')
+        .split('&')
+        .any(|part| part.split('=').next() == Some("demo"))
+    {
+        DataMode::Demo
+    } else {
+        DataMode::Normal
+    }
+}
+
+/// Reads the query once when the root component starts.
+pub fn data_mode() -> DataMode {
     #[cfg(target_arch = "wasm32")]
     {
-        Rc::new(web::LocalStore)
+        web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .map_or(DataMode::Normal, |query| mode_from_query(&query))
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
+        DataMode::Normal
+    }
+}
+
+/// Current app path without the demo query.
+pub fn app_address() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|window| window.location().pathname().ok())
+            .unwrap_or_else(|| "/".to_owned())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        "/".to_owned()
+    }
+}
+
+/// Opens the store for this platform: browser localStorage on the web, and an
+/// in memory store elsewhere until a file or SQLite store exists.
+pub fn open_store(mode: DataMode) -> Rc<dyn Store> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Rc::new(web::LocalStore { key: mode.key() })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = mode;
         Rc::new(werdy_store::MemoryStore::default())
     }
 }
@@ -380,17 +443,18 @@ pub fn wide_layout() -> bool {
 
 /// Watches for a new day, saved changes, and viewport resize.
 pub fn watch_changes(
+    mode: DataMode,
     on_clock: impl FnMut() + 'static,
     on_storage: impl FnMut() + 'static,
     on_resize: impl FnMut() + 'static,
 ) -> WatchHandle {
     #[cfg(target_arch = "wasm32")]
     {
-        web::watch_changes(on_clock, on_storage, on_resize)
+        web::watch_changes(mode.key(), on_clock, on_storage, on_resize)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (on_clock, on_storage, on_resize);
+        let _ = (mode, on_clock, on_storage, on_resize);
         WatchHandle
     }
 }
@@ -400,6 +464,24 @@ mod tests {
     use werdy_calendar::{Date, Method, Place, fajr};
     use werdy_core::WerdyDay;
     use werdy_store::{Location, PrayerMethod, Settings};
+
+    #[test]
+    fn demo_query_selects_only_demo_records_key() {
+        assert_eq!(super::mode_from_query("?demo").key(), "werdy.demo.records");
+        assert_eq!(
+            super::mode_from_query("?demo=1").key(),
+            "werdy.demo.records"
+        );
+        assert_eq!(
+            super::mode_from_query("?other=1&demo=").key(),
+            "werdy.demo.records"
+        );
+        assert_eq!(
+            super::mode_from_query("?demography=1").key(),
+            "werdy.records"
+        );
+        assert_eq!(super::mode_from_query("").key(), "werdy.records");
+    }
 
     #[test]
     fn week_card_starts_at_expanded_breakpoint() {
@@ -526,9 +608,6 @@ mod web {
     use wasm_bindgen::{JsCast, closure::Closure};
     use werdy_store::{OwnerData, Store, StoreError, from_json, to_json};
 
-    /// Key under which the records live in localStorage.
-    const KEY: &str = "werdy.records";
-
     pub struct WatchHandle {
         window: Option<web_sys::Window>,
         document: Option<web_sys::Document>,
@@ -568,6 +647,7 @@ mod web {
     }
 
     pub fn watch_changes(
+        key: &'static str,
         on_clock: impl FnMut() + 'static,
         mut on_storage: impl FnMut() + 'static,
         mut on_resize: impl FnMut() + 'static,
@@ -578,7 +658,7 @@ mod web {
             Box::new(move |_: web_sys::Event| (clock_event.borrow_mut())()) as Box<dyn FnMut(_)>,
         );
         let storage = Closure::wrap(Box::new(move |event: web_sys::StorageEvent| {
-            if event.key().as_deref() == Some(KEY) {
+            if event.key().as_deref() == Some(key) {
                 on_storage();
             }
         }) as Box<dyn FnMut(_)>);
@@ -619,7 +699,9 @@ mod web {
     }
 
     /// Store backed by the browser's localStorage.
-    pub struct LocalStore;
+    pub struct LocalStore {
+        pub key: &'static str,
+    }
 
     fn storage() -> Result<web_sys::Storage, StoreError> {
         web_sys::window()
@@ -632,14 +714,14 @@ mod web {
     impl Store for LocalStore {
         fn load(&self) -> Result<Option<OwnerData>, StoreError> {
             let text = storage()?
-                .get_item(KEY)
+                .get_item(self.key)
                 .map_err(|error| StoreError::Backend(format!("{error:?}")))?;
             text.as_deref().map(from_json).transpose()
         }
 
         fn save(&self, data: &OwnerData) -> Result<(), StoreError> {
             storage()?
-                .set_item(KEY, &to_json(data)?)
+                .set_item(self.key, &to_json(data)?)
                 .map_err(|error| StoreError::Backend(format!("{error:?}")))
         }
     }
