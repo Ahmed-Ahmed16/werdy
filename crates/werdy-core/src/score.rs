@@ -1,0 +1,364 @@
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+
+use crate::mark::{compare_rationals, gcd};
+use crate::{CalendarSettings, DayNote, Deed, DeedId, Error, Fraction, MarkEntry, WerdyDay};
+
+/// Owner's deeds, marks, and day notes used by a score.
+pub struct OwnerRecords<'a> {
+    /// Deeds and their dated rules.
+    pub deeds: &'a [Deed],
+    /// Marks keyed by deed and werdy day.
+    pub marks: &'a BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    /// Day notes keyed by werdy day.
+    pub day_notes: &'a BTreeMap<WerdyDay, DayNote>,
+    /// Calendar settings, such as the Hijri offset.
+    pub calendar: CalendarSettings,
+}
+
+/// Sum of deed values as a reduced exact fraction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::ScoreValueData"))]
+pub struct ScoreValue {
+    numerator: u128,
+    denominator: u128,
+}
+
+impl Default for ScoreValue {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+impl Ord for ScoreValue {
+    fn cmp(&self, other: &Self) -> Ordering {
+        compare_rationals(
+            self.numerator,
+            self.denominator,
+            other.numerator,
+            other.denominator,
+        )
+    }
+}
+
+impl PartialOrd for ScoreValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl ScoreValue {
+    /// Creates a checked exact score.
+    pub fn from_ratio(numerator: u128, denominator: u128) -> Result<Self, Error> {
+        if denominator == 0 {
+            return Err(Error::InvalidScoreValue);
+        }
+        let divisor = gcd(numerator, denominator);
+        Ok(Self {
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+        })
+    }
+
+    /// Zero earned value.
+    pub const ZERO: Self = Self {
+        numerator: 0,
+        denominator: 1,
+    };
+
+    /// Returns the exact numerator.
+    pub fn numerator(self) -> u128 {
+        self.numerator
+    }
+
+    /// Returns the exact denominator.
+    pub fn denominator(self) -> u128 {
+        self.denominator
+    }
+
+    /// Returns an approximate value for display.
+    pub fn as_f64(self) -> f64 {
+        self.numerator as f64 / self.denominator as f64
+    }
+
+    pub(crate) fn add_fraction(&mut self, value: Fraction) -> Result<(), Error> {
+        let shared = gcd(self.denominator, value.denominator());
+        let left_scale = value.denominator() / shared;
+        let right_scale = self.denominator / shared;
+        if let Some((numerator, denominator)) = self
+            .numerator
+            .checked_mul(left_scale)
+            .zip(value.numerator().checked_mul(right_scale))
+            .and_then(|(left, right)| left.checked_add(right))
+            .zip(self.denominator.checked_mul(left_scale))
+        {
+            let divisor = gcd(numerator, denominator);
+            self.numerator = numerator / divisor;
+            self.denominator = denominator / divisor;
+            return Ok(());
+        }
+
+        // Reduction can make a sum fit even when its products need more than 128 bits.
+        let numerator = Wide::multiply(self.numerator, left_scale)
+            .add(Wide::multiply(value.numerator(), right_scale))?;
+        let denominator = Wide::multiply(self.denominator, left_scale);
+        let divisor = gcd(numerator.div_rem(shared).1, shared);
+        let reduced_numerator = numerator.div_rem(divisor).0.ok_or(Error::ScoreOverflow)?;
+        let reduced_denominator = denominator.div_rem(divisor).0.ok_or(Error::ScoreOverflow)?;
+        self.numerator = reduced_numerator;
+        self.denominator = reduced_denominator;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Wide {
+    high: u128,
+    low: u128,
+}
+
+impl Wide {
+    fn multiply(left: u128, right: u128) -> Self {
+        let left_parts = [left as u64, (left >> 64) as u64];
+        let right_parts = [right as u64, (right >> 64) as u64];
+        let mut parts = [0u64; 4];
+        for (left_index, left_part) in left_parts.into_iter().enumerate() {
+            let mut carry = 0u128;
+            for (right_index, right_part) in right_parts.into_iter().enumerate() {
+                let index = left_index + right_index;
+                let product = u128::from(left_part) * u128::from(right_part)
+                    + u128::from(parts[index])
+                    + carry;
+                parts[index] = product as u64;
+                carry = product >> 64;
+            }
+            parts[left_index + 2] = carry as u64;
+        }
+        Self {
+            high: (u128::from(parts[3]) << 64) | u128::from(parts[2]),
+            low: (u128::from(parts[1]) << 64) | u128::from(parts[0]),
+        }
+    }
+
+    fn add(self, other: Self) -> Result<Self, Error> {
+        let (low, carry) = self.low.overflowing_add(other.low);
+        let (high, overflow) = self.high.overflowing_add(other.high);
+        let (high, carry_overflow) = high.overflowing_add(u128::from(carry));
+        if overflow || carry_overflow {
+            return Err(Error::ScoreOverflow);
+        }
+        Ok(Self { high, low })
+    }
+
+    fn div_rem(self, divisor: u128) -> (Option<u128>, u128) {
+        let mut quotient = 0u128;
+        let mut remainder = 0u128;
+        let mut quotient_overflow = false;
+        for bit in (0..256).rev() {
+            let input_bit = if bit >= 128 {
+                (self.high >> (bit - 128)) & 1
+            } else {
+                (self.low >> bit) & 1
+            };
+            let carry = remainder >> 127 != 0;
+            remainder = (remainder << 1) | input_bit;
+            if carry || remainder >= divisor {
+                remainder = remainder.wrapping_sub(divisor);
+                if bit >= 128 {
+                    quotient_overflow = true;
+                } else {
+                    quotient |= 1u128 << bit;
+                }
+            }
+        }
+        ((!quotient_overflow).then_some(quotient), remainder)
+    }
+}
+
+/// Total earned value, due deed count, and rounded percent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Score {
+    /// Sum of mark values after any day credit for due deeds.
+    pub earned: ScoreValue,
+    /// Number of due deeds across included finished days.
+    pub due: usize,
+    /// Rounded percent, or none when no deed was due.
+    pub percent: Option<u8>,
+}
+
+/// Scores due deeds with any day credit on supplied days before today.
+/// Today and later days are skipped.
+/// Returns `ScoreOverflow` if the exact total or due count cannot fit.
+pub fn score(
+    records: &OwnerRecords<'_>,
+    days: &[WerdyDay],
+    today: WerdyDay,
+) -> Result<Score, Error> {
+    let mut earned = ScoreValue::ZERO;
+    let mut due = 0usize;
+    for day in days {
+        if *day >= today {
+            continue;
+        }
+        for deed in records.deeds {
+            if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
+                due = due.checked_add(1).ok_or(Error::ScoreOverflow)?;
+                earned.add_fraction(due_value(records, deed, *day, rule))?;
+            }
+        }
+    }
+    Ok(score_from_totals(earned, due))
+}
+
+pub(crate) fn due_value(
+    records: &OwnerRecords<'_>,
+    deed: &Deed,
+    day: WerdyDay,
+    rule: &crate::DeedRule,
+) -> Fraction {
+    let credit = records
+        .day_notes
+        .get(&day)
+        .map_or(Fraction::ZERO, |note| note.credit().exact_value());
+    let mark_value = records
+        .marks
+        .get(&(deed.id, day))
+        .map_or(Fraction::ZERO, |entry| entry.mark.exact_value(rule));
+    mark_value.max(credit)
+}
+
+pub(crate) fn score_from_totals(earned: ScoreValue, due: usize) -> Score {
+    Score {
+        earned,
+        due,
+        percent: (due > 0).then(|| rounded_percent(earned, due)),
+    }
+}
+
+/// Counts due deeds on one werdy day without a percent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TodaySummary {
+    /// Due deeds marked Done.
+    pub done: usize,
+    /// Due deeds marked Partial.
+    pub partial: usize,
+    /// Due deeds with no mark yet.
+    pub open: usize,
+    /// Due deeds with zero mark value, plus unmarked due deeds on a finished day.
+    pub missed: usize,
+}
+
+/// Counts marks and open deeds due today.
+pub fn today_summary(
+    deeds: &[Deed],
+    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    today: WerdyDay,
+    calendar: &CalendarSettings,
+) -> TodaySummary {
+    let mut summary = TodaySummary {
+        done: 0,
+        partial: 0,
+        open: 0,
+        missed: 0,
+    };
+    for deed in deeds {
+        let Some(rule) = deed.due_rule_on(today, calendar) else {
+            continue;
+        };
+        match marks.get(&(deed.id, today)).map(|entry| entry.mark) {
+            Some(mark) => match mark.exact_value(rule) {
+                Fraction::ZERO => summary.missed += 1,
+                Fraction::ONE => summary.done += 1,
+                _ => summary.partial += 1,
+            },
+            None => summary.open += 1,
+        }
+    }
+    summary
+}
+
+/// Counts due deeds on a finished day, when unmarked due deeds count as Missed.
+pub fn finished_day_summary(
+    deeds: &[Deed],
+    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    day: WerdyDay,
+    calendar: &CalendarSettings,
+) -> TodaySummary {
+    let mut summary = today_summary(deeds, marks, day, calendar);
+    summary.missed += summary.open;
+    summary.open = 0;
+    summary
+}
+
+fn rounded_percent(earned: ScoreValue, due: usize) -> u8 {
+    for percent in (1u8..=100).rev() {
+        let threshold = (u128::from(percent) * 2 - 1) * due as u128;
+        if compare_rationals(earned.numerator, earned.denominator, threshold, 200) != Ordering::Less
+        {
+            return percent;
+        }
+    }
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sum_reduces_after_intermediate_numerator_overflow() -> Result<(), Error> {
+        let denominator = u128::MAX - 1;
+        let partial = Fraction::from_ratio(denominator - 1, denominator)?;
+        let mut total = ScoreValue::ZERO;
+        total.add_fraction(partial)?;
+        total.add_fraction(partial)?;
+        assert_eq!(total.numerator(), denominator - 1);
+        assert_eq!(total.denominator(), denominator / 2);
+        Ok(())
+    }
+
+    #[test]
+    fn sum_reduces_after_intermediate_product_overflow() -> Result<(), Error> {
+        let denominator = u128::MAX - 1;
+        let mut total = ScoreValue {
+            numerator: 3,
+            denominator: 2,
+        };
+        total.add_fraction(Fraction::from_ratio(1, denominator)?)?;
+        let half_denominator = denominator / 2;
+        assert_eq!(
+            total.numerator(),
+            half_denominator + half_denominator.div_ceil(2)
+        );
+        assert_eq!(total.denominator(), denominator / 2);
+        Ok(())
+    }
+
+    #[test]
+    fn sum_reduces_after_intermediate_denominator_overflow() -> Result<(), Error> {
+        let left_half = u128::from(u64::MAX);
+        let right_half = left_half - 2;
+        let mut total = ScoreValue {
+            numerator: 1,
+            denominator: 2 * left_half,
+        };
+        total.add_fraction(Fraction::from_ratio(1, 2 * right_half)?)?;
+        assert_eq!(total.numerator(), (left_half + right_half) / 2);
+        assert_eq!(total.denominator(), left_half * right_half);
+        Ok(())
+    }
+
+    #[test]
+    fn sum_overflow_returns_error_without_changing_total() -> Result<(), Error> {
+        let mut total = ScoreValue::ZERO;
+        total.add_fraction(Fraction::from_ratio(1, u128::MAX)?)?;
+        let before = total;
+        assert_eq!(
+            total.add_fraction(Fraction::from_ratio(1, u128::MAX - 1)?),
+            Err(Error::ScoreOverflow)
+        );
+        assert_eq!(total, before);
+        Ok(())
+    }
+}
