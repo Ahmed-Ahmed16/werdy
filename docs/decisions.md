@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0029 (2026-10-27): Dioxus, web first, for the MVP
+The owner chose Dioxus 0.7 (all Rust) for the UI, and to ship the web build first so a usable MVP exists within days. The same Dioxus code later builds for Android and desktop. All logic stays in `werdy-core` (and saving in `werdy-store`); the UI crate holds no scoring. So if the Android sign in spike (#13) fails for Dioxus, only the UI crate moves to Tauri 2. Rejected: waiting for the spike before building any UI. Revisit: if the spike shows Dioxus cannot do Google sign in on Android.
+
 ## 0028 (2026-10-27): A day note with an optional excuse credit
 The owner can attach one free text note to any werdy day ("I was ill", "travelling"). With the note, the owner may choose an excuse credit for that day: none (the default, the day counts as usual), half, or full. The credit lifts every due deed on that day that is not Done to at least that value: Missed or unmarked becomes 0.5 or 1, a Partial keeps the higher of its own fraction and the credit, and Done stays 1. The day keeps its marks and shows a note sign in the sheet, the strip and reports, so a credit is never hidden. A note or credit added more than 2 days late carries the "added later" sign, as marks do (0021). The choice is the owner's conscience; werdy does not check it. Why: a sick person or traveller is rewarded for what they used to do (Bukhari 2996), and an owner who was ill should not see that day as a wall of red; an explicit, visible credit is clearer than leaving such days out. Later versions may add notes per category or per deed. Open: whether a watcher sees the note text or only the sign and the credit, `___`. Rejected: hiding excused days from reports (hides history), a fixed credit with no choice (too rigid). This adds scoring rule 6.
 

@@ -18,6 +18,8 @@ pub struct OwnerRecords<'a> {
 
 /// Sum of deed values as a reduced exact fraction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::ScoreValueData"))]
 pub struct ScoreValue {
     numerator: u128,
     denominator: u128,
@@ -47,6 +49,18 @@ impl PartialOrd for ScoreValue {
 }
 
 impl ScoreValue {
+    /// Creates a checked exact score.
+    pub fn from_ratio(numerator: u128, denominator: u128) -> Result<Self, Error> {
+        if denominator == 0 {
+            return Err(Error::InvalidScoreValue);
+        }
+        let divisor = gcd(numerator, denominator);
+        Ok(Self {
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+        })
+    }
+
     /// Zero earned value.
     pub const ZERO: Self = Self {
         numerator: 0,
@@ -222,7 +236,7 @@ pub(crate) fn score_from_totals(earned: ScoreValue, due: usize) -> Score {
     }
 }
 
-/// Counts due deeds on the current werdy day without a percent.
+/// Counts due deeds on one werdy day without a percent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TodaySummary {
     /// Due deeds marked Done.
@@ -231,7 +245,7 @@ pub struct TodaySummary {
     pub partial: usize,
     /// Due deeds with no mark yet.
     pub open: usize,
-    /// Due deeds marked Missed by the owner.
+    /// Due deeds with zero mark value, plus unmarked due deeds on a finished day.
     pub missed: usize,
 }
 
@@ -261,6 +275,19 @@ pub fn today_summary(
             None => summary.open += 1,
         }
     }
+    summary
+}
+
+/// Counts due deeds on a finished day, when unmarked due deeds count as Missed.
+pub fn finished_day_summary(
+    deeds: &[Deed],
+    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    day: WerdyDay,
+    calendar: &CalendarSettings,
+) -> TodaySummary {
+    let mut summary = today_summary(deeds, marks, day, calendar);
+    summary.missed += summary.open;
+    summary.open = 0;
     summary
 }
 

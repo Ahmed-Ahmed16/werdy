@@ -1,0 +1,9 @@
+{
+  "deeds": [
+    { "name_key": "starter-fajr-on-time", "slot": "fajr", "category": "prayer", "schedule": "every_day" },
+    { "name_key": "starter-dhuhr-on-time", "slot": "dhuhr", "category": "prayer", "schedule": "every_day" },
+    { "name_key": "starter-asr-on-time", "slot": "asr", "category": "prayer", "schedule": "every_day" },
+    { "name_key": "starter-maghrib-on-time", "slot": "maghrib", "category": "prayer", "schedule": "every_day" },
+    { "name_key": "starter-isha-on-time", "slot": "isha", "category": "prayer", "schedule": "every_day" }
+  ]
+}

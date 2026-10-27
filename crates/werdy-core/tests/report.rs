@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     Band, CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit,
-    Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, SeriesEntry, Weekday, WerdyDay,
-    build_report,
+    Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, SeriesEntry, SlotKey, Weekday,
+    WerdyDay, build_report,
 };
 
 fn day(month: u8, number: u8) -> Result<WerdyDay, Error> {
@@ -18,6 +18,7 @@ fn deed(id: u64, schedule: Schedule, category: &str, created_on: WerdyDay) -> De
             schedule,
             target: None,
             category: CategoryKey::new(category),
+            slot: SlotKey::new("any_time"),
         },
     )
 }
@@ -157,6 +158,7 @@ fn score_is_split_by_category() -> Result<(), Error> {
             schedule: Schedule::EveryDay,
             target: None,
             category: CategoryKey::new("work"),
+            slot: SlotKey::new("any_time"),
         },
     )?;
     let marks = BTreeMap::from([

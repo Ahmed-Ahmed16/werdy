@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Fraction, HijriRange, Mark,
-    MarkEntry, OwnerRecords, Period, Schedule, Score, ScoreValue, Target, Weekday, WerdyDay,
-    score as score_records,
+    MarkEntry, OwnerRecords, Period, Schedule, Score, ScoreValue, SlotKey, Target, Weekday,
+    WerdyDay, score as score_records,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -31,6 +31,7 @@ fn deed(id: u64, schedule: Schedule, created_on: WerdyDay) -> Deed {
             schedule,
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }
@@ -43,6 +44,7 @@ fn targeted_deed(id: u64, target: u32, day: WerdyDay) -> Result<Deed, Error> {
             schedule: Schedule::EveryDay,
             target: Some(Target::new(target, "pages")?),
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     ))
 }
@@ -221,6 +223,7 @@ fn exact_values_have_no_float_drift_over_a_year() -> Result<(), Error> {
             schedule: Schedule::EveryDay,
             target: Some(Target::new(5, "pages")?),
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     );
     let partial_deed = deed(2, Schedule::EveryDay, first);

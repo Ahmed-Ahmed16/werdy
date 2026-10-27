@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark,
-    MarkEntry, OwnerRecords, Schedule, Score, Target, WerdyDay, score,
+    MarkEntry, OwnerRecords, Schedule, Score, SlotKey, Target, WerdyDay, score,
 };
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -17,6 +17,7 @@ fn deed(id: u64, created_on: WerdyDay, target: Option<Target>) -> Deed {
             schedule: Schedule::EveryDay,
             target,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }

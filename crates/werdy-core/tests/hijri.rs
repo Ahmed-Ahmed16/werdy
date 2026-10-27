@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, HijriDate, HijriOffset,
-    HijriRange, Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, TodaySummary,
+    HijriRange, Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, SlotKey, TodaySummary,
     WerdyDay, build_report, consistency, kept_days, score, today_summary,
 };
 
@@ -26,6 +26,7 @@ fn hijri_deed(range: HijriRange, created_on: WerdyDay) -> Deed {
             schedule: Schedule::Hijri(range),
             target: None,
             category: CategoryKey::new("fasting"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }

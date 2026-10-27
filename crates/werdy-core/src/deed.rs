@@ -4,6 +4,8 @@ use crate::{CalendarSettings, Error, HijriRange, MarkEntry, Weekday, WerdyDay};
 
 /// Rule that says which calendar days a deed is due.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Schedule {
     /// Due every day.
     EveryDay,
@@ -28,10 +30,14 @@ impl Schedule {
 
 /// Stable identity for a deed.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct DeedId(pub u64);
 
 /// Key for a category stored as deed data.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct CategoryKey(pub String);
 
 impl CategoryKey {
@@ -41,8 +47,24 @@ impl CategoryKey {
     }
 }
 
+/// Key for a time slot stored as deed data, such as `fajr` or `any_time`.
+/// The order of slots on the sheet is data too, given by the caller.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct SlotKey(pub String);
+
+impl SlotKey {
+    /// Creates a time slot key from stored text.
+    pub fn new(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
 /// Positive daily amount with a short unit key, not translated UI text.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::TargetData"))]
 pub struct Target {
     amount: u32,
     unit: String,
@@ -76,6 +98,7 @@ impl Target {
 
 /// Fields that may change for a deed.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeedRule {
     /// Days when this deed is due.
     pub schedule: Schedule,
@@ -83,22 +106,27 @@ pub struct DeedRule {
     pub target: Option<Target>,
     /// Category in force for this rule version.
     pub category: CategoryKey,
+    /// Time slot in force for this rule version.
+    pub slot: SlotKey,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct RuleVersion {
-    from_day: WerdyDay,
-    rule: DeedRule,
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct RuleVersion {
+    pub(crate) from_day: WerdyDay,
+    pub(crate) rule: DeedRule,
 }
 
 /// Deed with dated rules and optional archive day.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::DeedData"))]
 pub struct Deed {
     /// Stable deed identity.
     pub id: DeedId,
-    first_rule: RuleVersion,
-    later_rules: Vec<RuleVersion>,
-    archived_from: Option<WerdyDay>,
+    pub(crate) first_rule: RuleVersion,
+    pub(crate) later_rules: Vec<RuleVersion>,
+    pub(crate) archived_from: Option<WerdyDay>,
 }
 
 impl Deed {

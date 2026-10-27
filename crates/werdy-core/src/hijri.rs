@@ -1,4 +1,4 @@
-//! Hijri dates from the tabular Islamic calendar, with the owner's one day offset.
+//! Hijri dates from the tabular Islamic calendar, with the owner's dated offset.
 
 use crate::{Error, WerdyDay};
 
@@ -12,6 +12,7 @@ const LONGEST_MONTH: u8 = 30;
 
 /// Date in the tabular Islamic calendar.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HijriDate {
     /// Hijri year.
     pub year: i32,
@@ -85,9 +86,14 @@ fn is_leap_year(year: i64) -> bool {
 
 /// Owner's correction for local moon sighting: minus one, zero or plus one day.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "i8", into = "i8"))]
 pub struct HijriOffset(i8);
 
 impl HijriOffset {
+    /// One day added for the owner's current Egypt reference.
+    pub const PLUS_ONE: Self = Self(1);
+
     /// Creates a checked offset from minus one to plus one day.
     pub fn new(days: i8) -> Result<Self, Error> {
         if !(-1..=1).contains(&days) {
@@ -102,11 +108,54 @@ impl HijriOffset {
     }
 }
 
+impl TryFrom<i8> for HijriOffset {
+    type Error = Error;
+
+    fn try_from(days: i8) -> Result<Self, Error> {
+        Self::new(days)
+    }
+}
+
+impl From<HijriOffset> for i8 {
+    fn from(offset: HijriOffset) -> Self {
+        offset.days()
+    }
+}
+
 /// Owner settings that decide which calendar days a schedule includes.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "CalendarSettingsData"))]
 pub struct CalendarSettings {
     first_offset: HijriOffset,
     later_offsets: Vec<(WerdyDay, HijriOffset)>,
+}
+
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+struct CalendarSettingsData {
+    first_offset: HijriOffset,
+    later_offsets: Vec<(WerdyDay, HijriOffset)>,
+}
+
+#[cfg(feature = "serde")]
+impl TryFrom<CalendarSettingsData> for CalendarSettings {
+    type Error = Error;
+
+    fn try_from(data: CalendarSettingsData) -> Result<Self, Self::Error> {
+        let mut calendar = Self::new(data.first_offset);
+        for (day, offset) in data.later_offsets {
+            if calendar
+                .later_offsets
+                .last()
+                .is_some_and(|(latest, _)| day <= *latest)
+            {
+                return Err(Error::OffsetBeforeLatest);
+            }
+            calendar.change_offset(day, offset)?;
+        }
+        Ok(calendar)
+    }
 }
 
 impl CalendarSettings {
@@ -146,6 +195,8 @@ impl CalendarSettings {
 /// Hijri days a deed is due: some days of one month, or of every month.
 /// New ranges are data, made with `HijriRange::new`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::HijriRangeData"))]
 pub struct HijriRange {
     month: Option<u8>,
     first_day: u8,

@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Fraction, Mark, MarkEntry,
-    OwnerRecords, Schedule, Score, ScoreValue, TodaySummary, WerdyDay, score as score_records,
-    today_summary,
+    OwnerRecords, Schedule, Score, ScoreValue, SlotKey, TodaySummary, WerdyDay,
+    finished_day_summary, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -35,6 +35,7 @@ fn deed(id: u64, created_on: WerdyDay) -> Deed {
             schedule: Schedule::EveryDay,
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }
@@ -103,6 +104,27 @@ fn open_deed_today_is_not_missed() -> Result<(), Error> {
 
     assert_eq!(summary.open, 1);
     assert_eq!(summary.missed, 0);
+    Ok(())
+}
+
+#[test]
+fn unmarked_due_deed_on_finished_day_counts_as_missed() -> Result<(), Error> {
+    let day = day(23)?;
+    let deeds = [deed(1, day), deed(2, day), deed(3, day)];
+    let marks = Marks::from([
+        ((DeedId(1), day), MarkEntry::new(Mark::Done, day)),
+        ((DeedId(2), day), MarkEntry::new(Mark::Missed, day)),
+    ]);
+
+    assert_eq!(
+        finished_day_summary(&deeds, &marks, day, &CalendarSettings::default()),
+        TodaySummary {
+            done: 1,
+            partial: 0,
+            open: 0,
+            missed: 2,
+        }
+    );
     Ok(())
 }
 

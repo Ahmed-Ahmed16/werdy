@@ -11,6 +11,8 @@ pub enum Error {
     FractionOutOfRange,
     /// Exact score cannot fit within u128 values.
     ScoreOverflow,
+    /// Stored exact score has a zero denominator.
+    InvalidScoreValue,
     /// Target amount must be at least one.
     InvalidTargetAmount,
     /// Target unit key is empty.
@@ -33,6 +35,30 @@ pub enum Error {
     InvalidHijriRange,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            Self::InvalidDate => "day is invalid or outside the supported range",
+            Self::FractionOutOfRange => "fraction is not from zero to one",
+            Self::ScoreOverflow => "exact score is too large",
+            Self::InvalidScoreValue => "exact score denominator must be positive",
+            Self::InvalidTargetAmount => "target amount must be at least one",
+            Self::EmptyTargetUnit => "target unit is empty",
+            Self::RuleBeforeCreation => "rule change starts before the deed was created",
+            Self::RuleBeforeLatest => "rule change starts before the latest rule",
+            Self::ArchiveBeforeCreation => "archive starts before the deed was created",
+            Self::AlreadyArchived => "deed was already archived",
+            Self::EmptyDayNote => "day note is empty and has no credit",
+            Self::InvalidHijriOffset => "Hijri offset must be from minus one to plus one day",
+            Self::OffsetBeforeLatest => "Hijri offset change starts before the latest change",
+            Self::InvalidHijriRange => "Hijri range is invalid",
+        };
+        formatter.write_str(text)
+    }
+}
+
+impl std::error::Error for Error {}
+
 mod consistency;
 mod day;
 mod deed;
@@ -41,12 +67,18 @@ mod mark;
 mod note;
 mod report;
 mod score;
+mod sheet;
+#[cfg(feature = "serde")]
+mod stored;
 
 pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
-pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
+pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, delete_deed};
 pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
-pub use score::{OwnerRecords, Score, ScoreValue, TodaySummary, score, today_summary};
+pub use score::{
+    OwnerRecords, Score, ScoreValue, TodaySummary, finished_day_summary, score, today_summary,
+};
+pub use sheet::{DailySheet, SheetRow, SheetSlot, daily_sheet};

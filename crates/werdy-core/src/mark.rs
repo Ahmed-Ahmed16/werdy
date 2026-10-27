@@ -10,9 +10,55 @@ pub(crate) fn is_late_for(entered_on: WerdyDay, day: WerdyDay) -> bool {
 
 /// Exact value from zero to one inclusive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Fraction {
     numerator: u128,
     denominator: u128,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Fraction {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FractionVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for FractionVisitor {
+            type Value = Fraction;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("an exact fraction or a legacy decimal")
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                map: M,
+            ) -> Result<Self::Value, M::Error> {
+                #[derive(serde::Deserialize)]
+                struct Parts {
+                    numerator: u128,
+                    denominator: u128,
+                }
+                let parts: Parts = serde::Deserialize::deserialize(
+                    serde::de::value::MapAccessDeserializer::new(map),
+                )?;
+                Fraction::from_ratio(parts.numerator, parts.denominator)
+                    .map_err(serde::de::Error::custom)
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                Fraction::new(value).map_err(E::custom)
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                self.visit_f64(value as f64)
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                self.visit_f64(value as f64)
+            }
+        }
+
+        deserializer.deserialize_any(FractionVisitor)
+    }
 }
 
 impl Fraction {
@@ -129,8 +175,24 @@ pub(crate) fn compare_rationals(
     }
 }
 
+impl TryFrom<f64> for Fraction {
+    type Error = Error;
+
+    fn try_from(value: f64) -> Result<Self, Error> {
+        Self::new(value)
+    }
+}
+
+impl From<Fraction> for f64 {
+    fn from(fraction: Fraction) -> Self {
+        fraction.value()
+    }
+}
+
 /// Owner's record for one deed on one werdy day.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Mark {
     /// Deed was done in full.
     Done,
@@ -177,6 +239,7 @@ impl Mark {
 
 /// Mark and the werdy day when the owner entered it.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MarkEntry {
     /// The owner's mark for a due deed.
     pub mark: Mark,
