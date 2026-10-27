@@ -1,0 +1,36 @@
+// coordinates to be checked by the owner
+{
+  "cities": [
+    {"key":"cairo","country":"EG","latitude":30.04,"longitude":31.24},
+    {"key":"alexandria","country":"EG","latitude":31.20,"longitude":29.92},
+    {"key":"giza","country":"EG","latitude":30.01,"longitude":31.21},
+    {"key":"riyadh","country":"SA","latitude":24.71,"longitude":46.67},
+    {"key":"makkah","country":"SA","latitude":21.42,"longitude":39.83},
+    {"key":"madinah","country":"SA","latitude":24.47,"longitude":39.61},
+    {"key":"jeddah","country":"SA","latitude":21.54,"longitude":39.17},
+    {"key":"dubai","country":"AE","latitude":25.20,"longitude":55.27},
+    {"key":"abu-dhabi","country":"AE","latitude":24.45,"longitude":54.37},
+    {"key":"doha","country":"QA","latitude":25.29,"longitude":51.53},
+    {"key":"kuwait-city","country":"KW","latitude":29.38,"longitude":47.98},
+    {"key":"manama","country":"BH","latitude":26.23,"longitude":50.59},
+    {"key":"muscat","country":"OM","latitude":23.59,"longitude":58.41},
+    {"key":"amman","country":"JO","latitude":31.95,"longitude":35.93},
+    {"key":"beirut","country":"LB","latitude":33.89,"longitude":35.50},
+    {"key":"damascus","country":"SY","latitude":33.51,"longitude":36.28},
+    {"key":"jerusalem","country":"PS","latitude":31.78,"longitude":35.23},
+    {"key":"rabat","country":"MA","latitude":34.02,"longitude":-6.84},
+    {"key":"casablanca","country":"MA","latitude":33.57,"longitude":-7.59},
+    {"key":"algiers","country":"DZ","latitude":36.75,"longitude":3.06},
+    {"key":"tunis","country":"TN","latitude":36.81,"longitude":10.18},
+    {"key":"tripoli","country":"LY","latitude":32.89,"longitude":13.19},
+    {"key":"khartoum","country":"SD","latitude":15.50,"longitude":32.56},
+    {"key":"london","country":"GB","latitude":51.51,"longitude":-0.13},
+    {"key":"paris","country":"FR","latitude":48.86,"longitude":2.35},
+    {"key":"istanbul","country":"TR","latitude":41.01,"longitude":28.98},
+    {"key":"jakarta","country":"ID","latitude":-6.21,"longitude":106.85},
+    {"key":"karachi","country":"PK","latitude":24.86,"longitude":67.01},
+    {"key":"dearborn","country":"US","latitude":42.32,"longitude":-83.18}
+  ]
+}
+
+

@@ -3,8 +3,10 @@
 
 use std::rc::Rc;
 
+use werdy_calendar::{Date, LocalTime, Method, Place, fajr};
 use werdy_core::{Error, WerdyDay};
 use werdy_store::Store;
+use werdy_store::{Location, PrayerMethod, Settings};
 
 /// Opens the store for this platform: browser localStorage on the web, and an
 /// in memory store elsewhere until a file or SQLite store exists.
@@ -19,9 +21,7 @@ pub fn open_store() -> Rc<dyn Store> {
     }
 }
 
-/// Returns the current werdy day as the local calendar date.
-// TODO(#11): a werdy day ends at real Fajr (ADR 0010), not at midnight. Swap
-// this for the calendar crate's moment to werdy day function.
+/// Returns local calendar date when no location is saved.
 pub fn today() -> Result<WerdyDay, Error> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -40,6 +40,201 @@ pub fn today() -> Result<WerdyDay, Error> {
             .as_secs();
         let days = i64::try_from(seconds / SECONDS_PER_DAY).map_err(|_| Error::InvalidDate)?;
         WerdyDay::from_unix_days(days)
+    }
+}
+
+fn method(method: PrayerMethod) -> Method {
+    match method {
+        PrayerMethod::EgyptianGeneralAuthority => Method::EgyptianGeneralAuthority,
+        PrayerMethod::MuslimWorldLeague => Method::MuslimWorldLeague,
+    }
+}
+
+fn calendar_parts(
+    day: WerdyDay,
+    offset: i32,
+    settings: &Settings,
+) -> Result<Option<(Date, Place)>, Error> {
+    let Some(location) = &settings.location else {
+        return Ok(None);
+    };
+    let (year, month, date) = day.date_parts();
+    let year = u16::try_from(year).map_err(|_| Error::InvalidDate)?;
+    let calendar_date = Date::new(year, month, date).map_err(|_| Error::InvalidDate)?;
+    let (latitude, longitude) = location.coordinates();
+    let place = Place::new(latitude, longitude, offset).map_err(|_| Error::InvalidDate)?;
+    Ok(Some((calendar_date, place)))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_midnight() -> js_sys::Date {
+    let now = js_sys::Date::new_0();
+    js_sys::Date::new_with_year_month_day(
+        now.get_full_year(),
+        now.get_month() as i32,
+        now.get_date() as i32,
+    )
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_offset_at_fajr(midnight: &js_sys::Date, minutes: u16) -> i32 {
+    let instant = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(
+        midnight.get_time() + f64::from(minutes) * 60_000.0,
+    ));
+    -(instant.get_timezone_offset() as i32)
+}
+
+fn fajr_with_offset_lookup(
+    day: WerdyDay,
+    settings: &Settings,
+    midnight_offset: i32,
+    offset_at_fajr: impl Fn(u16) -> i32,
+) -> Result<Option<u16>, Error> {
+    let Some((date, place)) = calendar_parts(day, midnight_offset, settings)? else {
+        return Ok(None);
+    };
+    let first = match fajr(date, place, method(settings.prayer_method)) {
+        Ok(time) => time.minutes_since_midnight(),
+        Err(werdy_calendar::Error::FajrDoesNotOccur) => return Ok(None),
+        Err(_) => return Err(Error::InvalidDate),
+    };
+    let actual_offset = offset_at_fajr(first);
+    if actual_offset == midnight_offset {
+        return Ok(Some(first));
+    }
+    let place = Place::new(place.latitude(), place.longitude(), actual_offset)
+        .map_err(|_| Error::InvalidDate)?;
+    fajr(date, place, method(settings.prayer_method))
+        .map(|time| Some(time.minutes_since_midnight()))
+        .map_err(|_| Error::InvalidDate)
+}
+
+fn day_for_with_offset_lookup(
+    day: WerdyDay,
+    hour: u8,
+    minute: u8,
+    midnight_offset: i32,
+    settings: &Settings,
+    offset_at_fajr: impl Fn(u16) -> i32,
+) -> Result<WerdyDay, Error> {
+    LocalTime::new(hour, minute).map_err(|_| Error::InvalidDate)?;
+    let Some(fajr_minutes) =
+        fajr_with_offset_lookup(day, settings, midnight_offset, offset_at_fajr)?
+    else {
+        return Ok(day);
+    };
+    if u16::from(hour) * 60 + u16::from(minute) < fajr_minutes {
+        day.previous()
+    } else {
+        Ok(day)
+    }
+}
+
+/// Pure date boundary. Browser supplies local time and offset for this date.
+#[cfg(any(test, not(target_arch = "wasm32")))]
+pub fn day_for(
+    day: WerdyDay,
+    hour: u8,
+    minute: u8,
+    offset: i32,
+    settings: &Settings,
+) -> Result<WerdyDay, Error> {
+    day_for_with_offset_lookup(day, hour, minute, offset, settings, |_| offset)
+}
+
+/// Browser local offset is read for the calendar date, including daylight saving.
+pub fn today_with_settings(settings: &Settings) -> Result<WerdyDay, Error> {
+    let day = today()?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        let now = js_sys::Date::new_0();
+        let date = browser_midnight();
+        let offset = -(date.get_timezone_offset() as i32);
+        day_for_with_offset_lookup(
+            day,
+            now.get_hours() as u8,
+            now.get_minutes() as u8,
+            offset,
+            settings,
+            |minutes| browser_offset_at_fajr(&date, minutes),
+        )
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        day_for(day, 12, 0, 0, settings)
+    }
+}
+
+/// Today's Fajr in local clock minutes, for the selected place.
+pub fn fajr_today(settings: &Settings) -> Result<Option<u16>, Error> {
+    let day = today()?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        let date = browser_midnight();
+        let offset = -(date.get_timezone_offset() as i32);
+        fajr_with_offset_lookup(day, settings, offset, |minutes| {
+            browser_offset_at_fajr(&date, minutes)
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let offset = 0;
+        fajr_with_offset_lookup(day, settings, offset, |_| offset)
+    }
+}
+
+/// Browser GPS is requested only after a tap.
+pub fn request_location(
+    on_success: impl FnOnce(Location) + 'static,
+    on_error: impl FnOnce() + 'static,
+) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        let Some(window) = web_sys::window() else {
+            on_error();
+            return;
+        };
+        let Ok(geo) = window.navigator().geolocation() else {
+            on_error();
+            return;
+        };
+        let error_callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_error)));
+        let invalid_coordinates = error_callback.clone();
+        let success =
+            wasm_bindgen::closure::Closure::once_into_js(move |position: web_sys::Position| {
+                let coordinates = position.coords();
+                match Location::new(None, None, coordinates.latitude(), coordinates.longitude()) {
+                    Some(location) => on_success(location),
+                    None => {
+                        if let Some(callback) = invalid_coordinates.borrow_mut().take() {
+                            callback();
+                        }
+                    }
+                }
+            });
+        let geolocation_error = error_callback.clone();
+        let failure =
+            wasm_bindgen::closure::Closure::once_into_js(move |_: web_sys::PositionError| {
+                if let Some(callback) = geolocation_error.borrow_mut().take() {
+                    callback();
+                }
+            });
+        if geo
+            .get_current_position_with_error_callback(
+                success.unchecked_ref(),
+                Some(failure.unchecked_ref()),
+            )
+            .is_err()
+            && let Some(callback) = error_callback.borrow_mut().take()
+        {
+            callback();
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = on_success;
+        on_error();
     }
 }
 
@@ -104,6 +299,123 @@ pub fn watch_changes(
     {
         let _ = (on_clock, on_storage);
         WatchHandle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use werdy_calendar::{Date, Method, Place, fajr};
+    use werdy_core::WerdyDay;
+    use werdy_store::{Location, PrayerMethod, Settings};
+
+    #[test]
+    fn spring_forward_uses_offset_at_fajr() -> Result<(), Box<dyn std::error::Error>> {
+        let day = WerdyDay::new(2026, 3, 29)?;
+        let settings = Settings {
+            location: Location::new(Some("paris".to_owned()), Some("FR".to_owned()), 48.86, 2.35),
+            ..Settings::default()
+        };
+        let old = super::fajr_with_offset_lookup(day, &settings, 60, |_| 60)?.ok_or("no Fajr")?;
+        let shifted =
+            super::fajr_with_offset_lookup(day, &settings, 60, |_| 120)?.ok_or("no Fajr")?;
+        assert_eq!(shifted, old + 60);
+        assert_eq!(
+            super::day_for_with_offset_lookup(
+                day,
+                (shifted / 60) as u8,
+                (shifted % 60) as u8,
+                60,
+                &settings,
+                |_| 120
+            )?,
+            day
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn autumn_back_uses_offset_at_fajr() -> Result<(), Box<dyn std::error::Error>> {
+        let day = WerdyDay::new(2026, 10, 25)?;
+        let settings = Settings {
+            location: Location::new(Some("paris".to_owned()), Some("FR".to_owned()), 48.86, 2.35),
+            ..Settings::default()
+        };
+        let old = super::fajr_with_offset_lookup(day, &settings, 120, |_| 120)?.ok_or("no Fajr")?;
+        let shifted =
+            super::fajr_with_offset_lookup(day, &settings, 120, |_| 60)?.ok_or("no Fajr")?;
+        assert_eq!(old, shifted + 60);
+        assert_eq!(
+            super::day_for_with_offset_lookup(
+                day,
+                (shifted / 60) as u8,
+                (shifted % 60) as u8,
+                120,
+                &settings,
+                |_| 60
+            )?,
+            day
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cairo_day_rolls_at_computed_fajr() -> Result<(), Box<dyn std::error::Error>> {
+        let day = WerdyDay::new(2026, 10, 27)?;
+        let time = fajr(
+            Date::new(2026, 10, 27).map_err(|error| format!("{error:?}"))?,
+            Place::new(30.04, 31.24, 120).map_err(|error| format!("{error:?}"))?,
+            Method::EgyptianGeneralAuthority,
+        )
+        .map_err(|error| format!("{error:?}"))?
+        .minutes_since_midnight();
+        let settings = Settings {
+            location: Location::new(
+                Some("cairo".to_owned()),
+                Some("EG".to_owned()),
+                30.04,
+                31.24,
+            ),
+            prayer_method: PrayerMethod::EgyptianGeneralAuthority,
+            ..Settings::default()
+        };
+        assert_eq!(
+            super::day_for(
+                day,
+                ((time - 1) / 60) as u8,
+                ((time - 1) % 60) as u8,
+                120,
+                &settings
+            )?,
+            day.previous()?
+        );
+        assert_eq!(
+            super::day_for(day, (time / 60) as u8, (time % 60) as u8, 120, &settings)?,
+            day
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_location_keeps_calendar_midnight() -> Result<(), Box<dyn std::error::Error>> {
+        let day = WerdyDay::new(2026, 10, 27)?;
+        assert_eq!(super::day_for(day, 1, 0, 120, &Settings::default())?, day);
+        Ok(())
+    }
+
+    #[test]
+    fn place_without_fajr_uses_midnight_boundary() -> Result<(), Box<dyn std::error::Error>> {
+        let day = WerdyDay::new(2026, 6, 21)?;
+        let settings = Settings {
+            location: Location::new(
+                Some("london".to_owned()),
+                Some("GB".to_owned()),
+                51.51,
+                -0.13,
+            ),
+            ..Settings::default()
+        };
+        assert_eq!(super::day_for(day, 1, 0, 60, &settings)?, day);
+        Ok(())
     }
 }
 

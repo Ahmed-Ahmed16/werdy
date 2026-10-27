@@ -5,7 +5,8 @@ use werdy_core::{
     Mark, MarkEntry, Period, Schedule, ScoreBands, SlotKey, Target, WerdyDay, build_report,
 };
 use werdy_store::{
-    DeedName, MemoryStore, OwnerData, Settings, Store, StoreError, Theme, from_json, to_json,
+    DeedName, MemoryStore, OwnerData, SCHEMA_VERSION, Settings, Store, StoreError, Theme,
+    from_json, to_json,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -45,6 +46,9 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
     )]);
 
     Ok(OwnerData {
+        first_run_complete: true,
+        chosen_sets: ["five_prayers".to_owned()].into(),
+        starter_keys: BTreeMap::from([(DeedId(1), "fajr_on_time".to_owned())]),
         deeds: vec![fajr, quran],
         last_deed_id: 2,
         deleted_deeds: Default::default(),
@@ -60,6 +64,13 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
             language: "ar".to_owned(),
             theme: Theme::Dark,
             calendar: CalendarSettings::new(HijriOffset::PLUS_ONE),
+            location: werdy_store::Location::new(
+                Some("cairo".to_owned()),
+                Some("EG".to_owned()),
+                30.04,
+                31.24,
+            ),
+            prayer_method: werdy_store::PrayerMethod::EgyptianGeneralAuthority,
         },
     })
 }
@@ -145,9 +156,22 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":6", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace(
+        &format!("\"schema_version\":{SCHEMA_VERSION}"),
+        "\"schema_version\":99",
+    );
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
+    Ok(())
+}
+
+#[test]
+fn location_outside_earth_is_rejected_on_load() -> TestResult {
+    let json = to_json(&sample()?)?.replace(
+        "\"latitude_hundredths\":3004",
+        "\"latitude_hundredths\":9001",
+    );
+    assert!(matches!(from_json(&json), Err(StoreError::Corrupt(_))));
     Ok(())
 }
 

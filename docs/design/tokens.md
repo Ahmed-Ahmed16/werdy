@@ -71,4 +71,4 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 | --- | --- | --- |
 | `bp-medium` | 600 dp | Below: phone, one column, bottom tabs |
 | `bp-expanded` | 840 dp | From here: two panes and a navigation rail |
-| `content-max` | `___` | Maximum content width on a wide web window |
+| `content-max` | `72rem` | First run content width cap on a wide web window. Provisional. ___ Owner to confirm. |

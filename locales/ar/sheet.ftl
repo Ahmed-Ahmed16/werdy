@@ -2,7 +2,7 @@
 
 sheet-date = { $weekday }، { $day } { $month } { $year }
 sheet-hijri-date = { $day } { $month } { $year } هـ
-sheet-hijri-unavailable = ___
+sheet-hijri-unavailable = التاريخ الهجري غير متاح
 hijri-month-1 = المحرم
 hijri-month-2 = صفر
 hijri-month-3 = ربيع الأول

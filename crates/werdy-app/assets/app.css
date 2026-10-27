@@ -934,7 +934,7 @@ button:focus-visible {
 @media (min-width: 840px) {
   .bottom-nav { display: none; }
   .deeds-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .deeds-header, .deeds-screen > .archived-toggle, .deeds-screen > .deeds-list { grid-column: 1 / -1; }
+  .deeds-header, .deeds-screen > .ready-set-entry, .deeds-screen > .archived-toggle, .deeds-screen > .deeds-list { grid-column: 1 / -1; }
   .editor-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .editor-header,
   .editor-screen > .editor-label,
@@ -948,4 +948,101 @@ button:focus-visible {
 @media (max-width: 839px) {
   .werdy-root { flex-direction: column; }
   .page-content { flex: 1; }
+}
+
+.onboarding-content {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+.first-run-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-l);
+  padding: var(--gap-l) var(--page-gutter);
+}
+
+.first-run-header h1 { margin: var(--gap-s) 0 0; font-size: var(--size-screen); }
+.first-run-header p, .first-run-card p, .set-copy p { color: var(--text-muted); }
+.first-run-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-m);
+  padding: var(--gap-l);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.first-run-card h2, .set-copy h2 { margin: 0; font-size: var(--size-title); }
+.first-run-card p, .set-copy p { margin: 0; }
+.first-run-card button, .first-run-card select, .first-run-footer button { min-height: var(--touch-min); }
+.location-confirmation {
+  padding: var(--gap-m);
+  border-radius: var(--radius-control);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.location-warning { color: var(--danger); }
+.set-grid { display: grid; gap: var(--gap-s); }
+.set-card {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-m);
+  padding: var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.set-card.selected { border-color: var(--primary); background: var(--primary-soft); }
+.set-copy { flex: 1; min-width: 0; }
+.set-copy p { font-size: var(--size-caption); }
+.set-toggle {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding-inline: var(--gap-l);
+  border: var(--stroke-thin) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+.set-card.selected .set-toggle { background: var(--primary); color: var(--on-primary); }
+.first-run-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  padding: var(--gap-m);
+  border-top: var(--stroke-thin) solid var(--border);
+  background: var(--surface);
+}
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.ready-set-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: var(--touch-min);
+  gap: var(--gap-xs);
+  padding: var(--gap-m) var(--gap-l);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+@media (min-width: 600px) {
+  .set-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
