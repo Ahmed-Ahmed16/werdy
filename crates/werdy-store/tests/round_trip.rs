@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CategoryKey, DayNote, Deed, DeedId, DeedRule, ExcuseCredit, Mark, MarkEntry, Period, Schedule,
-    ScoreBands, SlotKey, Target, WerdyDay, build_report,
+    CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, ExcuseCredit, HijriOffset,
+    Mark, MarkEntry, Period, Schedule, ScoreBands, SlotKey, Target, WerdyDay, build_report,
 };
 use werdy_store::{
     DeedName, MemoryStore, OwnerData, Settings, Store, StoreError, Theme, from_json, to_json,
@@ -57,7 +57,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
-            hijri_offset: werdy_core::HijriOffset::PLUS_ONE,
+            calendar: CalendarSettings::new(HijriOffset::PLUS_ONE),
         },
     })
 }
@@ -119,7 +119,7 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":3", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":4", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
     Ok(())
@@ -170,6 +170,11 @@ fn clear_survives_round_trip_and_stale_merge() -> TestResult {
 fn version_one_marks_load_with_zero_revision() -> TestResult {
     let mut json: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
     json["schema_version"] = 1.into();
+    json["settings"]["hijri_offset"] = 1.into();
+    json["settings"]
+        .as_object_mut()
+        .ok_or("settings is not an object")?
+        .remove("calendar");
     let object = json.as_object_mut().ok_or("file is not an object")?;
     object.remove("cleared_marks");
     for mark in object["marks"]
@@ -236,24 +241,41 @@ fn the_next_deed_id_follows_the_highest_id() -> TestResult {
 }
 
 #[test]
-fn hijri_offset_is_saved_and_old_settings_default_to_plus_one() -> TestResult {
+fn hijri_offset_history_is_saved_and_old_settings_migrate() -> TestResult {
     let mut data = sample()?;
-    data.settings.hijri_offset = werdy_core::HijriOffset::new(-1)?;
+    let change_day = WerdyDay::new(2026, 10, 27)?;
+    let past_day = change_day.previous()?;
+    data.settings
+        .calendar
+        .change_offset(change_day, HijriOffset::new(-1)?)?;
     let saved = to_json(&data)?;
+    let loaded = from_json(&saved)?;
     assert_eq!(
-        from_json(&saved)?.records().calendar.hijri_offset.days(),
-        -1
+        loaded.settings.calendar.offset_on(past_day),
+        HijriOffset::PLUS_ONE
     );
+    assert_eq!(loaded.settings.calendar.offset_on(change_day).days(), -1);
+    assert_eq!(loaded.settings.calendar, data.settings.calendar);
 
     let mut old: serde_json::Value = serde_json::from_str(&saved)?;
+    old["schema_version"] = 3.into();
+    old["settings"]
+        .as_object_mut()
+        .ok_or("settings is not an object")?
+        .remove("calendar");
+    old["settings"]["hijri_offset"] = (-1).into();
+    let loaded = from_json(&old.to_string())?;
+    assert_eq!(loaded.settings.calendar.offset_on(past_day).days(), -1);
+    assert_eq!(loaded.settings.calendar.offset_on(change_day).days(), -1);
+
     old["settings"]
         .as_object_mut()
         .ok_or("settings is not an object")?
         .remove("hijri_offset");
     let loaded = from_json(&old.to_string())?;
     assert_eq!(
-        loaded.records().calendar.hijri_offset,
-        werdy_core::HijriOffset::PLUS_ONE
+        loaded.settings.calendar.offset_on(past_day),
+        HijriOffset::PLUS_ONE
     );
     Ok(())
 }
@@ -265,7 +287,7 @@ fn version_two_decimal_marks_still_load() -> TestResult {
     old["settings"]
         .as_object_mut()
         .ok_or("settings is not an object")?
-        .remove("hijri_offset");
+        .remove("calendar");
     let marks = old["marks"].as_array_mut().ok_or("marks is not a list")?;
     let partial = marks
         .iter_mut()
@@ -275,8 +297,11 @@ fn version_two_decimal_marks_still_load() -> TestResult {
     let loaded = from_json(&old.to_string())?;
     assert_eq!(loaded.marks, sample()?.marks);
     assert_eq!(
-        loaded.settings.hijri_offset,
-        werdy_core::HijriOffset::PLUS_ONE
+        loaded
+            .settings
+            .calendar
+            .offset_on(WerdyDay::new(2026, 10, 1)?),
+        HijriOffset::PLUS_ONE
     );
     Ok(())
 }

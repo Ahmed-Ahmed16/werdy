@@ -19,7 +19,7 @@ pub fn DayHeader() -> Element {
         (
             state.viewing,
             state.is_today(),
-            state.data.settings.hijri_offset,
+            state.data.settings.calendar.offset_on(state.viewing),
         )
     };
     let date = date_text(&i18n, viewing);

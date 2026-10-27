@@ -164,7 +164,7 @@ impl AppState {
             &self.data.marks,
             self.viewing,
             &self.slot_order,
-            self.data.records().calendar,
+            self.data.settings.calendar.clone(),
         )
     }
 
@@ -174,7 +174,7 @@ impl AppState {
             &self.data.deeds,
             &self.data.marks,
             self.viewing,
-            self.data.records().calendar,
+            &self.data.settings.calendar,
         )
     }
 

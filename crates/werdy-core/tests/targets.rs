@@ -194,7 +194,7 @@ fn today_counts_zero_partial_and_full_counts() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today, CalendarSettings::default()),
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
         TodaySummary {
             done: 2,
             partial: 1,
@@ -233,13 +233,13 @@ fn count_without_target_uses_binary_value() -> Result<(), Error> {
             std::slice::from_ref(&deed),
             &marks,
             first,
-            CalendarSettings::default()
+            &CalendarSettings::default()
         )
         .missed,
         1
     );
     assert_eq!(
-        today_summary(&[deed], &marks, second, CalendarSettings::default()).done,
+        today_summary(&[deed], &marks, second, &CalendarSettings::default()).done,
         1
     );
     Ok(())

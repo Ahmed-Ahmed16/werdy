@@ -122,16 +122,21 @@ fn exact_fraction_and_score_round_trip_without_float_conversion() -> TestResult 
 
 #[test]
 fn hijri_settings_and_range_are_checked_on_load() -> TestResult {
-    let calendar = CalendarSettings {
-        hijri_offset: HijriOffset::PLUS_ONE,
-    };
+    let mut calendar = CalendarSettings::new(HijriOffset::PLUS_ONE);
+    calendar.change_offset(WerdyDay::new(2026, 10, 27)?, HijriOffset::new(-1)?)?;
     let range = HijriRange::ramadan();
-    let json = serde_json::to_string(&(calendar, range))?;
+    let json = serde_json::to_string(&(&calendar, range))?;
     assert_eq!(
         serde_json::from_str::<(CalendarSettings, HijriRange)>(&json)?,
         (calendar, range)
     );
     assert!(serde_json::from_str::<HijriOffset>("2").is_err());
+    assert!(
+        serde_json::from_str::<CalendarSettings>(
+            r#"{"first_offset":1,"later_offsets":[[20724,-1],[20724,0]]}"#
+        )
+        .is_err()
+    );
     assert!(
         serde_json::from_str::<HijriRange>(r#"{"month":13,"first_day":1,"last_day":10}"#).is_err()
     );

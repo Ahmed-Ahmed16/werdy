@@ -438,3 +438,32 @@ fn score_returns_error_when_exact_sum_exceeds_u128() -> Result<(), Error> {
     );
     Ok(())
 }
+
+#[test]
+fn large_matching_partials_reduce_to_a_fitting_score() -> Result<(), Error> {
+    let day = WerdyDay::new(2027, 2, 7)?;
+    let denominator = u128::MAX - 1;
+    let partial = Mark::Partial(Fraction::from_ratio(denominator - 1, denominator)?);
+    let deeds = [
+        deed(1, Schedule::EveryDay, day),
+        deed(2, Schedule::EveryDay, day),
+    ];
+    let marks = Marks::from([
+        ((DeedId(1), day), MarkEntry::new(partial, day)),
+        ((DeedId(2), day), MarkEntry::new(partial, day)),
+    ]);
+    let result = score_records(
+        &OwnerRecords {
+            deeds: &deeds,
+            marks: &marks,
+            day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
+        },
+        &[day],
+        day.next()?,
+    )?;
+    assert_eq!(result.earned.numerator(), denominator - 1);
+    assert_eq!(result.earned.denominator(), denominator / 2);
+    assert_eq!(result.due, 2);
+    Ok(())
+}

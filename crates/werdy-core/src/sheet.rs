@@ -48,7 +48,7 @@ pub fn daily_sheet(
 ) -> DailySheet {
     let mut groups: BTreeMap<(usize, SlotKey), (Vec<SheetRow>, bool)> = BTreeMap::new();
     for deed in deeds {
-        let Some(rule) = deed.due_rule_on(day, calendar) else {
+        let Some(rule) = deed.due_rule_on(day, &calendar) else {
             continue;
         };
         let entry = marks.get(&(deed.id, day));

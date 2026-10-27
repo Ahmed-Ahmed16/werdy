@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -76,13 +76,12 @@ pub struct Settings {
     pub language: String,
     /// Colour theme.
     pub theme: Theme,
-    /// Local moon sighting correction for Hijri dates and schedules.
-    #[serde(default = "default_hijri_offset")]
-    pub hijri_offset: HijriOffset,
+    /// Dated local moon sighting corrections for Hijri dates and schedules.
+    pub calendar: CalendarSettings,
 }
 
-fn default_hijri_offset() -> HijriOffset {
-    HijriOffset::PLUS_ONE
+fn default_calendar() -> CalendarSettings {
+    CalendarSettings::new(HijriOffset::PLUS_ONE)
 }
 
 impl Default for Settings {
@@ -90,7 +89,7 @@ impl Default for Settings {
         Self {
             language: "ar".to_owned(),
             theme: Theme::System,
-            hijri_offset: default_hijri_offset(),
+            calendar: default_calendar(),
         }
     }
 }
@@ -121,9 +120,7 @@ impl OwnerData {
             deeds: &self.deeds,
             marks: &self.marks,
             day_notes: &self.day_notes,
-            calendar: CalendarSettings {
-                hijri_offset: self.settings.hijri_offset,
-            },
+            calendar: self.settings.calendar.clone(),
         }
     }
 
@@ -208,7 +205,7 @@ fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
 
 /// JSON layout. Maps become lists because JSON object keys must be text.
 #[derive(Serialize, Deserialize)]
-struct DataFile {
+struct DataFile<S = Settings> {
     schema_version: u32,
     deeds: Vec<Deed>,
     names: Vec<NameEntry>,
@@ -216,7 +213,44 @@ struct DataFile {
     #[serde(default)]
     cleared_marks: Vec<ClearRecord>,
     day_notes: Vec<NoteRecord>,
-    settings: Settings,
+    settings: S,
+}
+
+/// Settings written through schema version three.
+#[derive(Deserialize)]
+struct LegacySettings {
+    language: String,
+    theme: Theme,
+    #[serde(default = "default_hijri_offset")]
+    hijri_offset: HijriOffset,
+}
+
+fn default_hijri_offset() -> HijriOffset {
+    HijriOffset::PLUS_ONE
+}
+
+impl From<LegacySettings> for Settings {
+    fn from(old: LegacySettings) -> Self {
+        Self {
+            language: old.language,
+            theme: old.theme,
+            calendar: CalendarSettings::new(old.hijri_offset),
+        }
+    }
+}
+
+impl<S> DataFile<S> {
+    fn map_settings<T>(self, convert: impl FnOnce(S) -> T) -> DataFile<T> {
+        DataFile {
+            schema_version: self.schema_version,
+            deeds: self.deeds,
+            names: self.names,
+            marks: self.marks,
+            cleared_marks: self.cleared_marks,
+            day_notes: self.day_notes,
+            settings: convert(self.settings),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -309,7 +343,12 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     if !(1..=SCHEMA_VERSION).contains(&probe.schema_version) {
         return Err(StoreError::UnsupportedVersion(probe.schema_version));
     }
-    let file: DataFile = serde_json::from_str(text).map_err(corrupt)?;
+    let file: DataFile = if probe.schema_version < SCHEMA_VERSION {
+        let legacy: DataFile<LegacySettings> = serde_json::from_str(text).map_err(corrupt)?;
+        legacy.map_settings(Settings::from)
+    } else {
+        serde_json::from_str(text).map_err(corrupt)?
+    };
 
     let mut deed_ids = BTreeSet::new();
     for deed in &file.deeds {

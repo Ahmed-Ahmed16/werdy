@@ -86,24 +86,93 @@ impl ScoreValue {
         let shared = gcd(self.denominator, value.denominator());
         let left_scale = value.denominator() / shared;
         let right_scale = self.denominator / shared;
-        let numerator = self
+        if let Some((numerator, denominator)) = self
             .numerator
             .checked_mul(left_scale)
-            .and_then(|left| {
-                value
-                    .numerator()
-                    .checked_mul(right_scale)
-                    .and_then(|right| left.checked_add(right))
-            })
-            .ok_or(Error::ScoreOverflow)?;
-        let denominator = self
-            .denominator
-            .checked_mul(left_scale)
-            .ok_or(Error::ScoreOverflow)?;
-        let divisor = gcd(numerator, denominator);
-        self.numerator = numerator / divisor;
-        self.denominator = denominator / divisor;
+            .zip(value.numerator().checked_mul(right_scale))
+            .and_then(|(left, right)| left.checked_add(right))
+            .zip(self.denominator.checked_mul(left_scale))
+        {
+            let divisor = gcd(numerator, denominator);
+            self.numerator = numerator / divisor;
+            self.denominator = denominator / divisor;
+            return Ok(());
+        }
+
+        // Reduction can make a sum fit even when its products need more than 128 bits.
+        let numerator = Wide::multiply(self.numerator, left_scale)
+            .add(Wide::multiply(value.numerator(), right_scale))?;
+        let denominator = Wide::multiply(self.denominator, left_scale);
+        let divisor = gcd(numerator.div_rem(shared).1, shared);
+        let reduced_numerator = numerator.div_rem(divisor).0.ok_or(Error::ScoreOverflow)?;
+        let reduced_denominator = denominator.div_rem(divisor).0.ok_or(Error::ScoreOverflow)?;
+        self.numerator = reduced_numerator;
+        self.denominator = reduced_denominator;
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Wide {
+    high: u128,
+    low: u128,
+}
+
+impl Wide {
+    fn multiply(left: u128, right: u128) -> Self {
+        let left_parts = [left as u64, (left >> 64) as u64];
+        let right_parts = [right as u64, (right >> 64) as u64];
+        let mut parts = [0u64; 4];
+        for (left_index, left_part) in left_parts.into_iter().enumerate() {
+            let mut carry = 0u128;
+            for (right_index, right_part) in right_parts.into_iter().enumerate() {
+                let index = left_index + right_index;
+                let product = u128::from(left_part) * u128::from(right_part)
+                    + u128::from(parts[index])
+                    + carry;
+                parts[index] = product as u64;
+                carry = product >> 64;
+            }
+            parts[left_index + 2] = carry as u64;
+        }
+        Self {
+            high: (u128::from(parts[3]) << 64) | u128::from(parts[2]),
+            low: (u128::from(parts[1]) << 64) | u128::from(parts[0]),
+        }
+    }
+
+    fn add(self, other: Self) -> Result<Self, Error> {
+        let (low, carry) = self.low.overflowing_add(other.low);
+        let (high, overflow) = self.high.overflowing_add(other.high);
+        let (high, carry_overflow) = high.overflowing_add(u128::from(carry));
+        if overflow || carry_overflow {
+            return Err(Error::ScoreOverflow);
+        }
+        Ok(Self { high, low })
+    }
+
+    fn div_rem(self, divisor: u128) -> (Option<u128>, u128) {
+        let mut quotient = 0u128;
+        let mut remainder = 0u128;
+        let mut quotient_overflow = false;
+        for bit in (0..256).rev() {
+            let input_bit = if bit >= 128 {
+                (self.high >> (bit - 128)) & 1
+            } else {
+                (self.low >> bit) & 1
+            };
+            let carry = remainder >> 127 != 0;
+            remainder = (remainder << 1) | input_bit;
+            if carry || remainder >= divisor {
+                remainder = remainder.wrapping_sub(divisor);
+                if bit >= 128 {
+                    quotient_overflow = true;
+                } else {
+                    quotient |= 1u128 << bit;
+                }
+            }
+        }
+        ((!quotient_overflow).then_some(quotient), remainder)
     }
 }
 
@@ -133,7 +202,7 @@ pub fn score(
             continue;
         }
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
+            if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
                 due = due.checked_add(1).ok_or(Error::ScoreOverflow)?;
                 earned.add_fraction(due_value(records, deed, *day, rule))?;
             }
@@ -185,7 +254,7 @@ pub fn today_summary(
     deeds: &[Deed],
     marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
     today: WerdyDay,
-    calendar: CalendarSettings,
+    calendar: &CalendarSettings,
 ) -> TodaySummary {
     let mut summary = TodaySummary {
         done: 0,
@@ -223,6 +292,49 @@ fn rounded_percent(earned: ScoreValue, due: usize) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sum_reduces_after_intermediate_numerator_overflow() -> Result<(), Error> {
+        let denominator = u128::MAX - 1;
+        let partial = Fraction::from_ratio(denominator - 1, denominator)?;
+        let mut total = ScoreValue::ZERO;
+        total.add_fraction(partial)?;
+        total.add_fraction(partial)?;
+        assert_eq!(total.numerator(), denominator - 1);
+        assert_eq!(total.denominator(), denominator / 2);
+        Ok(())
+    }
+
+    #[test]
+    fn sum_reduces_after_intermediate_product_overflow() -> Result<(), Error> {
+        let denominator = u128::MAX - 1;
+        let mut total = ScoreValue {
+            numerator: 3,
+            denominator: 2,
+        };
+        total.add_fraction(Fraction::from_ratio(1, denominator)?)?;
+        let half_denominator = denominator / 2;
+        assert_eq!(
+            total.numerator(),
+            half_denominator + half_denominator.div_ceil(2)
+        );
+        assert_eq!(total.denominator(), denominator / 2);
+        Ok(())
+    }
+
+    #[test]
+    fn sum_reduces_after_intermediate_denominator_overflow() -> Result<(), Error> {
+        let left_half = u128::from(u64::MAX);
+        let right_half = left_half - 2;
+        let mut total = ScoreValue {
+            numerator: 1,
+            denominator: 2 * left_half,
+        };
+        total.add_fraction(Fraction::from_ratio(1, 2 * right_half)?)?;
+        assert_eq!(total.numerator(), (left_half + right_half) / 2);
+        assert_eq!(total.denominator(), left_half * right_half);
+        Ok(())
+    }
 
     #[test]
     fn sum_overflow_returns_error_without_changing_total() -> Result<(), Error> {

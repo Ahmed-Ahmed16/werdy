@@ -1,4 +1,4 @@
-//! Hijri dates from the tabular Islamic calendar, with the owner's one day offset.
+//! Hijri dates from the tabular Islamic calendar, with the owner's dated offset.
 
 use crate::{Error, WerdyDay};
 
@@ -123,11 +123,73 @@ impl From<HijriOffset> for i8 {
 }
 
 /// Owner settings that decide which calendar days a schedule includes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "CalendarSettingsData"))]
 pub struct CalendarSettings {
-    /// Days added to the tabular Hijri date. Zero by default.
-    pub hijri_offset: HijriOffset,
+    first_offset: HijriOffset,
+    later_offsets: Vec<(WerdyDay, HijriOffset)>,
+}
+
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+struct CalendarSettingsData {
+    first_offset: HijriOffset,
+    later_offsets: Vec<(WerdyDay, HijriOffset)>,
+}
+
+#[cfg(feature = "serde")]
+impl TryFrom<CalendarSettingsData> for CalendarSettings {
+    type Error = Error;
+
+    fn try_from(data: CalendarSettingsData) -> Result<Self, Self::Error> {
+        let mut calendar = Self::new(data.first_offset);
+        for (day, offset) in data.later_offsets {
+            if calendar
+                .later_offsets
+                .last()
+                .is_some_and(|(latest, _)| day <= *latest)
+            {
+                return Err(Error::OffsetBeforeLatest);
+            }
+            calendar.change_offset(day, offset)?;
+        }
+        Ok(calendar)
+    }
+}
+
+impl CalendarSettings {
+    /// Sets the offset that applies before every dated change.
+    pub fn new(first_offset: HijriOffset) -> Self {
+        Self {
+            first_offset,
+            later_offsets: Vec::new(),
+        }
+    }
+
+    /// Returns the offset in force on this day.
+    pub fn offset_on(&self, day: WerdyDay) -> HijriOffset {
+        self.later_offsets
+            .iter()
+            .rev()
+            .find(|(from_day, _)| *from_day <= day)
+            .map_or(self.first_offset, |(_, offset)| *offset)
+    }
+
+    /// Changes the offset from this day onward. Replaces a change on the same day.
+    pub fn change_offset(&mut self, from_day: WerdyDay, offset: HijriOffset) -> Result<(), Error> {
+        if let Some((latest_day, latest_offset)) = self.later_offsets.last_mut() {
+            if from_day < *latest_day {
+                return Err(Error::OffsetBeforeLatest);
+            }
+            if from_day == *latest_day {
+                *latest_offset = offset;
+                return Ok(());
+            }
+        }
+        self.later_offsets.push((from_day, offset));
+        Ok(())
+    }
 }
 
 /// Hijri days a deed is due: some days of one month, or of every month.

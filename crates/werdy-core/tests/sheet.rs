@@ -250,9 +250,7 @@ fn hijri_schedule_uses_the_owner_offset() -> Result<(), Error> {
         &marks,
         today,
         &slot_order(),
-        CalendarSettings {
-            hijri_offset: HijriOffset::PLUS_ONE,
-        },
+        CalendarSettings::new(HijriOffset::PLUS_ONE),
     );
     assert!(zero.slots.is_empty());
     assert_eq!(plus_one.slots[0].rows[0].deed_id, DeedId(1));
