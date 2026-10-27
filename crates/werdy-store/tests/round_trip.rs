@@ -56,6 +56,8 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         mark_revisions: BTreeMap::new(),
         cleared_marks: BTreeMap::new(),
         day_notes,
+        note_revisions: BTreeMap::new(),
+        cleared_notes: BTreeMap::new(),
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
@@ -72,6 +74,66 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn note_edits_and_clears_merge_across_tabs() -> TestResult {
+    let store = MemoryStore::default();
+    let mut first = sample()?;
+    store.save(&first)?;
+    let mut stale = store.load()?.ok_or("missing data")?;
+    let day = WerdyDay::new(2026, 10, 6)?;
+    first.set_day_note(day, Some(DayNote::new("Ill", ExcuseCredit::Half, day)?), 10);
+    store.save(&first)?;
+    stale.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 11);
+    store.save(&werdy_store::merge_records(&first, &stale))?;
+    let merged = store.load()?.ok_or("missing merged data")?;
+    assert_eq!(
+        merged.day_notes.get(&day).map(|note| note.credit()),
+        Some(ExcuseCredit::Half)
+    );
+    let mut deleting = merged.clone();
+    deleting.set_day_note(day, None, 12);
+    let restored = werdy_store::merge_records(&deleting, &stale);
+    assert!(!restored.day_notes.contains_key(&day));
+    assert_eq!(from_json(&to_json(&restored)?)?, restored);
+    Ok(())
+}
+
+#[test]
+fn version_six_notes_load_without_revisions() -> TestResult {
+    let original = sample()?;
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&original)?)?;
+    old["schema_version"] = 6.into();
+    old.as_object_mut()
+        .ok_or("expected object")?
+        .remove("cleared_notes");
+    for note in old["day_notes"].as_array_mut().ok_or("expected notes")? {
+        note.as_object_mut()
+            .ok_or("expected note")?
+            .remove("changed_at");
+    }
+    assert_eq!(from_json(&serde_json::to_string(&old)?)?, original);
+    Ok(())
+}
+
+#[test]
+fn later_note_edit_wins_for_same_day() -> TestResult {
+    let day = WerdyDay::new(2026, 10, 6)?;
+    let mut earlier = sample()?;
+    let mut later = earlier.clone();
+    earlier.set_day_note(day, Some(DayNote::new("Ill", ExcuseCredit::Half, day)?), 10);
+    later.set_day_note(
+        day,
+        Some(DayNote::new("Travelled", ExcuseCredit::Full, day)?),
+        11,
+    );
+    let merged = werdy_store::merge_records(&earlier, &later);
+    assert_eq!(
+        merged.day_notes.get(&day).map(|note| note.credit()),
+        Some(ExcuseCredit::Full)
+    );
     Ok(())
 }
 
@@ -145,7 +207,7 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":6", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":7", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
     Ok(())

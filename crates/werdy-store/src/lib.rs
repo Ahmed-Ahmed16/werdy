@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -113,6 +113,10 @@ pub struct OwnerData {
     pub cleared_marks: BTreeMap<(DeedId, WerdyDay), u64>,
     /// Day notes keyed by werdy day.
     pub day_notes: BTreeMap<WerdyDay, DayNote>,
+    /// Change time for each live note.
+    pub note_revisions: BTreeMap<WerdyDay, u64>,
+    /// Deleted notes and their change times.
+    pub cleared_notes: BTreeMap<WerdyDay, u64>,
     /// Settings.
     pub settings: Settings,
 }
@@ -164,12 +168,35 @@ impl OwnerData {
             }
         }
     }
+
+    /// Records a note edit or deletion with a time that grows in this copy.
+    pub fn set_day_note(&mut self, day: WerdyDay, note: Option<DayNote>, now: u64) {
+        let previous = self
+            .note_revisions
+            .get(&day)
+            .copied()
+            .unwrap_or(0)
+            .max(self.cleared_notes.get(&day).copied().unwrap_or(0));
+        let changed_at = now.max(previous.saturating_add(1));
+        match note {
+            Some(note) => {
+                self.day_notes.insert(day, note);
+                self.note_revisions.insert(day, changed_at);
+                self.cleared_notes.remove(&day);
+            }
+            None => {
+                self.day_notes.remove(&day);
+                self.note_revisions.remove(&day);
+                self.cleared_notes.insert(day, changed_at);
+            }
+        }
+    }
 }
 
-/// Combines marks, deleted deeds and issued ids from tab copies.
+/// Combines marks, notes, deleted deeds and issued ids from tab copies.
 /// Live deeds, names and settings use the stored copy.
 /// For each deed and day, the greater change time wins.
-/// A clear has a saved tombstone. Equal times keep the first, stored copy.
+/// A mark or note clear has a saved tombstone. Equal times keep the stored copy.
 /// Version one marks have time zero, so any new change wins over them.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     let mut merged = stored.clone();
@@ -177,6 +204,8 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     merged.deleted_deeds.extend(&local.deleted_deeds);
     merge_live_marks(&mut merged, local);
     merge_clears(&mut merged, local);
+    merge_live_notes(&mut merged, local);
+    merge_cleared_notes(&mut merged, local);
     merged
         .deeds
         .retain(|deed| !merged.deleted_deeds.contains(&deed.id));
@@ -193,6 +222,43 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
         .cleared_marks
         .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
     merged
+}
+
+fn note_change_time(data: &OwnerData, day: WerdyDay) -> u64 {
+    data.note_revisions
+        .get(&day)
+        .or_else(|| data.cleared_notes.get(&day))
+        .copied()
+        .unwrap_or(0)
+}
+
+fn merge_live_notes(merged: &mut OwnerData, local: &OwnerData) {
+    for (day, note) in &local.day_notes {
+        let time = local.note_revisions.get(day).copied().unwrap_or(0);
+        if time > note_change_time(merged, *day)
+            || (!merged.day_notes.contains_key(day) && !merged.cleared_notes.contains_key(day))
+        {
+            merged.day_notes.insert(*day, note.clone());
+            merged.cleared_notes.remove(day);
+            if time > 0 {
+                merged.note_revisions.insert(*day, time);
+            } else {
+                merged.note_revisions.remove(day);
+            }
+        }
+    }
+}
+
+fn merge_cleared_notes(merged: &mut OwnerData, local: &OwnerData) {
+    for (day, time) in &local.cleared_notes {
+        if *time > note_change_time(merged, *day)
+            || (!merged.day_notes.contains_key(day) && !merged.cleared_notes.contains_key(day))
+        {
+            merged.day_notes.remove(day);
+            merged.note_revisions.remove(day);
+            merged.cleared_notes.insert(*day, *time);
+        }
+    }
 }
 
 fn merge_live_marks(merged: &mut OwnerData, local: &OwnerData) {
@@ -246,6 +312,8 @@ struct DataFile<S = Settings> {
     #[serde(default)]
     cleared_marks: Vec<ClearRecord>,
     day_notes: Vec<NoteRecord>,
+    #[serde(default)]
+    cleared_notes: Vec<NoteClearRecord>,
     settings: S,
 }
 
@@ -283,6 +351,7 @@ impl<S> DataFile<S> {
             marks: self.marks,
             cleared_marks: self.cleared_marks,
             day_notes: self.day_notes,
+            cleared_notes: self.cleared_notes,
             settings: convert(self.settings),
         }
     }
@@ -314,6 +383,14 @@ struct ClearRecord {
 struct NoteRecord {
     day: WerdyDay,
     note: DayNote,
+    #[serde(default)]
+    changed_at: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct NoteClearRecord {
+    day: WerdyDay,
+    changed_at: u64,
 }
 
 /// Version only, read first so a newer layout is reported clearly.
@@ -368,6 +445,15 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
             .map(|(day, note)| NoteRecord {
                 day: *day,
                 note: note.clone(),
+                changed_at: data.note_revisions.get(day).copied().unwrap_or(0),
+            })
+            .collect(),
+        cleared_notes: data
+            .cleared_notes
+            .iter()
+            .map(|(day, changed_at)| NoteClearRecord {
+                day: *day,
+                changed_at: *changed_at,
             })
             .collect(),
         settings: data.settings.clone(),
@@ -431,8 +517,22 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         }
     }
     let mut day_notes = BTreeMap::new();
+    let mut note_revisions = BTreeMap::new();
     for record in file.day_notes {
         if day_notes.insert(record.day, record.note).is_some() {
+            return Err(StoreError::DuplicateEntry);
+        }
+        if record.changed_at > 0 {
+            note_revisions.insert(record.day, record.changed_at);
+        }
+    }
+    let mut cleared_notes = BTreeMap::new();
+    for record in file.cleared_notes {
+        if day_notes.contains_key(&record.day)
+            || cleared_notes
+                .insert(record.day, record.changed_at)
+                .is_some()
+        {
             return Err(StoreError::DuplicateEntry);
         }
     }
@@ -451,6 +551,8 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         mark_revisions,
         cleared_marks,
         day_notes,
+        note_revisions,
+        cleared_notes,
         settings: file.settings,
     })
 }

@@ -363,6 +363,7 @@ fn full_credit_and_note_only_entered_three_days_late_flag_unmarked_due_day() -> 
             .iter()
             .find(|entry| entry.day == finished);
         assert!(matches!(noted_day, Some(entry) if entry.value == expected && entry.added_later));
+        assert!(result.late_noted_days.contains(&finished));
     }
     Ok(())
 }

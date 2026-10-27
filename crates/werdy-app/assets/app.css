@@ -173,7 +173,131 @@ button:focus-visible {
 
 .header-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--gap-s);
+}
+
+.note-sign {
+  display: inline-block;
+  padding: var(--gap-xs) var(--gap-s);
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: var(--size-caption);
+}
+
+.day-dates .note-sign,
+.today-card .note-sign {
+  margin-inline-end: var(--gap-s);
+}
+
+.note-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  background: color-mix(in srgb, var(--text) var(--overlay-opacity), transparent);
+}
+
+.note-dialog {
+  width: min(100%, var(--dialog-max-width));
+  max-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-l);
+  padding: var(--gap-l);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: var(--surface);
+}
+
+.note-dialog-head,
+.note-actions,
+.note-choices {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.note-dialog-head {
+  justify-content: space-between;
+}
+
+.note-dialog-head h2 {
+  margin: 0;
+  font-size: var(--size-title);
+}
+
+.note-date {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+.note-text {
+  width: 100%;
+  min-height: calc(var(--touch-min) * 2);
+  padding: var(--gap-m);
+  border: var(--stroke-strong) solid var(--primary);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+.note-credit {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.note-choices {
+  margin-block: var(--gap-s);
+  padding: var(--gap-xs);
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+.note-choice {
+  flex: 1;
+  min-height: var(--touch-min);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.note-choice[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: var(--weight-bold);
+}
+
+.note-explanation {
+  margin: 0;
+  padding: var(--gap-m);
+  border-radius: var(--radius-control);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.note-actions {
+  flex-wrap: wrap;
+}
+
+.note-actions .primary-button {
+  flex: 1;
+}
+
+@media (min-width: 600px) {
+  .note-backdrop {
+    align-items: center;
+    padding: var(--page-gutter);
+  }
+
+  .note-dialog {
+    border-radius: var(--radius-card);
+  }
 }
 
 .icon-button {

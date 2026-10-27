@@ -6,6 +6,7 @@ use werdy_core::{Weekday, WerdyDay};
 
 use super::context::{I18n, use_actions, use_i18n};
 use super::icons::{ChevronBack, ChevronForward};
+use super::note::NoteDialog;
 use crate::state::AppState;
 
 /// Date line with previous and next day arrows. Next is off on today.
@@ -14,12 +15,17 @@ pub fn DayHeader() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let (viewing, is_today, hijri_offset) = {
+    let mut note_day = use_signal(|| None::<WerdyDay>);
+    let (viewing, is_today, hijri_offset, noted, note_late) = {
         let state = state.read();
         (
             state.viewing,
             state.is_today(),
             state.data.settings.calendar.offset_on(state.viewing),
+            state.viewing_note().is_some(),
+            state
+                .viewing_note()
+                .is_some_and(|note| note.is_late_for(state.viewing)),
         )
     };
     let date = date_text(&i18n, viewing);
@@ -39,6 +45,8 @@ pub fn DayHeader() -> Element {
                 div { class: "day-dates",
                     h1 { class: "day-title", "{date}" }
                     p { class: "hijri-date", "{hijri}" }
+                    if noted { span { class: "note-sign", role: "img", aria_label: i18n.t("note-sign"), {i18n.t("note-sign-symbol")} } }
+                    if note_late { span { class: "late-sign", aria_label: i18n.t("mark-added-later"), {i18n.t("mark-added-later")} } }
                 }
                 button {
                     class: "icon-button",
@@ -50,6 +58,7 @@ pub fn DayHeader() -> Element {
                 }
             }
             div { class: "header-tools",
+                button { class: "text-button", onclick: move |_| note_day.set(Some(viewing)), {i18n.t("note-button")} }
                 if !is_today {
                     button {
                         class: "text-button",
@@ -64,6 +73,9 @@ pub fn DayHeader() -> Element {
                     {i18n.t("language-switch")}
                 }
             }
+        }
+        if let Some(day) = note_day() {
+            NoteDialog { key: "{day:?}", day, date: date_text(&i18n, day), on_close: move |_| note_day.set(None) }
         }
     }
 }

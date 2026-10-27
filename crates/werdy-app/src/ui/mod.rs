@@ -6,6 +6,7 @@ mod deeds;
 mod header;
 mod icons;
 mod marks;
+mod note;
 mod rail;
 mod reports;
 mod sheet;

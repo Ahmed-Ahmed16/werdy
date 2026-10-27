@@ -27,14 +27,13 @@ const PERIODS: [(Period, &str); 5] = [
 pub fn ReportsScreen() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let (report, previous, period, steps_back, today_counts) = {
+    let (report, previous, period, steps_back) = {
         let state = state.read();
         (
             state.report(),
             state.previous_report(),
             state.report_period,
             state.report_steps_back,
-            state.summary_today(),
         )
     };
 
@@ -53,7 +52,7 @@ pub fn ReportsScreen() -> Element {
                     rsx! {
                         div { class: "report-layout",
                             div { class: "report-main",
-                                ScoreCard { report: Rc::clone(&report), previous, steps_back, today_counts }
+                                ScoreCard { report: Rc::clone(&report), previous, steps_back }
                                 MissedList { report: Rc::clone(&report) }
                                 CategorySplit { report: Rc::clone(&report) }
                             }
@@ -133,10 +132,10 @@ fn ScoreCard(
     report: Rc<Report>,
     previous: Result<Report, werdy_core::Error>,
     steps_back: usize,
-    today_counts: werdy_core::TodaySummary,
 ) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let today_counts = state.read().summary_today();
     let lead = match report_lead(&report) {
         ReportLead::MostMissed(id) => i18n.t_with(
             "reports-lead-missed",
@@ -176,7 +175,7 @@ fn ScoreCard(
                 }
             }
             p { class: "report-muted", "{previous_line}" }
-            Series { entries: report.series.clone(), noted_days: report.noted_days.clone(), show_today: steps_back == 0 }
+            Series { entries: report.series.clone(), noted_days: report.noted_days.clone(), late_noted_days: report.late_noted_days.clone(), show_today: steps_back == 0 }
             if steps_back == 0 {
                 div { class: "report-today-line",
                     span { {i18n.t("reports-today")} }
@@ -205,8 +204,23 @@ fn TodayLink() -> Element {
 }
 
 #[component]
-fn Series(entries: Vec<SeriesEntry>, noted_days: BTreeSet<WerdyDay>, show_today: bool) -> Element {
+fn Series(
+    entries: Vec<SeriesEntry>,
+    noted_days: BTreeSet<WerdyDay>,
+    late_noted_days: BTreeSet<WerdyDay>,
+    show_today: bool,
+) -> Element {
     let i18n = use_i18n();
+    let state = use_context::<Signal<AppState>>();
+    let today_noted = {
+        let state = state.read();
+        state.data.day_notes.contains_key(&state.today)
+    };
+    let today_label = if today_noted {
+        detail_label(&i18n, &i18n.t("reports-today"), &i18n.t("note-sign"))
+    } else {
+        i18n.t("reports-today")
+    };
     let long = entries
         .first()
         .is_some_and(|entry| matches!(entry, SeriesEntry::Month { .. }));
@@ -214,11 +228,12 @@ fn Series(entries: Vec<SeriesEntry>, noted_days: BTreeSet<WerdyDay>, show_today:
         div { class: if long { "report-series report-months" } else { "report-series report-days" },
             h2 { class: "sr-only", {i18n.t("reports-series")} }
             for (index, entry) in entries.into_iter().enumerate() {
-                SeriesCell { key: "{index}", noted: entry_is_noted(&entry, &noted_days), entry }
+                SeriesCell { key: "{index}", noted: entry_is_noted(&entry, &noted_days), late_note: entry_is_noted(&entry, &late_noted_days), entry }
             }
             if show_today {
-                div { class: "report-day-cell report-today-cell", aria_label: i18n.t("reports-today"),
+                div { class: "report-day-cell report-today-cell", role: "img", aria_label: today_label,
                     span { {i18n.t("reports-today")} }
+                    if today_noted { small { aria_label: i18n.t("note-sign"), {i18n.t("reports-note-sign")} } }
                 }
             }
         }
@@ -235,17 +250,20 @@ fn entry_is_noted(entry: &SeriesEntry, noted_days: &BTreeSet<WerdyDay>) -> bool 
 }
 
 #[component]
-fn SeriesCell(entry: SeriesEntry, noted: bool) -> Element {
+fn SeriesCell(entry: SeriesEntry, noted: bool, late_note: bool) -> Element {
     let i18n = use_i18n();
     let mut label = series_label(&i18n, &entry);
     if noted {
         label = detail_label(&i18n, &label, &i18n.t("reports-note"));
     }
+    if late_note {
+        label = detail_label(&i18n, &label, &i18n.t("mark-added-later"));
+    }
     match entry {
         SeriesEntry::Day { day, score, band } => {
             let (_, _, number) = day.date_parts();
             rsx! {
-                div { class: "report-day-cell", "data-band": band_name(band), aria_label: label,
+                div { class: "report-day-cell", "data-band": band_name(band), role: "img", aria_label: label,
                     span { "{number}" }
                     span { class: "report-cell-symbol",
                         match band {
@@ -256,6 +274,7 @@ fn SeriesCell(entry: SeriesEntry, noted: bool) -> Element {
                         }
                     }
                     if noted { small { title: i18n.t("reports-note"), {i18n.t("reports-note-sign")} } }
+                    if late_note { small { title: i18n.t("mark-added-later"), {i18n.t("reports-late-sign")} } }
                     if let Some(percent) = score.percent { small { {percent_text(&i18n, percent)} } }
                     if score.percent.is_some() { small { {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
                 }
@@ -269,8 +288,8 @@ fn SeriesCell(entry: SeriesEntry, noted: bool) -> Element {
         } => {
             let name = i18n.t(&format!("month-{month}"));
             rsx! {
-                div { class: "report-month-row", aria_label: label,
-                    span { "{name}" if noted { {i18n.t("reports-note-sign")} } }
+                div { class: "report-month-row", role: "img", aria_label: label,
+                    span { "{name}" if noted { {i18n.t("reports-note-sign")} } if late_note { {i18n.t("reports-late-sign")} } }
                     div { class: "report-bar-track",
                         if let Some(percent) = score.percent {
                             div { class: "report-bar", "data-band": band_name(band), style: "width: {percent}%" }
@@ -460,7 +479,7 @@ fn HistoryDay(entry: DeedDay, noted: bool) -> Element {
         label = detail_label(&i18n, &label, &i18n.t("mark-added-later"));
     }
     rsx! {
-        span { class: "report-history-cell", "data-kind": kind,
+        span { class: "report-history-cell", "data-kind": kind, role: "img",
             aria_label: label.clone(),
             title: label,
             span { "{date}" }

@@ -1,6 +1,7 @@
 //! Today card with counts, and the save status banner.
 
 use dioxus::prelude::*;
+use fluent_bundle::FluentValue;
 
 use super::context::use_i18n;
 use crate::state::{AppState, SaveStatus};
@@ -10,9 +11,17 @@ use crate::state::{AppState, SaveStatus};
 pub fn TodayCard() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let (summary, is_today) = {
+    let (summary, score, is_today, noted, note_late) = {
         let state = state.read();
-        (state.summary(), state.is_today())
+        (
+            state.summary(),
+            state.viewing_score(),
+            state.is_today(),
+            state.viewing_note().is_some(),
+            state
+                .viewing_note()
+                .is_some_and(|note| note.is_late_for(state.viewing)),
+        )
     };
     let title_key = if is_today {
         "summary-title-today"
@@ -23,6 +32,17 @@ pub fn TodayCard() -> Element {
     rsx! {
         aside { class: "today-card",
             h2 { class: "card-title", {i18n.t(title_key)} }
+            if noted { span { class: "note-sign", role: "img", aria_label: i18n.t("note-sign"), {i18n.t("note-sign-symbol")} } }
+            if note_late { span { class: "late-sign", aria_label: i18n.t("mark-added-later"), {i18n.t("mark-added-later")} } }
+            match score {
+                Ok(Some(score)) => rsx! {
+                    if let Some(percent) = score.percent {
+                        p { class: "card-note", {i18n.t_with("summary-score", &[("percent", FluentValue::from(percent))])} }
+                    }
+                },
+                Err(_) => rsx! { p { class: "editor-error", role: "alert", {i18n.t("summary-score-error")} } },
+                Ok(None) => rsx! {},
+            }
             div { class: "counts",
                 Count { kind: "done", value: summary.done, label: i18n.t("summary-done") }
                 Count { kind: "partial", value: summary.partial, label: i18n.t("summary-partial") }

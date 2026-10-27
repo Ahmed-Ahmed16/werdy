@@ -9,7 +9,7 @@ use werdy_store::Store;
 use crate::i18n::{Language, Texts};
 use crate::state::AppState;
 use crate::state::EditorError;
-use werdy_core::Schedule;
+use werdy_core::{Error, ExcuseCredit, Schedule, WerdyDay};
 
 /// Text lookup in the current language.
 #[derive(Clone)]
@@ -82,6 +82,39 @@ impl Actions {
         let changed = change(&mut state)?;
         state.save_to(store.as_ref());
         Ok(changed)
+    }
+
+    fn change_note(
+        self,
+        day: WerdyDay,
+        change: impl FnOnce(&mut AppState) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let store = self.store.read().clone();
+        let mut state = self.state;
+        let mut state = state.write();
+        let today = crate::platform::today().inspect_err(|_| {
+            state.save_status = crate::state::SaveStatus::DateFailed;
+        })?;
+        state.update_today(today);
+        if day > today {
+            return Err(Error::InvalidDate);
+        }
+        change(&mut state)?;
+        state.save_to(store.as_ref());
+        Ok(())
+    }
+
+    /// Validates and saves a note for the chosen day.
+    pub fn save_note(self, day: WerdyDay, text: &str, credit: ExcuseCredit) -> Result<(), Error> {
+        self.change_note(day, |state| state.save_day_note(day, text, credit))
+    }
+
+    /// Deletes a note for the chosen day.
+    pub fn delete_note(self, day: WerdyDay) -> Result<(), Error> {
+        self.change_note(day, |state| {
+            state.delete_day_note(day);
+            Ok(())
+        })
     }
 
     /// Changes only what is on screen, such as the day shown. Nothing is saved.
