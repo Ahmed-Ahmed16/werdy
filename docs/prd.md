@@ -9,6 +9,7 @@ werdy is a tracker for daily Islamic deeds and life work, for one person (the **
 * Live address: https://ahmed-ahmed16.github.io/werdy/
 * Type: a static web app (Rust compiled to WebAssembly, Dioxus). There is no server, no sign in and no account.
 * Storage: everything is saved in the browser's local storage under the key `werdy.records`, on this device only. A fresh browser profile starts at first run.
+* Demo data: https://ahmed-ahmed16.github.io/werdy/?demo opens werdy with about 120 days of sample history (Cairo, 12 deeds, notes, late marks, a gap, one archived deed) in a separate key, `werdy.demo.records`. Real records are never touched. A banner says "Demo data. Your own records are not touched." with "Reset demo" and "Leave demo".
 * Language: Arabic and right to left by default. A button in the header switches to English and back.
 * Installable as a web app, and the app shell loads offline after one online visit.
 
@@ -31,8 +32,8 @@ werdy is a tracker for daily Islamic deeds and life work, for one person (the **
 
 Shown when the browser has no saved data.
 
-1. Title "Welcome. Set up your page". The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location".
-2. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Muslim World League elsewhere).
+1. Title "Welcome. Set up your page". The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
+2. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
 3. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added.
 4. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens an empty sheet.
 
@@ -120,8 +121,8 @@ Reached from My deeds (phone) or from the side rail (840 px and wider).
 
 Limits of a fresh browser profile, which every automated test starts from:
 
-* A deed counts only from the day it was added (rule 7), and reports end yesterday. So on a fresh profile every report says "No deeds were due in this period", past days have no due deeds, and "Added later" cannot appear. This is correct behaviour, not missing data. Report scores, the month bars, "What did I miss?" and late marks can only be checked with saved history from earlier days.
-* "Use my location" needs the browser to grant location access. If it is refused, the app shows "Location was not available. Choose a city instead." The chosen place is shown on the place screen, not on Today.
+* A deed counts only from the day it was added (rule 7), and reports end yesterday. So on a fresh profile every report says "No deeds were due in this period", past days have no due deeds, and "Added later" cannot appear. This is correct behaviour, not missing data. **Test reports, scores, month bars, "What did I miss?", consistency, milestones, excuse credit effects and late marks at `?demo`**, which has that history.
+* "Use my location" needs the browser to grant location access. If it is refused, or nothing answers within 15 seconds, the app shows "Location was not available. Choose a city instead." The chosen place is shown on the place screen, not on Today.
 * "Delete deed and all marks" removes a deed for good; it does not move it to Archived. Only "Archive deed" does that.
 * Layout checks need the test browser to resize its window.
 
@@ -137,6 +138,9 @@ Limits of a fresh browser profile, which every automated test starts from:
 10. Reports on a new profile: the empty message and "Open Today" button appear; today is never counted.
 11. Settings: switch to Dark theme and Arabic Indic digits; both apply at once and survive a reload.
 12. Resize to 375 px, 768 px, 1024 px and 1600 px: no sideways scroll; bottom bar under 840 px, side rail from 840 px.
+13. Open `?demo`: the demo banner shows; Reports for Week, 30 days and 6 months show a score with "Out of N due", a lead sentence naming the most missed deed, and a "What did I miss?" list; the strip shows a note sign on a credited day.
+14. At `?demo`, go back to a day from about 8 days ago: some marks carry the "Added later" sign. The 100 day milestone line shows on Today.
+15. At `?demo`, tap "Reset demo": the sample history is rebuilt for today. "Leave demo" opens the normal app, with its own records unchanged.
 
 ## 9. Out of scope for this build
 
