@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry,
-    OwnerRecords, Schedule, Score, Target, WerdyDay, score,
+    CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark,
+    MarkEntry, OwnerRecords, Schedule, Score, Target, WerdyDay, score,
 };
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -36,6 +36,7 @@ fn score_day(
             deeds,
             marks,
             day_notes,
+            calendar: CalendarSettings::default(),
         },
         &[scored_day],
         today,

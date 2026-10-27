@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, Consistency, DEFAULT_CONSISTENCY_WINDOW, DayNote, Deed, DeedId, DeedRule, Error,
-    ExcuseCredit, Mark, MarkEntry, OwnerRecords, Schedule, Target, Weekday, WerdyDay, consistency,
-    kept_days,
+    CalendarSettings, CategoryKey, Consistency, DEFAULT_CONSISTENCY_WINDOW, DayNote, Deed, DeedId,
+    DeedRule, Error, ExcuseCredit, Mark, MarkEntry, OwnerRecords, Schedule, Target, Weekday,
+    WerdyDay, consistency, kept_days,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -37,6 +37,7 @@ fn records<'a>(
         deeds,
         marks,
         day_notes: notes,
+        calendar: CalendarSettings::default(),
     }
 }
 

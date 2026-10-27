@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    Band, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry,
-    OwnerRecords, Period, Schedule, ScoreBands, SeriesEntry, Weekday, WerdyDay, build_report,
+    Band, CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit,
+    Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, SeriesEntry, Weekday, WerdyDay,
+    build_report,
 };
 
 fn day(month: u8, number: u8) -> Result<WerdyDay, Error> {
@@ -34,6 +35,7 @@ fn report(
             deeds,
             marks,
             day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
         },
         period,
         steps_back,
@@ -300,6 +302,7 @@ fn full_day_credit_removes_deed_from_missed_list() -> Result<(), Error> {
             deeds: &deeds,
             marks: &BTreeMap::new(),
             day_notes: &notes,
+            calendar: CalendarSettings::default(),
         },
         Period::ThreeDays,
         0,

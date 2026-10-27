@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    Target, TodaySummary, WerdyDay, score as score_records, today_summary,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords,
+    Schedule, Score, Target, TodaySummary, WerdyDay, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -13,6 +13,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
             deeds,
             marks,
             day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
         },
         days,
         today,
@@ -143,7 +144,7 @@ fn today_counts_zero_partial_and_full_counts() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today),
+        today_summary(&deeds, &marks, today, CalendarSettings::default()),
         TodaySummary {
             done: 2,
             partial: 1,
@@ -177,10 +178,19 @@ fn count_without_target_uses_binary_value() -> Result<(), Error> {
         1.0
     );
     assert_eq!(
-        today_summary(std::slice::from_ref(&deed), &marks, first).missed,
+        today_summary(
+            std::slice::from_ref(&deed),
+            &marks,
+            first,
+            CalendarSettings::default()
+        )
+        .missed,
         1
     );
-    assert_eq!(today_summary(&[deed], &marks, second).done, 1);
+    assert_eq!(
+        today_summary(&[deed], &marks, second, CalendarSettings::default()).done,
+        1
+    );
     Ok(())
 }
 

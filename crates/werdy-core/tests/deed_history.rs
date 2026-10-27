@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    Weekday, WerdyDay, delete_deed, score as score_records,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords,
+    Schedule, Score, Weekday, WerdyDay, delete_deed, score as score_records,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -13,6 +13,7 @@ fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> S
             deeds,
             marks,
             day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
         },
         days,
         today,
@@ -93,9 +94,9 @@ fn archived_deed_is_not_due_from_archive_day() -> Result<(), Error> {
     let mut deed = Deed::new(DeedId(1), day(21)?, daily());
     deed.archive(day(24)?)?;
 
-    assert!(deed.is_due_on(day(23)?));
-    assert!(!deed.is_due_on(day(24)?));
-    assert!(!deed.is_due_on(day(25)?));
+    assert!(deed.is_due_on(day(23)?, CalendarSettings::default()));
+    assert!(!deed.is_due_on(day(24)?, CalendarSettings::default()));
+    assert!(!deed.is_due_on(day(25)?, CalendarSettings::default()));
     Ok(())
 }
 
@@ -108,7 +109,7 @@ fn rule_change_before_creation_is_an_error() -> Result<(), Error> {
         Err(Error::RuleBeforeCreation)
     );
     assert_eq!(deed.rule_on(day(23)?), None);
-    assert!(!deed.is_due_on(day(23)?));
+    assert!(!deed.is_due_on(day(23)?, CalendarSettings::default()));
     Ok(())
 }
 
@@ -128,7 +129,7 @@ fn rule_change_before_latest_version_is_an_error() -> Result<(), Error> {
         deed.change_rule(day(23)?, daily()),
         Err(Error::RuleBeforeLatest)
     );
-    assert!(!deed.is_due_on(day(24)?));
+    assert!(!deed.is_due_on(day(24)?, CalendarSettings::default()));
     Ok(())
 }
 
@@ -146,7 +147,7 @@ fn same_day_rule_change_replaces_latest_rule() -> Result<(), Error> {
     deed.change_rule(day(24)?, daily())?;
 
     assert_eq!(deed.rule_on(day(24)?), Some(&daily()));
-    assert!(deed.is_due_on(day(24)?));
+    assert!(deed.is_due_on(day(24)?, CalendarSettings::default()));
     Ok(())
 }
 

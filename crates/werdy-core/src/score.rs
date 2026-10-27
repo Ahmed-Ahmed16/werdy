@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{DayNote, Deed, DeedId, Mark, MarkEntry, WerdyDay};
+use crate::{CalendarSettings, DayNote, Deed, DeedId, Mark, MarkEntry, WerdyDay};
 
 /// Owner's deeds, marks, and day notes used by a score.
 pub struct OwnerRecords<'a> {
@@ -10,6 +10,8 @@ pub struct OwnerRecords<'a> {
     pub marks: &'a BTreeMap<(DeedId, WerdyDay), MarkEntry>,
     /// Day notes keyed by werdy day.
     pub day_notes: &'a BTreeMap<WerdyDay, DayNote>,
+    /// Calendar settings, such as the Hijri offset.
+    pub calendar: CalendarSettings,
 }
 
 /// Total earned value, due deed count, and rounded percent.
@@ -33,7 +35,7 @@ pub fn score(records: &OwnerRecords<'_>, days: &[WerdyDay], today: WerdyDay) -> 
             continue;
         }
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day) {
+            if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
                 due += 1;
                 earned += due_value(records, deed, *day, rule);
             }
@@ -85,6 +87,7 @@ pub fn today_summary(
     deeds: &[Deed],
     marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
     today: WerdyDay,
+    calendar: CalendarSettings,
 ) -> TodaySummary {
     let mut summary = TodaySummary {
         done: 0,
@@ -93,7 +96,7 @@ pub fn today_summary(
         missed: 0,
     };
     for deed in deeds {
-        let Some(rule) = deed.due_rule_on(today) else {
+        let Some(rule) = deed.due_rule_on(today, calendar) else {
             continue;
         };
         match marks.get(&(deed.id, today)).map(|entry| entry.mark) {

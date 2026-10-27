@@ -225,7 +225,7 @@ fn category_scores(records: &OwnerRecords<'_>, days: &[WerdyDay]) -> BTreeMap<Ca
     let mut totals: BTreeMap<CategoryKey, (f64, usize)> = BTreeMap::new();
     for day in days {
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day) {
+            if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
                 let value = crate::score::due_value(records, deed, *day, rule);
                 let category = totals.entry(rule.category.clone()).or_default();
                 category.0 += value;
@@ -252,6 +252,7 @@ fn deed_summaries(
                 deeds: std::slice::from_ref(deed),
                 marks: records.marks,
                 day_notes: records.day_notes,
+                calendar: records.calendar,
             },
             days,
             today,
@@ -281,7 +282,7 @@ fn missed_deed(
     let mut days_not_done = 0;
     let mut lost = 0.0;
     for day in days {
-        if let Some(rule) = deed.due_rule_on(*day) {
+        if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
             let value = crate::score::due_value(records, deed, *day, rule);
             if value < 1.0 {
                 days_not_done += 1;
