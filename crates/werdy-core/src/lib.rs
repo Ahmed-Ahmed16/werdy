@@ -9,6 +9,10 @@ pub enum Error {
     InvalidDate,
     /// Fraction is not a finite value from zero to one.
     FractionOutOfRange,
+    /// Target amount must be at least one.
+    InvalidTargetAmount,
+    /// Target unit key is empty.
+    EmptyTargetUnit,
     /// Rule change starts before the deed was created.
     RuleBeforeCreation,
     /// Rule change starts before the latest rule version.
@@ -25,6 +29,6 @@ mod mark;
 mod score;
 
 pub use day::{Weekday, WerdyDay};
-pub use deed::{Deed, DeedId, DeedRule, Schedule, delete_deed};
+pub use deed::{Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use score::{Score, TodaySummary, score, today_summary};

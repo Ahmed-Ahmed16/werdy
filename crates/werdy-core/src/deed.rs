@@ -27,11 +27,46 @@ impl Schedule {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DeedId(pub u64);
 
+/// Positive daily amount with a short unit key, not translated UI text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Target {
+    amount: u32,
+    unit: String,
+}
+
+impl Target {
+    /// Creates a target with a positive amount and a nonempty unit key.
+    pub fn new(amount: u32, unit: &str) -> Result<Self, Error> {
+        if amount == 0 {
+            return Err(Error::InvalidTargetAmount);
+        }
+        if unit.is_empty() {
+            return Err(Error::EmptyTargetUnit);
+        }
+        Ok(Self {
+            amount,
+            unit: unit.to_owned(),
+        })
+    }
+
+    /// Returns the daily amount.
+    pub fn amount(&self) -> u32 {
+        self.amount
+    }
+
+    /// Returns the unit key for later Fluent lookup.
+    pub fn unit(&self) -> &str {
+        &self.unit
+    }
+}
+
 /// Fields that may change for a deed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeedRule {
     /// Days when this deed is due.
     pub schedule: Schedule,
+    /// Daily target, if this deed uses counts.
+    pub target: Option<Target>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,10 +166,15 @@ impl Deed {
 
     /// Says whether this deed is due on this day.
     pub fn is_due_on(&self, day: WerdyDay) -> bool {
-        self.archived_from.is_none_or(|archived| day < archived)
-            && self
-                .rule_on(day)
-                .is_some_and(|rule| rule.schedule.includes(day))
+        self.due_rule_on(day).is_some()
+    }
+
+    /// Returns the rule if the deed is due on this day.
+    pub(crate) fn due_rule_on(&self, day: WerdyDay) -> Option<&DeedRule> {
+        if self.archived_from.is_some_and(|archived| day >= archived) {
+            return None;
+        }
+        self.rule_on(day).filter(|rule| rule.schedule.includes(day))
     }
 }
 
