@@ -323,13 +323,21 @@ impl AppState {
         self.data.day_notes.get(&self.viewing)
     }
 
-    /// Saves a note with the current day as its entry day.
+    /// Saves a changed note with the current day as its entry day.
     pub fn save_day_note(
         &mut self,
         day: WerdyDay,
         text: &str,
         credit: ExcuseCredit,
     ) -> Result<(), Error> {
+        if self
+            .data
+            .day_notes
+            .get(&day)
+            .is_some_and(|note| note.text() == text && note.credit() == credit)
+        {
+            return Ok(());
+        }
         let note = DayNote::new(text, credit, self.today)?;
         self.data
             .set_day_note(day, Some(note), crate::platform::change_time());
@@ -1323,6 +1331,32 @@ mod tests {
         );
         assert!(state.data.marks.is_empty());
         assert!(state.data.day_notes.contains_key(&yesterday));
+        Ok(())
+    }
+
+    #[test]
+    fn unchanged_note_keeps_original_entry_day_and_is_not_late() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let day = state.viewing;
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        state.update_today(today()?.next()?.next()?.next()?);
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        let note = state.data.day_notes.get(&day).ok_or("missing note")?;
+        assert_eq!(note.entered_on(), day);
+        assert!(!note.is_late_for(day));
+        Ok(())
+    }
+
+    #[test]
+    fn edited_note_records_edit_day() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let day = state.viewing;
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        state.update_today(today()?.next()?.next()?.next()?);
+        state.save_day_note(day, "Ill", ExcuseCredit::Full)?;
+        let note = state.data.day_notes.get(&day).ok_or("missing note")?;
+        assert_eq!(note.entered_on(), state.today);
+        assert!(note.is_late_for(day));
         Ok(())
     }
 

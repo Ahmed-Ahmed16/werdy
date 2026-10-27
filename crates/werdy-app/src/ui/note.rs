@@ -4,15 +4,17 @@ use dioxus::prelude::*;
 use werdy_core::{Error, ExcuseCredit, WerdyDay};
 
 use super::context::{use_actions, use_i18n};
+use super::header::date_text;
 use super::icons::CrossIcon;
-use crate::state::AppState;
+use crate::{platform, state::AppState};
 
 #[component]
-pub fn NoteDialog(day: WerdyDay, date: String, on_close: EventHandler<()>) -> Element {
+pub fn NoteDialog(day: WerdyDay, on_close: EventHandler<()>) -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
     let existing = state.read().data.day_notes.get(&day).cloned();
+    use_effect(platform::open_note_dialog);
     let has_note = existing.is_some();
     let mut text = use_signal(|| {
         existing
@@ -37,12 +39,17 @@ pub fn NoteDialog(day: WerdyDay, date: String, on_close: EventHandler<()>) -> El
     let delete_save_error = save_error.clone();
 
     rsx! {
-        div { class: "note-backdrop",
-            section { class: "note-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "note-title",
+        dialog { id: "note-dialog", class: "note-dialog", aria_labelledby: "note-title",
+                onkeydown: move |event| {
+                    if event.key() == Key::Escape {
+                        event.prevent_default();
+                        on_close.call(());
+                    }
+                },
                 div { class: "note-dialog-head",
                     div {
                         h2 { id: "note-title", {i18n.t("note-title")} }
-                        p { class: "note-date", "{date}" }
+                        p { class: "note-date", {date_text(&i18n, day)} }
                     }
                     button { class: "icon-button", aria_label: i18n.t("note-close"), onclick: move |_| on_close.call(()), CrossIcon {} }
                 }
@@ -50,7 +57,7 @@ pub fn NoteDialog(day: WerdyDay, date: String, on_close: EventHandler<()>) -> El
                 textarea { id: "note-text", class: "note-text", rows: "4", value: "{text}", oninput: move |event| text.set(event.value()) }
                 fieldset { class: "note-credit",
                     legend { class: "editor-label", {i18n.t("note-credit-label")} }
-                    div { class: "note-choices", role: "radiogroup", aria_label: i18n.t("note-credit-label"),
+                    div { class: "note-choices",
                         CreditChoice { choice: ExcuseCredit::None, selected: credit(), on_pick: move |choice| credit.set(choice) }
                         CreditChoice { choice: ExcuseCredit::Half, selected: credit(), on_pick: move |choice| credit.set(choice) }
                         CreditChoice { choice: ExcuseCredit::Full, selected: credit(), on_pick: move |choice| credit.set(choice) }
@@ -78,7 +85,6 @@ pub fn NoteDialog(day: WerdyDay, date: String, on_close: EventHandler<()>) -> El
                         }, {i18n.t("note-delete")} }
                     }
                 }
-            }
         }
     }
 }
@@ -96,7 +102,10 @@ fn CreditChoice(
         ExcuseCredit::Full => "note-credit-full",
     };
     rsx! {
-        button { class: "note-choice", role: "radio", aria_checked: selected == choice,
-            onclick: move |_| on_pick.call(choice), {i18n.t(key)} }
+        label { class: "note-choice",
+            input { r#type: "radio", name: "note-credit", checked: selected == choice,
+                onchange: move |_| on_pick.call(choice) }
+            span { {i18n.t(key)} }
+        }
     }
 }

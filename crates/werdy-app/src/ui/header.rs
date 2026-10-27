@@ -6,16 +6,14 @@ use werdy_core::{Weekday, WerdyDay};
 
 use super::context::{I18n, use_actions, use_i18n};
 use super::icons::{ChevronBack, ChevronForward};
-use super::note::NoteDialog;
 use crate::state::AppState;
 
 /// Date line with previous and next day arrows. Next is off on today.
 #[component]
-pub fn DayHeader() -> Element {
+pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let mut note_day = use_signal(|| None::<WerdyDay>);
     let (viewing, is_today, hijri_offset, noted, note_late) = {
         let state = state.read();
         (
@@ -58,7 +56,7 @@ pub fn DayHeader() -> Element {
                 }
             }
             div { class: "header-tools",
-                button { class: "text-button", onclick: move |_| note_day.set(Some(viewing)), {i18n.t("note-button")} }
+                button { id: "note-open", class: "text-button", onclick: move |_| on_open_note.call(viewing), {i18n.t("note-button")} }
                 if !is_today {
                     button {
                         class: "text-button",
@@ -73,9 +71,6 @@ pub fn DayHeader() -> Element {
                     {i18n.t("language-switch")}
                 }
             }
-        }
-        if let Some(day) = note_day() {
-            NoteDialog { key: "{day:?}", day, date: date_text(&i18n, day), on_close: move |_| note_day.set(None) }
         }
     }
 }
@@ -95,7 +90,7 @@ fn hijri_text(i18n: &I18n, day: WerdyDay, offset: werdy_core::HijriOffset) -> St
     )
 }
 
-fn date_text(i18n: &I18n, day: WerdyDay) -> String {
+pub(super) fn date_text(i18n: &I18n, day: WerdyDay) -> String {
     let (year, month, day_of_month) = day.date_parts();
     let weekday = i18n.t(weekday_key(day.weekday()));
     let month_name = i18n.t(&format!("month-{month}"));

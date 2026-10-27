@@ -191,26 +191,25 @@ button:focus-visible {
   margin-inline-end: var(--gap-s);
 }
 
-.note-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: end;
-  justify-content: center;
+.note-dialog::backdrop {
   background: color-mix(in srgb, var(--text) var(--overlay-opacity), transparent);
 }
 
 .note-dialog {
+  border: 0;
+  margin: auto auto 0;
   width: min(100%, var(--dialog-max-width));
   max-height: 100vh;
   overflow-y: auto;
-  display: flex;
   flex-direction: column;
   gap: var(--gap-l);
   padding: var(--gap-l);
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   background: var(--surface);
+}
+
+.note-dialog[open] {
+  display: flex;
 }
 
 .note-dialog-head,
@@ -261,16 +260,36 @@ button:focus-visible {
 
 .note-choice {
   flex: 1;
+  position: relative;
+}
+
+.note-choice input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.note-choice span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: var(--touch-min);
-  border: 0;
   border-radius: var(--radius-control);
   background: transparent;
 }
 
-.note-choice[aria-checked="true"] {
+.note-choice input:checked + span {
   background: var(--surface);
   color: var(--primary);
   font-weight: var(--weight-bold);
+}
+
+.note-choice input:focus-visible + span {
+  outline: var(--stroke-strong) solid var(--primary);
+  outline-offset: 2px;
 }
 
 .note-explanation {
@@ -290,12 +309,9 @@ button:focus-visible {
 }
 
 @media (min-width: 600px) {
-  .note-backdrop {
-    align-items: center;
-    padding: var(--page-gutter);
-  }
-
   .note-dialog {
+    margin: auto;
+    max-height: calc(100vh - 2 * var(--page-gutter));
     border-radius: var(--radius-card);
   }
 }
