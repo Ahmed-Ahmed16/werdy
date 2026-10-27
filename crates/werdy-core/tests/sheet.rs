@@ -82,6 +82,51 @@ fn rows_keep_deed_order_and_carry_their_mark() -> Result<(), Error> {
 }
 
 #[test]
+fn sheet_rows_flag_marks_more_than_two_days_late() -> Result<(), Error> {
+    let marked_day = day()?;
+    let next_day = marked_day.next()?;
+    let two_days_later = next_day.next()?;
+    let three_days_later = two_days_later.next()?;
+    let deeds = vec![
+        deed(1, "fajr", marked_day),
+        deed(2, "fajr", marked_day),
+        deed(3, "fajr", marked_day),
+    ];
+    let marks = Marks::from([
+        (
+            (DeedId(1), marked_day),
+            MarkEntry::new(Mark::Done, marked_day),
+        ),
+        (
+            (DeedId(2), marked_day),
+            MarkEntry::new(Mark::Done, two_days_later),
+        ),
+        (
+            (DeedId(3), marked_day),
+            MarkEntry::new(Mark::Done, three_days_later),
+        ),
+    ]);
+
+    let sheet = daily_sheet(
+        &deeds,
+        &marks,
+        marked_day,
+        &slot_order(),
+        CalendarSettings::default(),
+    );
+    assert!(sheet.slots[0].folded);
+    assert_eq!(
+        sheet.slots[0]
+            .rows
+            .iter()
+            .map(|row| row.added_later)
+            .collect::<Vec<_>>(),
+        [false, false, true]
+    );
+    Ok(())
+}
+
+#[test]
 fn deeds_not_due_that_day_are_left_out() -> Result<(), Error> {
     let today = day()?;
     let fridays = Schedule::Weekdays(BTreeSet::from([Weekday::Friday]));

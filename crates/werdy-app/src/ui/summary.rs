@@ -55,6 +55,7 @@ pub fn StatusBanner() -> Element {
         SaveStatus::Saved => return rsx! {},
         SaveStatus::SaveFailed => "store-save-failed",
         SaveStatus::LoadFailed => "store-load-failed",
+        SaveStatus::DateFailed => "app-date-failed",
     };
 
     rsx! {

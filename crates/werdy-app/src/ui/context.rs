@@ -56,8 +56,9 @@ impl Actions {
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
-        change(&mut state);
-        state.save_to(store.as_ref());
+        if state.change_on_day(crate::platform::today(), change) {
+            state.save_to(store.as_ref());
+        }
     }
 
     /// Changes only what is on screen, such as the day shown. Nothing is saved.

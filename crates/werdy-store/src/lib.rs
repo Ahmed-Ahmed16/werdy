@@ -7,7 +7,7 @@
 #![forbid(unsafe_code)]
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use werdy_core::{
@@ -24,7 +24,7 @@ pub enum StoreError {
     Corrupt(String),
     /// The data was written by a newer werdy with a layout we do not know.
     UnsupportedVersion(u32),
-    /// Two marks for the same deed and day, or two notes for the same day.
+    /// Two deeds with one id, two marks for one day, or two notes for one day.
     DuplicateEntry,
     /// The place that holds the JSON failed, such as a full or blocked browser storage.
     Backend(String),
@@ -310,6 +310,13 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         return Err(StoreError::UnsupportedVersion(probe.schema_version));
     }
     let file: DataFile = serde_json::from_str(text).map_err(corrupt)?;
+
+    let mut deed_ids = BTreeSet::new();
+    for deed in &file.deeds {
+        if !deed_ids.insert(deed.id) {
+            return Err(StoreError::DuplicateEntry);
+        }
+    }
 
     let mut marks = BTreeMap::new();
     let mut mark_revisions = BTreeMap::new();

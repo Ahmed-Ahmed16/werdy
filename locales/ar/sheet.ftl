@@ -41,6 +41,7 @@ slot-show = عرض
 mark-done = تم
 mark-partial = جزئي
 mark-missed = فات
+mark-added-later = أضيف لاحقًا
 count-minus = أنقص واحدًا
 count-plus = زد واحدًا
 count-progress = { $count } من { $target }

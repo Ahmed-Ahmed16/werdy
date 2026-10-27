@@ -11,6 +11,8 @@ pub struct SheetRow {
     pub deed_id: DeedId,
     /// The owner's mark for that day, if any.
     pub mark: Option<Mark>,
+    /// Whether the mark was entered more than two days after this day.
+    pub added_later: bool,
     /// Target in force that day, if the deed uses counts.
     pub target: Option<Target>,
 }
@@ -49,7 +51,8 @@ pub fn daily_sheet(
         let Some(rule) = deed.due_rule_on(day, calendar) else {
             continue;
         };
-        let mark = marks.get(&(deed.id, day)).map(|entry| entry.mark);
+        let entry = marks.get(&(deed.id, day));
+        let mark = entry.map(|entry| entry.mark);
         let done = mark.is_some_and(|mark| mark.exact_value(rule) == Fraction::ONE);
         let position = slot_order
             .iter()
@@ -61,6 +64,7 @@ pub fn daily_sheet(
         group.0.push(SheetRow {
             deed_id: deed.id,
             mark,
+            added_later: entry.is_some_and(|entry| entry.is_late_for(day)),
             target: rule.target.clone(),
         });
         group.1 &= done;

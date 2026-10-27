@@ -41,6 +41,7 @@ slot-show = Show
 mark-done = Done
 mark-partial = Partial
 mark-missed = Missed
+mark-added-later = Added later
 count-minus = Take one away
 count-plus = Add one
 count-progress = { $count } of { $target }

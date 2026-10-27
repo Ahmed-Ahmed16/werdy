@@ -215,6 +215,20 @@ fn two_marks_for_the_same_deed_and_day_are_an_error() -> TestResult {
 }
 
 #[test]
+fn two_deeds_with_the_same_id_are_an_error_on_load() -> TestResult {
+    let mut value: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    let deeds = value["deeds"].as_array_mut().ok_or("deeds is not a list")?;
+    let first = deeds.first().cloned().ok_or("no deeds")?;
+    deeds.push(first);
+
+    assert_eq!(
+        from_json(&value.to_string()),
+        Err(StoreError::DuplicateEntry)
+    );
+    Ok(())
+}
+
+#[test]
 fn the_next_deed_id_follows_the_highest_id() -> TestResult {
     assert_eq!(sample()?.next_deed_id(), DeedId(3));
     assert_eq!(OwnerData::default().next_deed_id(), DeedId(1));

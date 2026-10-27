@@ -316,6 +316,22 @@ button:focus-visible {
   font-weight: var(--weight-medium);
 }
 
+.deed-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.late-sign {
+  padding: 0 var(--gap-s);
+  border: 1px solid var(--text-muted);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+  white-space: nowrap;
+}
+
 .deed-controls {
   display: flex;
   align-items: center;

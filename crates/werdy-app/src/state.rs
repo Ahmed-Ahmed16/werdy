@@ -96,7 +96,7 @@ pub fn shown_count(current: Option<Mark>) -> u32 {
     }
 }
 
-/// Whether the owner's data can be saved, and if the last save worked.
+/// Whether the owner's last change could be made and saved.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SaveStatus {
     /// Everything is saved.
@@ -105,6 +105,8 @@ pub enum SaveStatus {
     SaveFailed,
     /// Saved data could not be read, so nothing is written over it.
     LoadFailed,
+    /// Today's date could not be read, so a change was not made.
+    DateFailed,
 }
 
 /// Everything the screen shows, in one place.
@@ -219,6 +221,25 @@ impl AppState {
     pub fn update_today(&mut self, today: WerdyDay) {
         self.viewing = viewing_after_today_change(self.today, today, self.viewing);
         self.today = today;
+    }
+
+    /// Applies a change only after today's date is read, so marks use that day.
+    pub fn change_on_day(
+        &mut self,
+        today: Result<WerdyDay, werdy_core::Error>,
+        change: impl FnOnce(&mut Self),
+    ) -> bool {
+        match today {
+            Ok(today) => {
+                self.update_today(today);
+                change(self);
+                true
+            }
+            Err(_) => {
+                self.save_status = SaveStatus::DateFailed;
+                false
+            }
+        }
     }
 
     /// Applies a mark button tap on the day on screen.
@@ -505,6 +526,45 @@ mod tests {
         assert_eq!(state.viewing, new_today);
         assert_eq!(state.summary().done, 0);
         assert_eq!(state.summary().open, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn a_mark_refreshes_today_but_keeps_a_chosen_past_day() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let old_today = state.today;
+        let new_today = old_today.next()?;
+
+        assert!(state.change_on_day(Ok(new_today), |state| state.tap(DeedId(1), Tap::Done)));
+        assert_eq!(state.viewing, new_today);
+        assert_eq!(
+            state.data.marks[&(DeedId(1), new_today)].entered_on,
+            new_today
+        );
+        assert!(!state.data.marks.contains_key(&(DeedId(1), old_today)));
+
+        state.show_previous_day();
+        assert!(state.change_on_day(Ok(new_today.next()?), |state| {
+            state.tap(DeedId(2), Tap::Done)
+        }));
+        assert_eq!(state.viewing, old_today);
+        assert_eq!(
+            state.data.marks[&(DeedId(2), old_today)].entered_on,
+            new_today.next()?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_mark_is_skipped_when_today_cannot_be_read() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+
+        assert!(!state.change_on_day(Err(Error::InvalidDate), |state| {
+            state.tap(DeedId(1), Tap::Done);
+        }));
+
+        assert_eq!(state.save_status, SaveStatus::DateFailed);
+        assert!(state.data.marks.is_empty());
         Ok(())
     }
 
