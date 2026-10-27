@@ -55,7 +55,7 @@ Expected: after first run, reloading the page opens Today, not first run.
 * "Note" opens a dialog: a text field "What happened this day?" and "Excuse credit" with None, Half or Full, each with a short explanation.
 * Save with text or a credit; saving with neither shows "Write a note or choose a credit."
 * A saved note shows a note sign (✎) on the day. "Delete note" removes it.
-* Excuse credit lifts every due deed that day that is not Done to at least the credit value (Half: at least 0.5, Full: 1). Marks themselves are not changed.
+* Excuse credit lifts every due deed that day that is not Done to at least the credit value (Half: at least 0.5, Full: 1), in the score of a finished day. Marks themselves are not changed: the mark buttons, and today's Done, Partial and Open counts, stay exactly as marked. The effect shows only in the score of a past day and in reports.
 
 ### 4.4 Consistency, milestones and welcome back
 
@@ -117,6 +117,13 @@ Reached from My deeds (phone) or from the side rail (840 px and wider).
 * If saved data cannot be read, the app shows an error and does not write over it.
 
 ## 8. Suggested test scenarios
+
+Limits of a fresh browser profile, which every automated test starts from:
+
+* A deed counts only from the day it was added (rule 7), and reports end yesterday. So on a fresh profile every report says "No deeds were due in this period", past days have no due deeds, and "Added later" cannot appear. This is correct behaviour, not missing data. Report scores, the month bars, "What did I miss?" and late marks can only be checked with saved history from earlier days.
+* "Use my location" needs the browser to grant location access. If it is refused, the app shows "Location was not available. Choose a city instead." The chosen place is shown on the place screen, not on Today.
+* "Delete deed and all marks" removes a deed for good; it does not move it to Archived. Only "Archive deed" does that.
+* Layout checks need the test browser to resize its window.
 
 1. Fresh browser: first run appears; choose Cairo; the Fajr time line appears; add "The five prayers"; Start my page; Today shows 5 prayer deeds and "Today so far" with 5 open.
 2. Mark Fajr Done: the Done count becomes 1 and Open drops by 1. Tap Done again: the mark clears.
