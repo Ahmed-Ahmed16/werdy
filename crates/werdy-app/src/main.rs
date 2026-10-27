@@ -4,6 +4,7 @@
 
 mod editor_data;
 mod i18n;
+mod location;
 mod platform;
 mod starter;
 mod state;

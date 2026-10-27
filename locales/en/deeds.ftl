@@ -56,6 +56,12 @@ category-other = Other
 range-ramadan = Ramadan
 range-last-ten-nights = the last ten nights of Ramadan
 range-dhul-hijjah-first-ten = the first ten days of Dhul Hijjah
+range-dhul-hijjah-first-nine = the first nine days of Dhul Hijjah
+# Open question for the owner: the last day of takbir (13 Dhul Hijjah?).
+range-dhul-hijjah-takbir = the days of takbir
+range-arafah = Arafah
+range-tasua-and-ashura = Tasua and Ashura
+range-ashura = Ashura
 range-ayyam-al-bid = Ayyam al Bid
 editor-unit-pages = pages
 editor-unit-rakaat = rakaat

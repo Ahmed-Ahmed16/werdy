@@ -8,7 +8,7 @@ use werdy_core::{
     Schedule, ScoreBands, SlotKey, Target, TodaySummary, Weekday, WerdyDay, build_report,
     convert_mark_for_target, daily_sheet, delete_deed, finished_day_summary, today_summary,
 };
-use werdy_store::{DeedName, OwnerData, Store, merge_records};
+use werdy_store::{DeedName, Location, OwnerData, PrayerMethod, Store, merge_records};
 
 /// Keeps the owner's past day in view, or follows today when today moves.
 pub fn viewing_after_today_change(
@@ -115,6 +115,8 @@ pub enum SaveStatus {
 /// Screen selected in the navigation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Screen {
+    FirstRunLocation,
+    SetPicker,
     /// Daily sheet.
     Sheet,
     /// Reports for finished days.
@@ -238,26 +240,17 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Loads saved data. On first run, fills the sheet with the starter set and
-    /// saves it. If saved data cannot be read, runs on the starter set in
-    /// memory and never writes over the saved data.
-    pub fn start<E>(
-        store: &dyn Store,
-        today: WerdyDay,
-        slot_order: Vec<SlotKey>,
-        starter: impl FnOnce(WerdyDay) -> Result<OwnerData, E>,
-    ) -> Self {
+    /// Loads saved data. Empty storage opens setup. Unreadable data is never overwritten.
+    pub fn start(store: &dyn Store, today: WerdyDay, slot_order: Vec<SlotKey>) -> Self {
         let (data, save_status) = match store.load() {
             Ok(Some(data)) => (data, SaveStatus::Saved),
-            Ok(None) => {
-                let data = starter(today).unwrap_or_default();
-                let status = match store.save(&data) {
-                    Ok(()) => SaveStatus::Saved,
-                    Err(_) => SaveStatus::SaveFailed,
-                };
-                (data, status)
-            }
-            Err(_) => (starter(today).unwrap_or_default(), SaveStatus::LoadFailed),
+            Ok(None) => (OwnerData::default(), SaveStatus::Saved),
+            Err(_) => (OwnerData::default(), SaveStatus::LoadFailed),
+        };
+        let screen = if data.first_run_complete {
+            Screen::Sheet
+        } else {
+            Screen::FirstRunLocation
         };
         Self {
             data,
@@ -265,7 +258,7 @@ impl AppState {
             viewing: today,
             slot_order,
             save_status,
-            screen: Screen::Sheet,
+            screen,
             report_period: Period::Week,
             report_steps_back: 0,
             settings_dirty: false,
@@ -334,6 +327,120 @@ impl AppState {
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
         self.screen = screen;
+    }
+
+    pub fn set_location(&mut self, location: Location) -> Result<(), EditorError> {
+        let method = crate::location::method_for_country(location.country.as_deref().unwrap_or(""))
+            .map_err(|_| EditorError::RuleChange)?;
+        self.data.settings.prayer_method = method;
+        self.data.settings.location = Some(location);
+        self.settings_dirty = true;
+        Ok(())
+    }
+
+    pub fn set_prayer_method(&mut self, method: PrayerMethod) {
+        self.data.settings.prayer_method = method;
+        self.settings_dirty = true;
+    }
+
+    pub fn finish_first_run(&mut self, screen: Screen) {
+        self.data.first_run_complete = true;
+        self.settings_dirty = true;
+        self.screen = screen;
+    }
+
+    pub fn toggle_set(&mut self, key: &str) -> Result<(), EditorError> {
+        let previous = self.clone();
+        let result = self.toggle_set_inner(key);
+        if result.is_err() {
+            *self = previous;
+        }
+        result
+    }
+
+    fn toggle_set_inner(&mut self, key: &str) -> Result<(), EditorError> {
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        if catalog.set(key).is_none() {
+            return Err(EditorError::RuleChange);
+        }
+        let mut selected = self.data.chosen_sets.clone();
+        if !selected.insert(key.to_owned()) {
+            selected.remove(key);
+        }
+        let wanted = crate::starter::selected_deeds(catalog, &selected);
+        self.add_selected_deeds(catalog, &selected)?;
+        self.restore_selected_deeds(&wanted)?;
+        self.remove_unselected_deeds(&wanted)?;
+        self.data.chosen_sets = selected;
+        self.settings_dirty = true;
+        Ok(())
+    }
+
+    fn add_selected_deeds(
+        &mut self,
+        catalog: &werdy_data::Catalog,
+        selected: &BTreeSet<String>,
+    ) -> Result<(), EditorError> {
+        let missing = crate::starter::missing_deeds(catalog, &self.data, selected);
+        for key in missing {
+            let deed = catalog.deed(&key).ok_or(EditorError::RuleChange)?;
+            let rule = crate::starter::rule(deed).ok_or(EditorError::RuleChange)?;
+            let id = self.data.next_deed_id();
+            if id.0 <= self.data.last_deed_id {
+                return Err(EditorError::RuleChange);
+            }
+            self.data.last_deed_id = id.0;
+            self.data.deeds.push(Deed::new(id, self.today, rule));
+            self.data.names.insert(id, DeedName::Key(deed.name.clone()));
+            self.data.starter_keys.insert(id, key);
+            self.record_upsert(id);
+        }
+        Ok(())
+    }
+
+    fn restore_selected_deeds(&mut self, wanted: &BTreeSet<String>) -> Result<(), EditorError> {
+        let restore: Vec<_> = self
+            .data
+            .starter_keys
+            .iter()
+            .filter(|(_, key)| wanted.contains(*key))
+            .filter_map(|(id, _)| {
+                self.data
+                    .deeds
+                    .iter()
+                    .find(|deed| deed.id == *id && deed.is_archived_on(self.today))
+                    .map(|_| *id)
+            })
+            .collect();
+        for id in restore {
+            self.restore_deed(id)?;
+        }
+        Ok(())
+    }
+
+    fn remove_unselected_deeds(&mut self, wanted: &BTreeSet<String>) -> Result<(), EditorError> {
+        let remove: Vec<_> = self
+            .data
+            .starter_keys
+            .iter()
+            .filter(|(_, key)| !wanted.contains(*key))
+            .filter_map(|(id, _)| {
+                self.data
+                    .deeds
+                    .iter()
+                    .find(|deed| deed.id == *id && !deed.is_archived_on(self.today))
+                    .map(|_| *id)
+            })
+            .collect();
+        for id in remove {
+            if self.data.marks.keys().any(|(deed_id, _)| *deed_id == id) {
+                self.archive_deed(id)?;
+            } else {
+                self.delete_deed_confirmed(id, true)?;
+                self.data.starter_keys.remove(&id);
+            }
+        }
+        Ok(())
     }
 
     /// Selects a period and returns to its latest window.
@@ -502,6 +609,7 @@ impl AppState {
         );
         delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
         self.data.names.remove(&id);
+        self.data.starter_keys.remove(&id);
         self.data
             .mark_revisions
             .retain(|(deed_id, _), _| *deed_id != id);
@@ -647,6 +755,9 @@ impl AppState {
         if let Some(name) = self.data.names.remove(&old_id) {
             self.data.names.insert(new_id, name);
         }
+        if let Some(key) = self.data.starter_keys.remove(&old_id) {
+            self.data.starter_keys.insert(new_id, key);
+        }
         self.move_mark_ids(old_id, new_id);
         if let Some(DeedChange::Upsert { mut deed, name, .. }) = self.deed_changes.remove(&old_id) {
             deed.id = new_id;
@@ -736,6 +847,9 @@ impl AppState {
                 );
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
+                    merged.first_run_complete = self.data.first_run_complete;
+                    merged.chosen_sets = self.data.chosen_sets.clone();
+                    merged.starter_keys = self.data.starter_keys.clone();
                 }
                 self.apply_deed_changes(&mut merged);
                 let live_ids: BTreeSet<_> = merged.deeds.iter().map(|deed| deed.id).collect();
@@ -774,6 +888,9 @@ impl AppState {
                 let mut merged = merge_records(&stored, &self.data);
                 if self.settings_dirty {
                     merged.settings = self.data.settings.clone();
+                    merged.first_run_complete = self.data.first_run_complete;
+                    merged.chosen_sets = self.data.chosen_sets.clone();
+                    merged.starter_keys = self.data.starter_keys.clone();
                 }
                 self.apply_deed_changes(&mut merged);
                 if merged == stored {
@@ -796,7 +913,7 @@ impl AppState {
 mod tests {
     use std::cell::Cell;
     use werdy_core::{DeedId, Error, Mark, Period, WerdyDay};
-    use werdy_store::{MemoryStore, OwnerData, Store, StoreError};
+    use werdy_store::{Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError};
 
     use super::{
         AppState, EditorDraft, EditorError, SaveStatus, Screen, Step, Tap, is_on, stepped, tapped,
@@ -823,7 +940,12 @@ mod tests {
     }
 
     fn started(store: &dyn Store) -> Result<AppState, Error> {
-        Ok(AppState::start(store, today()?, slot_order(), five_prayers))
+        if store.load().ok().flatten().is_none()
+            && let Ok(data) = five_prayers(today()?)
+        {
+            let _ = store.save(&data);
+        }
+        Ok(AppState::start(store, today()?, slot_order()))
     }
 
     #[test]
@@ -1174,14 +1296,126 @@ mod tests {
     }
 
     #[test]
-    fn first_run_fills_the_five_prayers_and_saves_them() -> TestResult {
+    fn first_run_opens_setup_without_adding_deeds() -> TestResult {
         let store = MemoryStore::default();
-
-        let state = started(&store)?;
-
-        assert_eq!(state.data.deeds.len(), 5);
+        let state = AppState::start(&store, today()?, slot_order());
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert!(state.data.deeds.is_empty());
         assert_eq!(state.save_status, SaveStatus::Saved);
-        assert_eq!(store.load()?, Some(state.data));
+        assert_eq!(store.load()?, None);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_location_and_set_choice_survive_restart() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        let place = Location::new(
+            Some("cairo".to_owned()),
+            Some("EG".to_owned()),
+            30.04,
+            31.24,
+        )
+        .ok_or("bad test place")?;
+        state.set_location(place)?;
+        assert_eq!(
+            state.data.settings.prayer_method,
+            PrayerMethod::EgyptianGeneralAuthority
+        );
+        state.show_screen(Screen::SetPicker);
+        state.toggle_set("five_prayers")?;
+        state.save_to(&store);
+        state.finish_first_run(Screen::Sheet);
+        state.save_to(&store);
+
+        let again = AppState::start(&store, today()?, slot_order());
+        assert_eq!(again.screen, Screen::Sheet);
+        assert_eq!(again.data.deeds.len(), 5);
+        assert!(again.data.chosen_sets.contains("five_prayers"));
+        assert_eq!(again.data.settings.location, state.data.settings.location);
+        Ok(())
+    }
+
+    #[test]
+    fn removing_one_overlapping_set_keeps_shared_deeds() -> TestResult {
+        let catalog = werdy_data::builtin()?;
+        let first = catalog
+            .sets
+            .iter()
+            .find(|a| {
+                catalog
+                    .sets
+                    .iter()
+                    .any(|b| a.key != b.key && a.deeds.iter().any(|key| b.deeds.contains(key)))
+            })
+            .ok_or("no overlap")?;
+        let second = catalog
+            .sets
+            .iter()
+            .find(|b| first.key != b.key && first.deeds.iter().any(|key| b.deeds.contains(key)))
+            .ok_or("no second set")?;
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.toggle_set(&first.key)?;
+        state.toggle_set(&second.key)?;
+        let shared = first
+            .deeds
+            .iter()
+            .find(|key| second.deeds.contains(key))
+            .ok_or("no shared deed")?;
+        assert_eq!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .filter(|key| *key == shared)
+                .count(),
+            1
+        );
+        state.toggle_set(&first.key)?;
+        assert_eq!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .filter(|key| *key == shared)
+                .count(),
+            1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn removing_a_marked_set_preserves_history_and_readding_restores_deeds() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.toggle_set("five_prayers")?;
+        let id = *state
+            .data
+            .starter_keys
+            .iter()
+            .find(|(_, key)| *key == "fajr_on_time")
+            .map(|(id, _)| id)
+            .ok_or("missing Fajr")?;
+        state.tap(id, Tap::Done);
+        state.toggle_set("five_prayers")?;
+        assert!(
+            state
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == id)
+                .is_some_and(|deed| deed.is_archived_on(state.today))
+        );
+        state.toggle_set("five_prayers")?;
+        assert_eq!(state.data.deeds.len(), 5);
+        assert_eq!(state.mark(id), Some(Mark::Done));
+        assert!(
+            state
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == id)
+                .is_some_and(|deed| !deed.is_archived_on(state.today))
+        );
         Ok(())
     }
 
@@ -1203,13 +1437,13 @@ mod tests {
     #[test]
     fn unreadable_saved_data_is_never_written_over() -> TestResult {
         let store = MemoryStore::default();
-        let mut state = AppState::start(&BrokenStore, today()?, slot_order(), five_prayers);
+        let mut state = AppState::start(&BrokenStore, today()?, slot_order());
 
-        state.tap(DeedId(1), Tap::Done);
+        state.finish_first_run(Screen::Sheet);
         state.save_to(&store);
 
         assert_eq!(state.save_status, SaveStatus::LoadFailed);
-        assert_eq!(state.data.deeds.len(), 5);
+        assert!(state.data.deeds.is_empty());
         assert_eq!(store.load()?, None);
         Ok(())
     }

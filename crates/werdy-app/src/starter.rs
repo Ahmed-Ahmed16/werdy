@@ -1,123 +1,142 @@
-//! Data read at start: the order of time slots and the starter sets (ADR 0024).
+//! Pure catalog conversion and set selection.
 
-use serde::Deserialize;
-use werdy_core::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, WerdyDay};
-use werdy_store::{DeedName, OwnerData};
+use std::collections::BTreeSet;
 
-const TIME_SLOTS: &str = include_str!("../../../data/time-slots.json");
-const FIVE_PRAYERS: &str = include_str!("../../../data/starter-sets/five-prayers.json");
+use werdy_core::{CategoryKey, DeedRule, Schedule, SlotKey, Target, Weekday};
+use werdy_data::{Catalog, Deed as CatalogDeed, Schedule as CatalogSchedule};
+use werdy_store::OwnerData;
 
-/// Returns the time slot order for the sheet. If the data file is broken, the
-/// list is empty and core shows every slot in key order instead.
-pub fn slot_order() -> Vec<SlotKey> {
-    serde_json::from_str::<Vec<String>>(TIME_SLOTS)
-        .map(|keys| keys.iter().map(|key| SlotKey::new(key)).collect())
-        .unwrap_or_default()
-}
-
-#[derive(Deserialize)]
-struct StarterSet {
-    deeds: Vec<StarterDeed>,
-}
-
-#[derive(Deserialize)]
-struct StarterDeed {
-    name_key: String,
-    slot: String,
-    category: String,
-    schedule: Schedule,
-    #[serde(default)]
-    target: Option<Target>,
-}
-
-/// Builds first run records from the five prayers set (starter set 1),
-/// with every deed created today.
-pub fn five_prayers(today: WerdyDay) -> Result<OwnerData, serde_json::Error> {
-    from_starter_json(FIVE_PRAYERS, today)
-}
-
-fn from_starter_json(text: &str, today: WerdyDay) -> Result<OwnerData, serde_json::Error> {
-    let set: StarterSet = serde_json::from_str(text)?;
+#[cfg(test)]
+pub fn five_prayers(today: werdy_core::WerdyDay) -> Result<OwnerData, werdy_data::Error> {
+    let catalog = werdy_data::builtin()?;
     let mut data = OwnerData::default();
-    for (id, deed) in (1..).zip(set.deeds) {
-        let id = DeedId(id);
-        let rule = DeedRule {
-            schedule: deed.schedule,
-            target: deed.target,
-            category: CategoryKey::new(&deed.category),
-            slot: SlotKey::new(&deed.slot),
-        };
-        data.deeds.push(Deed::new(id, today, rule));
-        data.last_deed_id = id.0;
-        data.names.insert(id, DeedName::Key(deed.name_key));
+    if let Some(set) = catalog.set("five_prayers") {
+        for key in &set.deeds {
+            if let Some(deed) = catalog
+                .deed(key)
+                .and_then(|deed| rule(deed).map(|rule| (deed, rule)))
+            {
+                let id = data.next_deed_id();
+                data.last_deed_id = id.0;
+                data.deeds.push(werdy_core::Deed::new(id, today, deed.1));
+                data.names
+                    .insert(id, werdy_store::DeedName::Key(deed.0.name.clone()));
+                data.starter_keys.insert(id, key.clone());
+            }
+        }
     }
+    data.first_run_complete = true;
+    data.chosen_sets.insert("five_prayers".to_owned());
     Ok(data)
+}
+
+pub fn slot_order() -> Vec<SlotKey> {
+    crate::editor_data::catalog().map_or_else(
+        |_| Vec::new(),
+        |catalog| catalog.slots.iter().map(|key| SlotKey::new(key)).collect(),
+    )
+}
+
+/// Keys a set would add to this sheet. Shared deeds appear once.
+pub fn missing_deeds(
+    catalog: &Catalog,
+    data: &OwnerData,
+    selected: &BTreeSet<String>,
+) -> Vec<String> {
+    let mut seen: BTreeSet<_> = data.starter_keys.values().cloned().collect();
+    catalog
+        .sets
+        .iter()
+        .filter(|set| selected.contains(&set.key))
+        .flat_map(|set| &set.deeds)
+        .filter(|key| seen.insert((*key).clone()))
+        .cloned()
+        .collect()
+}
+
+pub fn selected_deeds(catalog: &Catalog, selected: &BTreeSet<String>) -> BTreeSet<String> {
+    selected
+        .iter()
+        .filter_map(|key| catalog.set(key))
+        .flat_map(|set| set.deeds.iter().cloned())
+        .collect()
+}
+
+pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
+    let schedule = match &deed.schedule {
+        CatalogSchedule::EveryDay => Schedule::EveryDay,
+        CatalogSchedule::Weekdays(days) => Schedule::Weekdays(
+            days.iter()
+                .map(|day| match day {
+                    werdy_data::Weekday::Monday => Weekday::Monday,
+                    werdy_data::Weekday::Tuesday => Weekday::Tuesday,
+                    werdy_data::Weekday::Wednesday => Weekday::Wednesday,
+                    werdy_data::Weekday::Thursday => Weekday::Thursday,
+                    werdy_data::Weekday::Friday => Weekday::Friday,
+                    werdy_data::Weekday::Saturday => Weekday::Saturday,
+                    werdy_data::Weekday::Sunday => Weekday::Sunday,
+                })
+                .collect(),
+        ),
+        CatalogSchedule::Hijri(key) => Schedule::Hijri(
+            crate::editor_data::ranges()
+                .ok()?
+                .into_iter()
+                .find(|range| range.key == *key)?
+                .range()
+                .ok()?,
+        ),
+    };
+    let target = deed
+        .target
+        .as_ref()
+        .map(|target| Target::new(target.amount, &target.unit))
+        .transpose()
+        .ok()?;
+    Some(DeedRule {
+        schedule,
+        target,
+        category: CategoryKey::new(&deed.category),
+        slot: SlotKey::new(&deed.slot),
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::{DeedId, Error, WerdyDay, daily_sheet};
-    use werdy_store::DeedName;
-
-    use super::{five_prayers, from_starter_json, slot_order};
-    use crate::i18n::{Language, Texts};
+    use super::{missing_deeds, rule};
+    use std::collections::BTreeSet;
+    use werdy_store::OwnerData;
 
     #[test]
-    fn the_slot_order_lists_the_eight_slots_from_fajr_to_any_time() {
-        let keys: Vec<_> = slot_order().into_iter().map(|slot| slot.0).collect();
-
-        assert_eq!(
-            keys,
-            [
-                "fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night", "any_time"
-            ]
-        );
-    }
-
-    #[test]
-    fn five_prayers_fill_five_slots_in_prayer_order() -> Result<(), Box<dyn std::error::Error>> {
-        let today = WerdyDay::new(2026, 10, 27)?;
-        let data = five_prayers(today)?;
-
-        let sheet = daily_sheet(
-            &data.deeds,
-            &data.marks,
-            today,
-            &slot_order(),
-            data.records().calendar,
-        );
-
-        let slots: Vec<_> = sheet
-            .slots
+    fn overlapping_sets_add_shared_deed_once() -> Result<(), Box<dyn std::error::Error>> {
+        let catalog = werdy_data::builtin()?;
+        let a = catalog
+            .sets
             .iter()
-            .map(|slot| slot.slot.0.as_str())
-            .collect();
-        assert_eq!(slots, ["fajr", "dhuhr", "asr", "maghrib", "isha"]);
-        assert_eq!(data.next_deed_id(), DeedId(6));
+            .find(|a| {
+                catalog
+                    .sets
+                    .iter()
+                    .any(|b| a.key != b.key && a.deeds.iter().any(|key| b.deeds.contains(key)))
+            })
+            .ok_or("no overlap")?;
+        let b = catalog
+            .sets
+            .iter()
+            .find(|b| a.key != b.key && a.deeds.iter().any(|key| b.deeds.contains(key)))
+            .ok_or("no second set")?;
+        let selected = BTreeSet::from([a.key.clone(), b.key.clone()]);
+        let keys = missing_deeds(&catalog, &OwnerData::default(), &selected);
+        assert_eq!(keys.len(), keys.iter().collect::<BTreeSet<_>>().len());
+        assert!(keys.len() < a.deeds.len() + b.deeds.len());
+        assert_eq!(keys.first(), a.deeds.first());
         Ok(())
     }
 
     #[test]
-    fn every_starter_name_has_text_in_both_languages() -> Result<(), Box<dyn std::error::Error>> {
-        let texts = Texts::load();
-        let data = five_prayers(WerdyDay::new(2026, 10, 27)?)?;
-
-        for name in data.names.values() {
-            let DeedName::Key(key) = name else {
-                return Err("starter names must be keys".into());
-            };
-            for language in [Language::Arabic, Language::English] {
-                assert_ne!(texts.get(language, key, &[]), *key, "{key} has no text");
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn a_broken_starter_file_is_an_error() -> Result<(), Error> {
-        let today = WerdyDay::new(2026, 10, 27)?;
-
-        assert!(from_starter_json(r#"{"deeds": [{"name_key": 1}]}"#, today).is_err());
+    fn every_catalog_deed_has_a_core_rule() -> Result<(), Box<dyn std::error::Error>> {
+        let catalog = werdy_data::builtin()?;
+        assert!(catalog.deeds.iter().all(|deed| rule(deed).is_some()));
         Ok(())
     }
 }

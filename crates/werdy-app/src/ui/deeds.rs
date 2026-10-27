@@ -75,6 +75,10 @@ pub fn MyDeeds() -> Element {
                 div { h1 { class: "day-title", {i18n.t("deeds-title")} } p { class: "deeds-subtitle", "{count_text}" } }
                 button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Editor(None))), {i18n.t("deeds-add")} }
             }
+            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)),
+                span { {i18n.t("sets-open-from-deeds")} }
+                span { class: "deeds-meta", {i18n.t("sets-open-detail")} }
+            }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
             for (slot, members) in groups {
                 section { class: "deeds-group", key: "{slot.0}",
