@@ -357,18 +357,40 @@ pub use web::WatchHandle;
 #[cfg(not(target_arch = "wasm32"))]
 pub struct WatchHandle;
 
-/// Watches for a new day and for changes saved by another browser tab.
-pub fn watch_changes(
-    on_clock: impl FnMut() + 'static,
-    on_storage: impl FnMut() + 'static,
-) -> WatchHandle {
+/// Matches the width where the week card becomes visible.
+#[cfg(any(target_arch = "wasm32", test))]
+fn week_card_visible_at(width: f64) -> bool {
+    width >= 840.0
+}
+
+/// Reads current width for the week card.
+pub fn wide_layout() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        web::watch_changes(on_clock, on_storage)
+        web_sys::window()
+            .and_then(|window| window.inner_width().ok())
+            .and_then(|width| width.as_f64())
+            .is_some_and(week_card_visible_at)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (on_clock, on_storage);
+        false
+    }
+}
+
+/// Watches for a new day, saved changes, and viewport resize.
+pub fn watch_changes(
+    on_clock: impl FnMut() + 'static,
+    on_storage: impl FnMut() + 'static,
+    on_resize: impl FnMut() + 'static,
+) -> WatchHandle {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web::watch_changes(on_clock, on_storage, on_resize)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (on_clock, on_storage, on_resize);
         WatchHandle
     }
 }
@@ -378,6 +400,12 @@ mod tests {
     use werdy_calendar::{Date, Method, Place, fajr};
     use werdy_core::WerdyDay;
     use werdy_store::{Location, PrayerMethod, Settings};
+
+    #[test]
+    fn week_card_starts_at_expanded_breakpoint() {
+        assert!(!super::week_card_visible_at(839.0));
+        assert!(super::week_card_visible_at(840.0));
+    }
 
     #[test]
     fn spring_forward_uses_offset_at_fajr() -> Result<(), Box<dyn std::error::Error>> {
@@ -506,6 +534,7 @@ mod web {
         document: Option<web_sys::Document>,
         clock: Closure<dyn FnMut(web_sys::Event)>,
         storage: Closure<dyn FnMut(web_sys::StorageEvent)>,
+        resize: Closure<dyn FnMut(web_sys::Event)>,
         _timer: Closure<dyn FnMut()>,
         interval: Option<i32>,
     }
@@ -520,6 +549,10 @@ mod web {
                 let _ = window.remove_event_listener_with_callback(
                     "storage",
                     self.storage.as_ref().unchecked_ref(),
+                );
+                let _ = window.remove_event_listener_with_callback(
+                    "resize",
+                    self.resize.as_ref().unchecked_ref(),
                 );
                 if let Some(interval) = self.interval {
                     window.clear_interval_with_handle(interval);
@@ -537,6 +570,7 @@ mod web {
     pub fn watch_changes(
         on_clock: impl FnMut() + 'static,
         mut on_storage: impl FnMut() + 'static,
+        mut on_resize: impl FnMut() + 'static,
     ) -> WatchHandle {
         let on_clock = Rc::new(RefCell::new(on_clock));
         let clock_event = on_clock.clone();
@@ -548,6 +582,8 @@ mod web {
                 on_storage();
             }
         }) as Box<dyn FnMut(_)>);
+        let resize =
+            Closure::wrap(Box::new(move |_: web_sys::Event| on_resize()) as Box<dyn FnMut(_)>);
         let timer = Closure::wrap(Box::new(move || (on_clock.borrow_mut())()) as Box<dyn FnMut()>);
         let window = web_sys::window();
         let document = window.as_ref().and_then(web_sys::Window::document);
@@ -556,6 +592,8 @@ mod web {
                 window.add_event_listener_with_callback("focus", clock.as_ref().unchecked_ref());
             let _ = window
                 .add_event_listener_with_callback("storage", storage.as_ref().unchecked_ref());
+            let _ =
+                window.add_event_listener_with_callback("resize", resize.as_ref().unchecked_ref());
             window
                 .set_interval_with_callback_and_timeout_and_arguments_0(
                     timer.as_ref().unchecked_ref(),
@@ -574,6 +612,7 @@ mod web {
             document,
             clock,
             storage,
+            resize,
             _timer: timer,
             interval,
         }

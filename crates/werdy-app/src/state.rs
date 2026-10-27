@@ -422,8 +422,11 @@ impl AppState {
 
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
-        if screen == Screen::Settings && self.screen != Screen::Settings {
-            self.settings_back_to_deeds = self.screen == Screen::Deeds;
+        if screen == Screen::Settings
+            && self.screen != Screen::Settings
+            && (self.screen != Screen::FirstRunLocation || self.location_return != Screen::Settings)
+        {
+            self.settings_back_to_deeds = false;
         }
         if screen == Screen::FirstRunLocation && self.screen == Screen::Settings {
             self.location_return = Screen::Settings;
@@ -431,6 +434,12 @@ impl AppState {
             self.location_return = Screen::Deeds;
         }
         self.screen = screen;
+    }
+
+    /// Opens Settings with a return path to My deeds.
+    pub fn open_settings_from_deeds(&mut self) {
+        self.show_screen(Screen::Settings);
+        self.settings_back_to_deeds = true;
     }
 
     pub fn set_location(&mut self, location: Location) -> Result<(), EditorError> {
@@ -2135,11 +2144,26 @@ mod tests {
         state.show_screen(Screen::Settings);
         assert!(!state.settings_back_to_deeds);
         state.show_screen(Screen::Deeds);
-        state.show_screen(Screen::Settings);
+        state.open_settings_from_deeds();
         assert!(state.settings_back_to_deeds);
         state.show_screen(Screen::Reports);
         state.show_screen(Screen::Settings);
         assert!(!state.settings_back_to_deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn settings_entry_from_my_deeds_survives_location_round_trip() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Deeds);
+        state.open_settings_from_deeds();
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::FirstRunLocation);
+        state.show_screen(state.location_return);
+        assert_eq!(state.screen, Screen::Settings);
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::Deeds);
+        assert_eq!(state.screen, Screen::Deeds);
         Ok(())
     }
 

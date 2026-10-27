@@ -142,15 +142,94 @@ fn the_raw_colour_check_finds_hex_and_functions() {
     );
 }
 
+fn rule_body<'a>(css: &'a str, selector: &str) -> Option<&'a str> {
+    css.match_indices('{').find_map(|(open, _)| {
+        let start = css[..open].rfind(['{', '}']).map_or(0, |index| index + 1);
+        let head = css[start..open].rsplit("*/").next()?.trim();
+        let matches = head.split(',').any(|part| part.trim() == selector);
+        matches.then(|| css[open + 1..].split('}').next()).flatten()
+    })
+}
+
+fn has_declaration(body: &str, property: &str, value: &str) -> bool {
+    body.lines()
+        .any(|line| line.trim() == format!("{property}: {value};"))
+}
+
+fn media_block<'a>(css: &'a str, query: &str) -> Option<&'a str> {
+    let marker = format!("@media {query} {{");
+    let start = css.find(&marker)? + marker.len();
+    let mut depth = 1;
+    for (index, ch) in css[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0 {
+            return Some(&css[start..start + index]);
+        }
+    }
+    None
+}
+
+fn media_rule_has(css: &str, query: &str, selector: &str, declaration: (&str, &str)) -> bool {
+    let marker = format!("@media {query} {{");
+    css.match_indices(&marker).any(|(start, _)| {
+        media_block(&css[start..], query)
+            .and_then(|block| rule_body(block, selector))
+            .is_some_and(|body| has_declaration(body, declaration.0, declaration.1))
+    })
+}
+
+fn touch_sized(css: &str, selector: &str) -> bool {
+    let Some(body) = rule_body(css, selector) else {
+        return false;
+    };
+    let height = has_declaration(body, "height", "var(--touch-min)")
+        || has_declaration(body, "min-height", "var(--touch-min)");
+    let width = has_declaration(body, "width", "var(--touch-min)")
+        || has_declaration(body, "min-width", "var(--touch-min)");
+    height && (!matches!(selector, ".mark-button" | ".step-button") || width)
+}
+
 #[test]
 fn responsive_rules_cover_phone_tablet_and_wide_web() {
-    assert!(APP_CSS.contains("@media (min-width: 600px)"));
-    assert!(APP_CSS.contains("@media (min-width: 840px)"));
-    assert!(APP_CSS.contains("@media (min-width: 1280px)"));
-    assert!(APP_CSS.contains("grid-template-columns: minmax(0, 1fr)"));
-    assert!(APP_CSS.contains(".rail"));
-    assert!(APP_CSS.contains("position: sticky"));
-    assert!(APP_CSS.contains("max-width: var(--content-max)"));
+    let tablet = media_block(APP_CSS, "(min-width: 600px)").expect("tablet rules");
+    let expanded = media_block(APP_CSS, "(min-width: 840px)").expect("expanded rules");
+    let wide = media_block(APP_CSS, "(min-width: 1280px)").expect("wide rules");
+    assert!(
+        rule_body(APP_CSS, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "grid-template-columns",
+            "minmax(0, 1fr)"
+        ))
+    );
+    assert!(rule_body(tablet, ".note-dialog").is_some());
+    assert!(
+        rule_body(expanded, ".rail").is_some_and(|body| has_declaration(body, "display", "flex")
+            && has_declaration(body, "position", "sticky"))
+    );
+    assert!(
+        rule_body(expanded, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "grid-template-columns",
+            "minmax(0, 3fr) minmax(0, 2fr)"
+        ))
+    );
+    assert!(media_rule_has(
+        APP_CSS,
+        "(min-width: 840px)",
+        ".week-card",
+        ("display", "block")
+    ));
+    assert!(
+        rule_body(wide, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "max-width",
+            "var(--content-max)"
+        ))
+    );
     for selector in [
         ".werdy-root",
         ".panes",
@@ -186,6 +265,28 @@ fn interactive_controls_keep_touch_size_and_visible_focus() {
         ".bottom-item",
         ".period-chip",
     ] {
-        assert!(APP_CSS.contains(selector), "missing {selector}");
+        assert!(
+            touch_sized(APP_CSS, selector),
+            "{selector} must use the touch token"
+        );
     }
+}
+
+#[test]
+fn compact_week_keeps_note_signs_and_short_today_label() {
+    assert!(!APP_CSS.contains(".week-card .report-day-cell small {"));
+    for selector in [
+        ".week-card .report-score-detail",
+        ".week-card .report-today-label",
+    ] {
+        assert!(
+            rule_body(APP_CSS, selector)
+                .is_some_and(|body| has_declaration(body, "display", "none"))
+        );
+    }
+    assert!(
+        rule_body(APP_CSS, ".week-card .report-today-compact")
+            .is_some_and(|body| has_declaration(body, "display", "inline"))
+    );
+    assert!(include_str!("ui/reports.rs").contains("reports-today-short"));
 }

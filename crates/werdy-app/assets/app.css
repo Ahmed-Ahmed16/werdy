@@ -437,8 +437,17 @@ textarea:focus-visible {
   overflow: hidden;
 }
 
-.week-card .report-day-cell small {
+.week-card .report-score-detail,
+.week-card .report-today-label {
   display: none;
+}
+
+.report-today-compact {
+  display: none;
+}
+
+.week-card .report-today-compact {
+  display: inline;
 }
 
 .week-card .report-link {

@@ -18,6 +18,7 @@ reports-previous-empty = No deeds were due in the previous period.
 reports-previous-unavailable = Could not calculate the previous period.
 reports-series = Days and months
 reports-today = Today, in progress
+reports-today-short = Today
 reports-today-counts = { $done } done, { $partial } partial, { $open } open, { $missed } missed
 reports-open-today = Open Today
 reports-category = By category

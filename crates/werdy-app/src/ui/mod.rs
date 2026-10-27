@@ -76,6 +76,7 @@ impl PartialEq for StoreHandle {
 #[component]
 fn Shell(initial: AppState, store: StoreHandle) -> Element {
     let mut state = use_signal(|| initial);
+    let mut wide_layout = use_signal(platform::wide_layout);
     let mut last_screen = use_signal(|| state.read().screen);
     use_effect(move || {
         let screen = state.read().screen;
@@ -100,6 +101,12 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             move || {
                 let saved = store.read().clone();
                 state.write().reload_from(saved.as_ref());
+            },
+            move || {
+                let wide = platform::wide_layout();
+                if wide_layout() != wide {
+                    wide_layout.set(wide);
+                }
             },
         ))
     });
@@ -135,7 +142,7 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
                         header::DayHeader { on_open_note: move |day| note_day.set(Some(day)) }
                         div { class: "sheet-aside",
                             summary::TodayCard {}
-                            summary::WeekCard {}
+                            if wide_layout() { summary::WeekCard {} }
                         }
                         sheet::Sheet {}
                     },

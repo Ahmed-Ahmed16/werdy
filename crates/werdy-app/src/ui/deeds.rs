@@ -83,7 +83,7 @@ pub fn MyDeeds() -> Element {
                 span { {i18n.t("location-open-from-deeds")} }
                 span { class: "deeds-meta", {i18n.t("location-open-detail")} }
             }
-            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::Settings)),
+            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.open_settings_from_deeds()),
                 span { {i18n.t("nav-settings")} }
             }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
