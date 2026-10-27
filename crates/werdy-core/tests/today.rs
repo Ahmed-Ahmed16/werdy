@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords,
-    Schedule, Score, TodaySummary, WerdyDay, score as score_records, today_summary,
+    Schedule, Score, ScoreValue, TodaySummary, WerdyDay, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -85,7 +85,7 @@ fn unmarked_due_deed_on_finished_day_is_worth_zero() -> Result<(), Error> {
     assert_eq!(
         result,
         Score {
-            earned: 0.0,
+            earned: ScoreValue::ZERO,
             due: 1,
             percent: Some(0),
         }

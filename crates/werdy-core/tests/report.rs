@@ -87,7 +87,7 @@ fn today_is_never_in_a_report() -> Result<(), Error> {
     );
     assert!(!result.days.contains(&today));
     assert_eq!(result.overall.due, 3);
-    assert_eq!(result.overall.earned, 0.0);
+    assert_eq!(result.overall.earned.as_f64(), 0.0);
     Ok(())
 }
 
@@ -170,9 +170,19 @@ fn score_is_split_by_category() -> Result<(), Error> {
         ScoreBands::default(),
     );
     assert_eq!(result.by_category[&CategoryKey::new("prayer")].due, 3);
-    assert_eq!(result.by_category[&CategoryKey::new("prayer")].earned, 1.0);
+    assert_eq!(
+        result.by_category[&CategoryKey::new("prayer")]
+            .earned
+            .as_f64(),
+        1.0
+    );
     assert_eq!(result.by_category[&CategoryKey::new("study")].due, 2);
-    assert_eq!(result.by_category[&CategoryKey::new("study")].earned, 1.0);
+    assert_eq!(
+        result.by_category[&CategoryKey::new("study")]
+            .earned
+            .as_f64(),
+        1.0
+    );
     assert_eq!(result.by_category[&CategoryKey::new("work")].due, 1);
     assert_eq!(result.overall.due, 6);
     Ok(())
@@ -225,7 +235,7 @@ fn what_did_i_miss_lists_worst_first() -> Result<(), Error> {
         vec![DeedId(2), DeedId(3), DeedId(4)]
     );
     assert_eq!(result.missed[0].days_not_done, 3);
-    assert_eq!(result.missed[0].lost, 3.0);
+    assert_eq!(result.missed[0].lost.as_f64(), 3.0);
     Ok(())
 }
 
@@ -253,7 +263,7 @@ fn per_deed_history_counts_due_days_only() -> Result<(), Error> {
         .filter(|day| day.weekday() == Weekday::Friday)
         .count();
     assert_eq!(result.per_deed[&DeedId(1)].due, friday_count);
-    assert_eq!(result.per_deed[&DeedId(1)].earned, 1.0);
+    assert_eq!(result.per_deed[&DeedId(1)].earned.as_f64(), 1.0);
     Ok(())
 }
 
@@ -309,8 +319,13 @@ fn full_day_credit_removes_deed_from_missed_list() -> Result<(), Error> {
         today,
         ScoreBands::default(),
     );
-    assert_eq!(result.overall.earned, 1.0);
-    assert_eq!(result.by_category[&CategoryKey::new("other")].earned, 1.0);
+    assert_eq!(result.overall.earned.as_f64(), 1.0);
+    assert_eq!(
+        result.by_category[&CategoryKey::new("other")]
+            .earned
+            .as_f64(),
+        1.0
+    );
     assert!(result.missed.is_empty());
     Ok(())
 }

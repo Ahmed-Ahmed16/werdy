@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::{CategoryKey, DeedId, OwnerRecords, Score, WerdyDay, score};
+use crate::mark::PARTS_PER_DEED;
+use crate::{CategoryKey, DeedId, OwnerRecords, Score, ScoreValue, WerdyDay, score};
 
 const THREE_DAYS: i64 = 3;
 const WEEK_DAYS: i64 = 7;
@@ -131,7 +132,7 @@ pub struct MissedDeed {
     /// Due days worth less than one after any credit.
     pub days_not_done: usize,
     /// Sum of value lost across due days.
-    pub lost: f64,
+    pub lost: ScoreValue,
 }
 
 /// Scores and history for one rolling period.
@@ -222,13 +223,13 @@ fn build_month_series(
 }
 
 fn category_scores(records: &OwnerRecords<'_>, days: &[WerdyDay]) -> BTreeMap<CategoryKey, Score> {
-    let mut totals: BTreeMap<CategoryKey, (f64, usize)> = BTreeMap::new();
+    let mut totals: BTreeMap<CategoryKey, (ScoreValue, usize)> = BTreeMap::new();
     for day in days {
         for deed in records.deeds {
             if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
                 let value = crate::score::due_value(records, deed, *day, rule);
                 let category = totals.entry(rule.category.clone()).or_default();
-                category.0 += value;
+                category.0.add_parts(value);
                 category.1 += 1;
             }
         }
@@ -268,7 +269,7 @@ fn deed_summaries(
     missed.sort_by(|left, right| {
         right
             .lost
-            .total_cmp(&left.lost)
+            .cmp(&left.lost)
             .then_with(|| left.deed_id.cmp(&right.deed_id))
     });
     (missed, per_deed)
@@ -280,13 +281,13 @@ fn missed_deed(
     days: &[WerdyDay],
 ) -> Option<MissedDeed> {
     let mut days_not_done = 0;
-    let mut lost = 0.0;
+    let mut lost = ScoreValue::ZERO;
     for day in days {
         if let Some(rule) = deed.due_rule_on(*day, records.calendar) {
             let value = crate::score::due_value(records, deed, *day, rule);
-            if value < 1.0 {
+            if value < PARTS_PER_DEED {
                 days_not_done += 1;
-                lost += 1.0 - value;
+                lost.add_parts(PARTS_PER_DEED - value);
             }
         }
     }

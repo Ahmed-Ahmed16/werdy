@@ -85,7 +85,7 @@ fn archived_deed_counts_for_days_before_archiving() -> Result<(), Error> {
         day(26)?,
     );
     assert_eq!(result.due, 3);
-    assert_eq!(result.earned, 1.0);
+    assert_eq!(result.earned.as_f64(), 1.0);
     Ok(())
 }
 

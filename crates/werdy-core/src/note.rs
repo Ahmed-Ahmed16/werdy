@@ -20,6 +20,14 @@ impl ExcuseCredit {
             Self::Full => 1.0,
         }
     }
+
+    pub(crate) fn parts(self) -> u64 {
+        match self {
+            Self::None => 0,
+            Self::Half => mark::PARTS_PER_DEED / 2,
+            Self::Full => mark::PARTS_PER_DEED,
+        }
+    }
 }
 
 /// Owner's note and optional credit for one werdy day.
