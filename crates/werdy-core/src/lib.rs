@@ -25,6 +25,7 @@ pub enum Error {
     EmptyDayNote,
 }
 
+mod consistency;
 mod day;
 mod deed;
 mod mark;
@@ -32,6 +33,7 @@ mod note;
 mod report;
 mod score;
 
+pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
 pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
 pub use mark::{Fraction, Mark, MarkEntry};
