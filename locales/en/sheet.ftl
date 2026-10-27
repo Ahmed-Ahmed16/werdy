@@ -83,3 +83,5 @@ consistency-line =
        *[other] Done on { $done } of the last { $due } due days.
     }
 consistency-no-due = No finished due days yet.
+summary-last-week = Last 7 days
+summary-open-reports = Full report

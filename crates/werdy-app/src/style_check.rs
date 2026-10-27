@@ -112,7 +112,7 @@ fn raw_colours(css: &str) -> Vec<String> {
 #[test]
 fn every_colour_token_has_its_light_and_dark_value_in_css() {
     let tokens = colour_tokens();
-    assert_eq!(tokens.len(), 19, "colour table rows in tokens.md");
+    assert_eq!(tokens.len(), 20, "colour table rows in tokens.md");
     for (name, light, dark) in tokens {
         let light_rule = format!("--{name}: {light};");
         let dark_rule = format!("--{name}: {dark};");
@@ -140,4 +140,153 @@ fn the_raw_colour_check_finds_hex_and_functions() {
         raw_colours("a { color: #fff; b: rgb(0 0 0); c: #21 }"),
         ["#fff", "rgb("]
     );
+}
+
+fn rule_body<'a>(css: &'a str, selector: &str) -> Option<&'a str> {
+    css.match_indices('{').find_map(|(open, _)| {
+        let start = css[..open].rfind(['{', '}']).map_or(0, |index| index + 1);
+        let head = css[start..open].rsplit("*/").next()?.trim();
+        let matches = head.split(',').any(|part| part.trim() == selector);
+        matches.then(|| css[open + 1..].split('}').next()).flatten()
+    })
+}
+
+fn has_declaration(body: &str, property: &str, value: &str) -> bool {
+    body.lines()
+        .any(|line| line.trim() == format!("{property}: {value};"))
+}
+
+fn media_block<'a>(css: &'a str, query: &str) -> Option<&'a str> {
+    let marker = format!("@media {query} {{");
+    let start = css.find(&marker)? + marker.len();
+    let mut depth = 1;
+    for (index, ch) in css[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0 {
+            return Some(&css[start..start + index]);
+        }
+    }
+    None
+}
+
+fn media_rule_has(css: &str, query: &str, selector: &str, declaration: (&str, &str)) -> bool {
+    let marker = format!("@media {query} {{");
+    css.match_indices(&marker).any(|(start, _)| {
+        media_block(&css[start..], query)
+            .and_then(|block| rule_body(block, selector))
+            .is_some_and(|body| has_declaration(body, declaration.0, declaration.1))
+    })
+}
+
+fn touch_sized(css: &str, selector: &str) -> bool {
+    let Some(body) = rule_body(css, selector) else {
+        return false;
+    };
+    let height = has_declaration(body, "height", "var(--touch-min)")
+        || has_declaration(body, "min-height", "var(--touch-min)");
+    let width = has_declaration(body, "width", "var(--touch-min)")
+        || has_declaration(body, "min-width", "var(--touch-min)");
+    height && (!matches!(selector, ".mark-button" | ".step-button") || width)
+}
+
+#[test]
+fn responsive_rules_cover_phone_tablet_and_wide_web() {
+    let tablet = media_block(APP_CSS, "(min-width: 600px)").expect("tablet rules");
+    let expanded = media_block(APP_CSS, "(min-width: 840px)").expect("expanded rules");
+    let wide = media_block(APP_CSS, "(min-width: 1280px)").expect("wide rules");
+    assert!(
+        rule_body(APP_CSS, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "grid-template-columns",
+            "minmax(0, 1fr)"
+        ))
+    );
+    assert!(rule_body(tablet, ".note-dialog").is_some());
+    assert!(
+        rule_body(expanded, ".rail").is_some_and(|body| has_declaration(body, "display", "flex")
+            && has_declaration(body, "position", "sticky"))
+    );
+    assert!(
+        rule_body(expanded, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "grid-template-columns",
+            "minmax(0, 3fr) minmax(0, 2fr)"
+        ))
+    );
+    assert!(media_rule_has(
+        APP_CSS,
+        "(min-width: 840px)",
+        ".week-card",
+        ("display", "block")
+    ));
+    assert!(
+        rule_body(wide, ".panes").is_some_and(|body| has_declaration(
+            body,
+            "max-width",
+            "var(--content-max)"
+        ))
+    );
+    for selector in [
+        ".werdy-root",
+        ".panes",
+        ".report-panes",
+        ".page-content",
+        ".onboarding-content",
+    ] {
+        for block in APP_CSS.split(&format!("{selector} {{")).skip(1) {
+            let declarations = block.split('}').next().unwrap_or_default();
+            assert!(
+                !declarations.lines().any(|line| {
+                    let rule = line.trim();
+                    rule.starts_with("width:") && rule.ends_with("px;")
+                }),
+                "{selector} must stay fluid"
+            );
+        }
+    }
+}
+
+#[test]
+fn interactive_controls_keep_touch_size_and_visible_focus() {
+    assert!(TOKENS_CSS.contains("--touch-min: 48px;"));
+    assert!(APP_CSS.contains("button:focus-visible"));
+    assert!(APP_CSS.contains("input:focus-visible"));
+    assert!(APP_CSS.contains("select:focus-visible"));
+    assert!(APP_CSS.contains("textarea:focus-visible"));
+    assert!(APP_CSS.contains("a:focus-visible"));
+    for selector in [
+        ".mark-button",
+        ".step-button",
+        ".rail-item",
+        ".bottom-item",
+        ".period-chip",
+    ] {
+        assert!(
+            touch_sized(APP_CSS, selector),
+            "{selector} must use the touch token"
+        );
+    }
+}
+
+#[test]
+fn compact_week_keeps_note_signs_and_short_today_label() {
+    assert!(!APP_CSS.contains(".week-card .report-day-cell small {"));
+    for selector in [
+        ".week-card .report-score-detail",
+        ".week-card .report-today-label",
+    ] {
+        assert!(
+            rule_body(APP_CSS, selector)
+                .is_some_and(|body| has_declaration(body, "display", "none"))
+        );
+    }
+    assert!(
+        rule_body(APP_CSS, ".week-card .report-today-compact")
+            .is_some_and(|body| has_declaration(body, "display", "inline"))
+    );
+    assert!(include_str!("ui/reports.rs").contains("reports-today-short"));
 }

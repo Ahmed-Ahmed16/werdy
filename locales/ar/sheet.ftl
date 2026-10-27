@@ -89,3 +89,5 @@ consistency-line =
        *[other] تمّ في { $done } من آخر { $due } يوم مستحق.
     }
 consistency-no-due = لا توجد أيام مستحقة منتهية بعد.
+summary-last-week = آخر 7 أيام
+summary-open-reports = التقرير كاملًا

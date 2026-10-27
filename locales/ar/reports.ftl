@@ -18,6 +18,7 @@ reports-previous-empty = لم تستحق أعمال في الفترة الساب
 reports-previous-unavailable = تعذر حساب الفترة السابقة.
 reports-series = الأيام والأشهر
 reports-today = اليوم، جارٍ
+reports-today-short = اليوم
 reports-today-counts = { $done } تم، { $partial } جزئي، { $open } مفتوح، { $missed } فائت
 reports-open-today = افتح اليوم
 reports-category = حسب الفئة
