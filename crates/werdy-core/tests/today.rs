@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    TodaySummary, WerdyDay, score as score_records, today_summary,
+    SlotKey, TodaySummary, WerdyDay, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -31,6 +31,7 @@ fn deed(id: u64, created_on: WerdyDay) -> Deed {
             schedule: Schedule::EveryDay,
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }

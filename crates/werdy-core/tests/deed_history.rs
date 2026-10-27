@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    Weekday, WerdyDay, delete_deed, score as score_records,
+    SlotKey, Weekday, WerdyDay, delete_deed, score as score_records,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -28,6 +28,7 @@ fn daily() -> DeedRule {
         schedule: Schedule::EveryDay,
         target: None,
         category: CategoryKey::new("other"),
+        slot: SlotKey::new("any_time"),
     }
 }
 
@@ -45,6 +46,7 @@ fn score_before_schedule_edit_is_unchanged_after_it() -> Result<(), Error> {
             schedule: Schedule::Weekdays(BTreeSet::from([Weekday::Saturday])),
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )?;
 
@@ -121,6 +123,7 @@ fn rule_change_before_latest_version_is_an_error() -> Result<(), Error> {
             schedule: Schedule::Weekdays(BTreeSet::new()),
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )?;
 
@@ -141,6 +144,7 @@ fn same_day_rule_change_replaces_latest_rule() -> Result<(), Error> {
             schedule: Schedule::Weekdays(BTreeSet::new()),
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )?;
     deed.change_rule(day(24)?, daily())?;

@@ -35,7 +35,7 @@ mod score;
 
 pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
-pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
+pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, delete_deed};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};

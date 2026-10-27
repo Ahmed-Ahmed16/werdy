@@ -38,6 +38,18 @@ impl CategoryKey {
     }
 }
 
+/// Key for a time slot stored as deed data, such as `fajr` or `any_time`.
+/// The order of slots on the sheet is data too, given by the caller.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SlotKey(pub String);
+
+impl SlotKey {
+    /// Creates a time slot key from stored text.
+    pub fn new(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
 /// Positive daily amount with a short unit key, not translated UI text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Target {
@@ -80,6 +92,8 @@ pub struct DeedRule {
     pub target: Option<Target>,
     /// Category in force for this rule version.
     pub category: CategoryKey,
+    /// Time slot in force for this rule version.
+    pub slot: SlotKey,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

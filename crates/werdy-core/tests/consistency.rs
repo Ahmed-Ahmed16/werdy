@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CategoryKey, Consistency, DEFAULT_CONSISTENCY_WINDOW, DayNote, Deed, DeedId, DeedRule, Error,
-    ExcuseCredit, Mark, MarkEntry, OwnerRecords, Schedule, Target, Weekday, WerdyDay, consistency,
-    kept_days,
+    ExcuseCredit, Mark, MarkEntry, OwnerRecords, Schedule, SlotKey, Target, Weekday, WerdyDay,
+    consistency, kept_days,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -20,6 +20,7 @@ fn deed(id: u64, created_on: WerdyDay, schedule: Schedule) -> Deed {
             schedule,
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }
@@ -192,6 +193,7 @@ fn consistency_uses_target_values_and_full_day_credit() -> Result<(), Error> {
             schedule: Schedule::EveryDay,
             target: Some(Target::new(5, "pages")?),
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )];
     let mut marks = Marks::new();
