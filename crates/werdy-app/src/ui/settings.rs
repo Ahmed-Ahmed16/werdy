@@ -43,6 +43,7 @@ pub fn SettingsScreen() -> Element {
     let method = i18n.t(match settings.prayer_method {
         PrayerMethod::EgyptianGeneralAuthority => "method-egyptian",
         PrayerMethod::MuslimWorldLeague => "method-mwl",
+        PrayerMethod::UmmAlQura => "method-umm-al-qura",
     });
     let place = i18n.t_with(
         "settings-place",

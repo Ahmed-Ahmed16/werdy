@@ -131,7 +131,10 @@ fn DeedListRow(deed: Deed) -> Element {
     );
     let recent_line = i18n.consistency_line(recent);
     let target = rule.target.as_ref().map(|target| {
-        let unit = i18n.t(&format!("editor-unit-{}", target.unit()));
+        let unit = i18n.t_with(
+            &format!("unit-{}", target.unit()),
+            &[("count", FluentValue::from(target.amount() as i64))],
+        );
         i18n.t_with(
             "deeds-target",
             &[

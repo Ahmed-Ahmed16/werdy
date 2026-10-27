@@ -9,7 +9,7 @@ unit-pages =
         [one] صفحة
         [two] صفحتان
         [few] صفحات
-        [many] صفحة
+        [many] صفحةً
        *[other] صفحة
     }
 unit-rakaat =
@@ -18,7 +18,7 @@ unit-rakaat =
         [one] ركعة
         [two] ركعتان
         [few] ركعات
-        [many] ركعة
+        [many] ركعةً
        *[other] ركعة
     }
 unit-times =
@@ -27,7 +27,7 @@ unit-times =
         [one] مرة
         [two] مرتان
         [few] مرات
-        [many] مرة
+        [many] مرةً
        *[other] مرة
     }
 

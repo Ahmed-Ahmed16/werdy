@@ -93,6 +93,27 @@ fn save_then_load_returns_identical_data() -> TestResult {
 }
 
 #[test]
+fn umm_al_qura_round_trips_in_schema_eleven() -> TestResult {
+    let mut data = sample()?;
+    data.settings.prayer_method = werdy_store::PrayerMethod::UmmAlQura;
+    let json = to_json(&data)?;
+    let value: serde_json::Value = serde_json::from_str(&json)?;
+    assert_eq!(value["schema_version"], 11);
+    assert_eq!(value["settings"]["prayer_method"], "umm_al_qura");
+    assert_eq!(from_json(&json)?, data);
+    Ok(())
+}
+
+#[test]
+fn schema_ten_method_migrates_without_change() -> TestResult {
+    let data = sample()?;
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&data)?)?;
+    old["schema_version"] = 10.into();
+    assert_eq!(from_json(&old.to_string())?, data);
+    Ok(())
+}
+
+#[test]
 fn older_file_loads_without_notice_history() -> TestResult {
     let mut old: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
     old["schema_version"] = 9.into();
