@@ -1,6 +1,7 @@
 //! Reports screen. Core supplies every score and due day.
 
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
@@ -47,16 +48,19 @@ pub fn ReportsScreen() -> Element {
                         TodayLink {}
                     }
                 },
-                Ok(report) => rsx! {
-                    div { class: "report-layout",
-                        div { class: "report-main",
-                            ScoreCard { report: report.clone(), previous, steps_back, today_counts }
-                            MissedList { report: report.clone() }
-                            CategorySplit { report: report.clone() }
-                        }
-                        div { class: "report-detail",
-                            PerDeed { report: report.clone() }
-                            NotDue { report }
+                Ok(report) => {
+                    let report = Rc::new(report);
+                    rsx! {
+                        div { class: "report-layout",
+                            div { class: "report-main",
+                                ScoreCard { report: Rc::clone(&report), previous, steps_back, today_counts }
+                                MissedList { report: Rc::clone(&report) }
+                                CategorySplit { report: Rc::clone(&report) }
+                            }
+                            div { class: "report-detail",
+                                PerDeed { report: Rc::clone(&report) }
+                                NotDue { report }
+                            }
                         }
                     }
                 },
@@ -126,7 +130,7 @@ fn range_text(i18n: &I18n, first: WerdyDay, last: WerdyDay) -> String {
 
 #[component]
 fn ScoreCard(
-    report: Report,
+    report: Rc<Report>,
     previous: Result<Report, werdy_core::Error>,
     steps_back: usize,
     today_counts: werdy_core::TodaySummary,
@@ -348,12 +352,12 @@ fn band_name(band: Option<Band>) -> &'static str {
 }
 
 #[component]
-fn CategorySplit(report: Report) -> Element {
+fn CategorySplit(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     rsx! {
         section { class: "report-card",
             h2 { class: "card-title", {i18n.t("reports-category")} }
-            for (category, score) in report.by_category {
+            for (category, score) in report.by_category.iter() {
                 div { class: "report-meter-row", key: "{category.0}",
                     span { {i18n.t(&format!("category-{}", category.0))} }
                     div { class: "report-bar-track",
@@ -371,14 +375,14 @@ fn CategorySplit(report: Report) -> Element {
 }
 
 #[component]
-fn MissedList(report: Report) -> Element {
+fn MissedList(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     rsx! {
         section { class: "report-card",
             h2 { class: "card-title", {i18n.t("reports-missed")} }
             if report.missed.is_empty() { p { class: "report-muted", {i18n.t("reports-none-missed")} } }
-            for missed in report.missed {
+            for missed in report.missed.iter() {
                 div { class: "report-list-row", key: "{missed.deed_id.0}",
                     div { class: "report-list-detail",
                         span { {deed_name(&state.read(), &i18n, missed.deed_id)} }
@@ -397,20 +401,20 @@ fn MissedList(report: Report) -> Element {
 }
 
 #[component]
-fn PerDeed(report: Report) -> Element {
+fn PerDeed(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     rsx! {
         section { class: "report-card",
             h2 { class: "card-title", {i18n.t("reports-deeds")} }
-            for (id, score) in report.per_deed {
+            for (id, score) in report.per_deed.iter() {
                 div { class: "report-deed-row", key: "{id.0}",
                     div { class: "report-deed-head",
-                        strong { {deed_name(&state.read(), &i18n, id)} }
+                        strong { {deed_name(&state.read(), &i18n, *id)} }
                         if let Some(percent) = score.percent { strong { {percent_text(&i18n, percent)} } }
                     }
                     small { class: "report-muted", {i18n.t_with("reports-deed-due", &[("due", FluentValue::from(score.due))])} }
-                    if let Some(days) = report.per_deed_days.get(&id) {
+                    if let Some(days) = report.per_deed_days.get(id) {
                         div { class: "report-history",
                             for entry in days { HistoryDay { key: "{entry.day:?}", entry: *entry, noted: report.noted_days.contains(&entry.day) } }
                         }
@@ -459,15 +463,26 @@ fn HistoryDay(entry: DeedDay, noted: bool) -> Element {
         span { class: "report-history-cell", "data-kind": kind,
             aria_label: label.clone(),
             title: label,
-            {date}
-            if noted { {i18n.t("reports-note-sign")} }
-            if entry.added_later { {i18n.t("reports-late-sign")} }
+            span { "{date}" }
+            span { class: "report-history-symbol",
+                match kind {
+                    "done" => rsx! { CheckIcon {} },
+                    "missed" => rsx! { CrossIcon {} },
+                    _ => rsx! { HalfIcon {} },
+                }
+            }
+            if noted || entry.added_later {
+                span { class: "report-history-signs",
+                    if noted { {i18n.t("reports-note-sign")} }
+                    if entry.added_later { {i18n.t("reports-late-sign")} }
+                }
+            }
         }
     }
 }
 
 #[component]
-fn NotDue(report: Report) -> Element {
+fn NotDue(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     if report.not_due.is_empty() {
@@ -476,8 +491,8 @@ fn NotDue(report: Report) -> Element {
     rsx! {
         section { class: "report-card report-not-due",
             h2 { class: "card-title", {i18n.t("reports-not-due")} }
-            for id in report.not_due {
-                p { key: "{id.0}", {deed_name(&state.read(), &i18n, id)} }
+            for id in report.not_due.iter() {
+                p { key: "{id.0}", {deed_name(&state.read(), &i18n, *id)} }
             }
         }
     }

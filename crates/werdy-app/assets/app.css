@@ -659,14 +659,22 @@ button:focus-visible {
 }
 
 .report-history-cell {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xs);
   flex: 0 0 var(--touch-min);
   min-height: var(--touch-min);
   border-radius: var(--radius-control);
   background: var(--surface-muted);
   font-size: var(--size-caption);
   text-align: center;
+}
+
+.report-history-signs {
+  display: flex;
+  gap: var(--gap-xs);
 }
 
 .report-history-cell[data-kind="done"] {

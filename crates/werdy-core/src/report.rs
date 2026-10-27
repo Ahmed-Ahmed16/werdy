@@ -107,7 +107,7 @@ pub struct DeedDay {
     pub day: WerdyDay,
     /// Value after any day credit.
     pub value: Fraction,
-    /// A mark added more than two days after this day.
+    /// A mark or day note added more than two days after this day.
     pub added_later: bool,
 }
 
@@ -250,7 +250,11 @@ fn deed_day_history(
                         added_later: records
                             .marks
                             .get(&(deed.id, *day))
-                            .is_some_and(|entry| entry.is_late_for(*day)),
+                            .is_some_and(|entry| entry.is_late_for(*day))
+                            || records
+                                .day_notes
+                                .get(day)
+                                .is_some_and(|note| note.is_late_for(*day)),
                     })
             })
             .collect();

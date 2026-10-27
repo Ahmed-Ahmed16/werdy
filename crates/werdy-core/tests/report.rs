@@ -339,6 +339,35 @@ fn full_day_credit_removes_deed_from_missed_list() -> Result<(), Error> {
 }
 
 #[test]
+fn full_credit_and_note_only_entered_three_days_late_flag_unmarked_due_day() -> Result<(), Error> {
+    let finished = day(10, 23)?;
+    let deeds = [deed(1, Schedule::EveryDay, "other", finished)];
+    for (text, credit, expected) in [
+        ("Ill", ExcuseCredit::Full, Fraction::ONE),
+        ("Travelled", ExcuseCredit::None, Fraction::ZERO),
+    ] {
+        let notes = BTreeMap::from([(finished, DayNote::new(text, credit, day(10, 26)?)?)]);
+        let result = build_report(
+            &OwnerRecords {
+                deeds: &deeds,
+                marks: &BTreeMap::new(),
+                day_notes: &notes,
+                calendar: CalendarSettings::default(),
+            },
+            Period::Week,
+            0,
+            day(10, 27)?,
+            ScoreBands::default(),
+        )?;
+        let noted_day = result.per_deed_days[&DeedId(1)]
+            .iter()
+            .find(|entry| entry.day == finished);
+        assert!(matches!(noted_day, Some(entry) if entry.value == expected && entry.added_later));
+    }
+    Ok(())
+}
+
+#[test]
 fn month_buckets_cross_year_and_leap_day() -> Result<(), Error> {
     assert_eq!(WerdyDay::new(2024, 2, 29)?.year_month(), (2024, 2));
     let today = WerdyDay::new(2025, 1, 2)?;
