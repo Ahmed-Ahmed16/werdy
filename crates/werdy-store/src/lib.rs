@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
 /// Device only coordinates, stored as hundredths of a degree.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -118,6 +118,15 @@ pub enum Theme {
     Dark,
 }
 
+/// Digits used for all numbers shown in the interface.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Digits {
+    #[default]
+    Western,
+    ArabicIndic,
+}
+
 /// The owner's settings that live with the records.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
@@ -125,6 +134,9 @@ pub struct Settings {
     pub language: String,
     /// Colour theme.
     pub theme: Theme,
+    /// Display digits, independent of language.
+    #[serde(default)]
+    pub digits: Digits,
     /// Dated local moon sighting corrections for Hijri dates and schedules.
     pub calendar: CalendarSettings,
     #[serde(default)]
@@ -142,6 +154,7 @@ impl Default for Settings {
         Self {
             language: "ar".to_owned(),
             theme: Theme::System,
+            digits: Digits::Western,
             calendar: default_calendar(),
             location: None,
             prayer_method: PrayerMethod::default(),
@@ -416,6 +429,7 @@ impl From<LegacySettings> for Settings {
         Self {
             language: old.language,
             theme: old.theme,
+            digits: Digits::Western,
             calendar: CalendarSettings::new(old.hijri_offset),
             location: None,
             prayer_method: PrayerMethod::default(),

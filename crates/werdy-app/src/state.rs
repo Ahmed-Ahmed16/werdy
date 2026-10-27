@@ -4,12 +4,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry,
-    Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary, Weekday, WerdyDay,
-    build_report, convert_mark_for_target, daily_sheet, delete_deed, finished_day_summary, score,
-    today_summary,
+    CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, HijriOffset,
+    Mark, MarkEntry, Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary,
+    Weekday, WerdyDay, build_report, convert_mark_for_target, daily_sheet, delete_deed,
+    finished_day_summary, score, today_summary,
 };
-use werdy_store::{DeedName, Location, OwnerData, PrayerMethod, Store, merge_records};
+use werdy_store::{
+    DeedName, Digits, Location, OwnerData, PrayerMethod, Store, Theme, merge_records,
+};
 
 /// Keeps the owner's past day in view, or follows today when today moves.
 pub fn viewing_after_today_change(
@@ -124,6 +126,8 @@ pub enum Screen {
     Reports,
     /// Deed list.
     Deeds,
+    /// Device settings.
+    Settings,
     /// New or existing deed editor.
     Editor(Option<DeedId>),
 }
@@ -232,6 +236,8 @@ pub struct AppState {
     pub save_status: SaveStatus,
     /// Screen on view.
     pub screen: Screen,
+    /// Screen to return to after changing location.
+    pub location_return: Screen,
     /// Selected rolling report period.
     pub report_period: Period,
     /// Number of whole periods before the latest one.
@@ -262,6 +268,7 @@ impl AppState {
             slot_order,
             save_status,
             screen,
+            location_return: Screen::Deeds,
             report_period: Period::Week,
             report_steps_back: 0,
             settings_dirty: false,
@@ -370,6 +377,11 @@ impl AppState {
 
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
+        if screen == Screen::FirstRunLocation && self.screen == Screen::Settings {
+            self.location_return = Screen::Settings;
+        } else if screen == Screen::FirstRunLocation {
+            self.location_return = Screen::Deeds;
+        }
         self.screen = screen;
     }
 
@@ -792,8 +804,29 @@ impl AppState {
 
     /// Switches the interface language and keeps it in settings.
     pub fn set_language(&mut self, code: &str) {
-        code.clone_into(&mut self.data.settings.language);
+        if matches!(code, "ar" | "en") {
+            code.clone_into(&mut self.data.settings.language);
+            self.settings_dirty = true;
+        }
+    }
+
+    pub fn set_digits(&mut self, digits: Digits) {
+        self.data.settings.digits = digits;
         self.settings_dirty = true;
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.data.settings.theme = theme;
+        self.settings_dirty = true;
+    }
+
+    pub fn set_hijri_offset(&mut self, offset: HijriOffset) -> Result<(), Error> {
+        self.data
+            .settings
+            .calendar
+            .change_offset(self.today, offset)?;
+        self.settings_dirty = true;
+        Ok(())
     }
 
     fn set_mark(&mut self, deed_id: DeedId, mark: Option<Mark>) {
@@ -1027,8 +1060,10 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use werdy_core::{DeedId, Error, ExcuseCredit, Mark, Period, WerdyDay};
-    use werdy_store::{Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError};
+    use werdy_core::{DeedId, Error, ExcuseCredit, HijriOffset, Mark, Period, WerdyDay};
+    use werdy_store::{
+        Digits, Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError, Theme,
+    };
 
     use super::{
         AppState, EditorDraft, EditorError, SaveStatus, Screen, Step, Tap, is_on, stepped, tapped,
@@ -1061,6 +1096,46 @@ mod tests {
             let _ = store.save(&data);
         }
         Ok(AppState::start(store, today()?, slot_order()))
+    }
+
+    #[test]
+    fn settings_save_restart_and_keep_past_hijri_offset() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let yesterday = state.today.previous()?;
+        let original = state.data.settings.calendar.offset_on(yesterday);
+        state.set_language("en");
+        state.set_digits(Digits::ArabicIndic);
+        state.set_theme(Theme::Dark);
+        state.set_location(
+            Location::new(
+                Some("cairo".to_owned()),
+                Some("EG".to_owned()),
+                30.04,
+                31.24,
+            )
+            .ok_or("bad place")?,
+        )?;
+        state.set_prayer_method(PrayerMethod::MuslimWorldLeague);
+        state.set_hijri_offset(HijriOffset::new(-1)?)?;
+        state.save_to(&store);
+        let again = started(&store)?;
+        assert_eq!(again.data.settings.language, "en");
+        assert_eq!(again.data.settings.digits, Digits::ArabicIndic);
+        assert_eq!(again.data.settings.theme, Theme::Dark);
+        assert_eq!(again.data.settings.location, state.data.settings.location);
+        assert_eq!(
+            again.data.settings.prayer_method,
+            PrayerMethod::MuslimWorldLeague
+        );
+        assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
+        assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), -1);
+        state.set_hijri_offset(HijriOffset::new(0)?)?;
+        state.save_to(&store);
+        let again = started(&store)?;
+        assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
+        assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), 0);
+        Ok(())
     }
 
     #[test]
@@ -2001,6 +2076,12 @@ mod tests {
         assert_eq!(state.screen, Screen::Editor(None));
         state.show_screen(Screen::Reports);
         assert_eq!(state.report_period, Period::Month);
+        state.show_screen(Screen::Settings);
+        state.show_screen(Screen::FirstRunLocation);
+        assert_eq!(state.location_return, Screen::Settings);
+        state.show_screen(Screen::Deeds);
+        state.show_screen(Screen::FirstRunLocation);
+        assert_eq!(state.location_return, Screen::Deeds);
         Ok(())
     }
 

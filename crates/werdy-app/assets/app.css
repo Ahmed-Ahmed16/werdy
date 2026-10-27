@@ -1182,6 +1182,104 @@ button:focus-visible {
   font-weight: var(--weight-semibold);
   cursor: pointer;
 }
+
+.settings-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-l);
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-m);
+}
+
+.settings-card {
+  display: grid;
+  gap: var(--gap-l);
+  padding: var(--gap-l);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-row legend,
+.settings-location strong {
+  font-size: var(--size-label);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  padding: var(--gap-xs);
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+.settings-choice {
+  flex: 1;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-s);
+  border: var(--stroke-thin) solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+}
+
+.settings-choice[aria-checked="true"] {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.settings-location {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-m);
+  min-height: var(--touch-min);
+  padding: var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  text-align: start;
+}
+
+.settings-location-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+@media (min-width: 600px) {
+  .settings-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-location { grid-column: 1 / -1; }
+}
 @media (min-width: 600px) {
   .set-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

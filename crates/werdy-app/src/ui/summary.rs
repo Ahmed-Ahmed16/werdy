@@ -61,9 +61,10 @@ pub fn TodayCard() -> Element {
 
 #[component]
 fn Count(kind: &'static str, value: usize, label: String) -> Element {
+    let i18n = use_i18n();
     rsx! {
         div { class: "count", "data-kind": kind,
-            span { class: "count-value", "{value}" }
+            span { class: "count-value", {i18n.num(value)} }
             span { class: "count-label", "{label}" }
         }
     }

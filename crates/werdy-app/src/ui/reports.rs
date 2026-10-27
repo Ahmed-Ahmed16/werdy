@@ -264,7 +264,7 @@ fn SeriesCell(entry: SeriesEntry, noted: bool, late_note: bool) -> Element {
             let (_, _, number) = day.date_parts();
             rsx! {
                 div { class: "report-day-cell", "data-band": band_name(band), role: "img", aria_label: label,
-                    span { "{number}" }
+                    span { {i18n.num(number)} }
                     span { class: "report-cell-symbol",
                         match band {
                             Some(Band::Good) => rsx! { CheckIcon {} },

@@ -33,6 +33,62 @@ fn first_hex(cell: &str) -> Option<String> {
     (hex.len() == 7).then_some(hex)
 }
 
+fn luminance(hex: &str) -> Option<f64> {
+    let rgb = u32::from_str_radix(hex.strip_prefix('#')?, 16).ok()?;
+    let channel = |shift| {
+        let value = f64::from((rgb >> shift) & 0xff_u32) / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    Some(0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0))
+}
+
+fn contrast(first: &str, second: &str) -> Option<f64> {
+    let a = luminance(first)?;
+    let b = luminance(second)?;
+    Some((a.max(b) + 0.05) / (a.min(b) + 0.05))
+}
+
+#[test]
+fn text_and_background_token_pairs_pass_contrast_in_both_themes() {
+    use std::collections::BTreeMap;
+
+    let tokens: BTreeMap<_, _> = colour_tokens()
+        .into_iter()
+        .map(|(name, light, dark)| (name, (light, dark)))
+        .collect();
+    let surfaces = ["bg", "surface", "surface-muted", "track", "primary-soft"];
+    let mut pairs = Vec::new();
+    for foreground in ["text", "text-muted", "primary"] {
+        for background in surfaces {
+            pairs.push((foreground, background));
+        }
+    }
+    pairs.extend([
+        ("on-primary", "primary"),
+        ("on-mark-done", "mark-done"),
+        ("on-mark-partial", "mark-partial"),
+        ("on-mark-missed", "mark-missed"),
+        ("danger", "bg"),
+        ("danger", "surface"),
+    ]);
+    for (foreground, background) in pairs {
+        let text = tokens.get(foreground).expect("text token exists");
+        let ground = tokens.get(background).expect("background token exists");
+        for (theme, first, second) in [("light", &text.0, &ground.0), ("dark", &text.1, &ground.1)]
+        {
+            let ratio = contrast(first, second).expect("valid hex colours");
+            assert!(
+                ratio >= 4.5,
+                "{theme} {foreground} on {background}: {ratio:.2}"
+            );
+        }
+    }
+}
+
 /// Returns raw colours written as hex, rgb or hsl.
 fn raw_colours(css: &str) -> Vec<String> {
     let mut found = Vec::new();

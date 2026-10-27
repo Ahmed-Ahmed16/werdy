@@ -37,6 +37,7 @@ editor-data-failed = تعذر تحميل خيارات التعديل.
 schedule-every-day-sentence = مستحق كل يوم.
 schedule-weekdays-sentence = مستحق كل { $days }.
 schedule-hijri-sentence = مستحق خلال { $range }.
+schedule-hijri-unavailable = الجدول الهجري غير متاح.
 schedule-no-weekdays = اختر يومًا واحدًا على الأقل.
 schedule-list-separator = { "، " }
 deeds-target = الهدف: { $amount } { $unit }

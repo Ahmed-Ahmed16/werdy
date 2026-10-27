@@ -41,6 +41,7 @@ editor-data-failed = Editor choices could not be loaded.
 schedule-every-day-sentence = Due every day.
 schedule-weekdays-sentence = Due every { $days }.
 schedule-hijri-sentence = Due during { $range }.
+schedule-hijri-unavailable = Hijri schedule unavailable.
 schedule-no-weekdays = Pick at least one weekday.
 schedule-list-separator = { ", " }
 deeds-target = Target: { $amount } { $unit }

@@ -83,6 +83,9 @@ pub fn MyDeeds() -> Element {
                 span { {i18n.t("location-open-from-deeds")} }
                 span { class: "deeds-meta", {i18n.t("location-open-detail")} }
             }
+            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::Settings)),
+                span { {i18n.t("nav-settings")} }
+            }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
             for (slot, members) in groups {
                 section { class: "deeds-group", key: "{slot.0}",
@@ -259,7 +262,7 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                 if selected.target_enabled {
                     div { class: "target-controls",
                         button { class: "step-button", aria_label: i18n.t("editor-target-minus"), onclick: move |_| { let amount = werdy_core::decrease_target_amount(draft().target_amount); draft.write().target_amount = amount; }, "−" }
-                        output { "{selected.target_amount}" }
+                        output { {i18n.num(selected.target_amount)} }
                         button { class: "step-button", aria_label: i18n.t("editor-target-plus"), onclick: move |_| { let amount = werdy_core::increase_target_amount(draft().target_amount); draft.write().target_amount = amount; }, "+" }
                         label { class: "editor-label", r#for: "target-unit", {i18n.t("editor-unit")} }
                         select { id: "target-unit", class: "editor-input", value: "{selected.target_unit}", onchange: move |event| draft.write().target_unit = event.value(),

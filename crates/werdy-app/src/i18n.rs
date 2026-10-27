@@ -4,6 +4,29 @@ use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use std::collections::BTreeSet;
 use unic_langid::LanguageIdentifier;
 use werdy_core::{HijriRange, Schedule, Weekday};
+use werdy_store::Digits;
+
+/// Rewrites decimal glyphs in displayed text. Stored numbers stay unchanged.
+pub fn format_digits(text: &str, digits: Digits) -> String {
+    text.chars()
+        .map(|ch| {
+            let digit_value = match ch {
+                '0'..='9' => Some(u32::from(ch) - u32::from('0')),
+                '٠'..='٩' => Some(u32::from(ch) - u32::from('٠')),
+                '۰'..='۹' => Some(u32::from(ch) - u32::from('۰')),
+                _ => None,
+            };
+            digit_value
+                .and_then(|digit| {
+                    char::from_u32(match digits {
+                        Digits::Western => u32::from('0') + digit,
+                        Digits::ArabicIndic => u32::from('٠') + digit,
+                    })
+                })
+                .unwrap_or(ch)
+        })
+        .collect()
+}
 
 /// Interface language. Arabic is the default (ADR 0014).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -58,6 +81,7 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/deeds.ftl"),
     include_str!("../../../locales/ar/starter-sets.ftl"),
     include_str!("../../../locales/ar/first-run.ftl"),
+    include_str!("../../../locales/ar/settings.ftl"),
 ];
 const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/common.ftl"),
@@ -67,6 +91,7 @@ const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/deeds.ftl"),
     include_str!("../../../locales/en/starter-sets.ftl"),
     include_str!("../../../locales/en/first-run.ftl"),
+    include_str!("../../../locales/en/settings.ftl"),
 ];
 
 /// All translations, loaded once at start.
@@ -112,21 +137,19 @@ fn weekdays_sentence(texts: &Texts, language: Language, days: &BTreeSet<Weekday>
 }
 
 fn hijri_sentence(texts: &Texts, language: Language, range: &HijriRange) -> String {
-    let name = crate::editor_data::ranges()
+    let choice = crate::editor_data::ranges()
         .ok()
         .into_iter()
         .flatten()
-        .find(|choice| choice.range().ok().as_ref() == Some(range))
-        .map_or_else(
-            || "___".to_owned(),
-            |choice| {
-                texts.get(
-                    language,
-                    &format!("range-{}", choice.key.replace('_', "-")),
-                    &[],
-                )
-            },
-        );
+        .find(|choice| choice.range().ok().as_ref() == Some(range));
+    let Some(choice) = choice else {
+        return texts.get(language, "schedule-hijri-unavailable", &[]);
+    };
+    let name = texts.get(
+        language,
+        &format!("range-{}", choice.key.replace('_', "-")),
+        &[],
+    );
     texts.get(
         language,
         "schedule-hijri-sentence",
@@ -197,6 +220,36 @@ mod tests {
     use fluent_bundle::{FluentResource, FluentValue};
 
     use super::{ARABIC, ENGLISH, Language, Texts};
+    use werdy_store::Digits;
+
+    #[test]
+    fn digits_convert_ascii_fluent_and_existing_arabic_glyphs() {
+        assert_eq!(
+            super::format_digits("2026: ٣ of ۵ ✓", Digits::Western),
+            "2026: 3 of 5 ✓"
+        );
+        assert_eq!(
+            super::format_digits("2026: ٣ of ۵ ✓", Digits::ArabicIndic),
+            "٢٠٢٦: ٣ of ٥ ✓"
+        );
+        let fluent = Texts::load().get(
+            Language::Arabic,
+            "count-progress",
+            &[
+                ("count", FluentValue::from(3)),
+                ("target", FluentValue::from(5)),
+            ],
+        );
+        assert_eq!(
+            super::format_digits(&fluent, Digits::Western).replace(['\u{2068}', '\u{2069}'], ""),
+            "3 من 5"
+        );
+        assert_eq!(
+            super::format_digits(&fluent, Digits::ArabicIndic)
+                .replace(['\u{2068}', '\u{2069}'], ""),
+            "٣ من ٥"
+        );
+    }
 
     fn message_ids(source: &str) -> Result<BTreeSet<String>, String> {
         let resource = FluentResource::try_new(source.to_owned())

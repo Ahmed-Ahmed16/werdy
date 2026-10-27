@@ -5,7 +5,7 @@ use werdy_core::{
     Mark, MarkEntry, Period, Schedule, ScoreBands, SlotKey, Target, WerdyDay, build_report,
 };
 use werdy_store::{
-    DeedName, MemoryStore, OwnerData, SCHEMA_VERSION, Settings, Store, StoreError, Theme,
+    DeedName, Digits, MemoryStore, OwnerData, SCHEMA_VERSION, Settings, Store, StoreError, Theme,
     from_json, to_json,
 };
 
@@ -65,6 +65,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
+            digits: Digits::ArabicIndic,
             calendar: CalendarSettings::new(HijriOffset::PLUS_ONE),
             location: werdy_store::Location::new(
                 Some("cairo".to_owned()),
@@ -85,6 +86,19 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn version_eight_loads_western_digits() -> TestResult {
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    old["schema_version"] = 8.into();
+    old["settings"]
+        .as_object_mut()
+        .ok_or("settings missing")?
+        .remove("digits");
+    let loaded = from_json(&old.to_string())?;
+    assert_eq!(loaded.settings.digits, Digits::Western);
     Ok(())
 }
 
