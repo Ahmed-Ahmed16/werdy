@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     Band, CalendarSettings, CategoryKey, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit,
-    Mark, MarkEntry, OwnerRecords, Period, Schedule, ScoreBands, SeriesEntry, SlotKey, Weekday,
-    WerdyDay, build_report,
+    Fraction, Mark, MarkEntry, OwnerRecords, Period, ReportLead, Schedule, ScoreBands, SeriesEntry,
+    SlotKey, Weekday, WerdyDay, build_report, report_lead,
 };
 
 fn day(month: u8, number: u8) -> Result<WerdyDay, Error> {
@@ -63,6 +63,7 @@ fn week_report_covers_last_seven_finished_days() -> Result<(), Error> {
         ScoreBands::default(),
     );
     assert_eq!(result.days, days);
+    assert_eq!(report_lead(&result), ReportLead::Empty);
     Ok(())
 }
 
@@ -331,6 +332,9 @@ fn full_day_credit_removes_deed_from_missed_list() -> Result<(), Error> {
         1.0
     );
     assert!(result.missed.is_empty());
+    assert_eq!(report_lead(&result), ReportLead::AllDone);
+    assert!(result.noted_days.contains(&finished));
+    assert_eq!(result.per_deed_days[&DeedId(1)][0].value, Fraction::ONE);
     Ok(())
 }
 
@@ -362,5 +366,74 @@ fn month_buckets_cross_year_and_leap_day() -> Result<(), Error> {
             ..
         })
     ));
+    Ok(())
+}
+
+#[test]
+fn report_lead_names_deed_with_greatest_lost_value() -> Result<(), Error> {
+    let today = day(10, 27)?;
+    let first = day(10, 24)?;
+    let deeds = [
+        deed(1, Schedule::EveryDay, "prayer", first),
+        deed(2, Schedule::EveryDay, "prayer", first),
+    ];
+    let marks = BTreeMap::from([
+        (
+            (DeedId(1), day(10, 25)?),
+            MarkEntry::new(Mark::Done, day(10, 25)?),
+        ),
+        (
+            (DeedId(1), day(10, 26)?),
+            MarkEntry::new(Mark::Done, day(10, 26)?),
+        ),
+        (
+            (DeedId(2), day(10, 26)?),
+            MarkEntry::new(Mark::Done, day(10, 26)?),
+        ),
+    ]);
+    let missed = report(
+        &deeds,
+        &marks,
+        Period::ThreeDays,
+        0,
+        today,
+        ScoreBands::default(),
+    );
+    assert_eq!(report_lead(&missed), ReportLead::MostMissed(DeedId(2)));
+    Ok(())
+}
+
+#[test]
+fn deed_history_contains_due_days_only_and_lists_not_due_deeds() -> Result<(), Error> {
+    let today = day(10, 27)?;
+    let friday = day(10, 23)?;
+    let deeds = [
+        deed(
+            1,
+            Schedule::Weekdays(BTreeSet::from([Weekday::Friday])),
+            "other",
+            day(10, 20)?,
+        ),
+        deed(
+            2,
+            Schedule::Weekdays(BTreeSet::from([Weekday::Sunday])),
+            "other",
+            today,
+        ),
+    ];
+    let marks = BTreeMap::from([((DeedId(1), friday), MarkEntry::new(Mark::Done, today))]);
+    let result = report(
+        &deeds,
+        &marks,
+        Period::Week,
+        0,
+        today,
+        ScoreBands::default(),
+    );
+    assert_eq!(result.per_deed_days[&DeedId(1)].len(), 1);
+    assert_eq!(result.per_deed_days[&DeedId(1)][0].day, friday);
+    assert_eq!(result.per_deed_days[&DeedId(1)][0].value, Fraction::ONE);
+    assert!(result.per_deed_days[&DeedId(1)][0].added_later);
+    assert_eq!(result.not_due, vec![DeedId(2)]);
     Ok(())
 }

@@ -2,8 +2,8 @@
 //! It calls werdy-core for every number and holds no scoring of its own.
 
 use werdy_core::{
-    DailySheet, DeedId, Mark, MarkEntry, SlotKey, TodaySummary, WerdyDay, daily_sheet,
-    finished_day_summary, today_summary,
+    DailySheet, DeedId, Error, Mark, MarkEntry, Period, Report, ScoreBands, SlotKey, TodaySummary,
+    WerdyDay, build_report, daily_sheet, finished_day_summary, today_summary,
 };
 use werdy_store::{DeedName, OwnerData, Store, merge_records};
 
@@ -109,6 +109,15 @@ pub enum SaveStatus {
     DateFailed,
 }
 
+/// Screen selected in the navigation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Screen {
+    /// Daily sheet.
+    Sheet,
+    /// Reports for finished days.
+    Reports,
+}
+
 /// Everything the screen shows, in one place.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -122,6 +131,12 @@ pub struct AppState {
     pub slot_order: Vec<SlotKey>,
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
+    /// Screen on view.
+    pub screen: Screen,
+    /// Selected rolling report period.
+    pub report_period: Period,
+    /// Number of whole periods before the latest one.
+    pub report_steps_back: usize,
     settings_dirty: bool,
 }
 
@@ -153,6 +168,9 @@ impl AppState {
             viewing: today,
             slot_order,
             save_status,
+            screen: Screen::Sheet,
+            report_period: Period::Week,
+            report_steps_back: 0,
             settings_dirty: false,
         }
     }
@@ -181,6 +199,59 @@ impl AppState {
             self.viewing,
             &self.data.settings.calendar,
         )
+    }
+
+    /// Today's live counts, even when the sheet is viewing a past day.
+    pub fn summary_today(&self) -> TodaySummary {
+        today_summary(
+            &self.data.deeds,
+            &self.data.marks,
+            self.today,
+            &self.data.settings.calendar,
+        )
+    }
+
+    /// Builds the selected report from saved records before it is rendered.
+    pub fn report(&self) -> Result<Report, Error> {
+        build_report(
+            &self.data.records(),
+            self.report_period,
+            self.report_steps_back,
+            self.today,
+            ScoreBands::default(),
+        )
+    }
+
+    /// Builds the adjacent earlier report for comparison.
+    pub fn previous_report(&self) -> Result<Report, Error> {
+        build_report(
+            &self.data.records(),
+            self.report_period,
+            self.report_steps_back.saturating_add(1),
+            self.today,
+            ScoreBands::default(),
+        )
+    }
+
+    /// Opens one screen.
+    pub fn show_screen(&mut self, screen: Screen) {
+        self.screen = screen;
+    }
+
+    /// Selects a period and returns to its latest window.
+    pub fn select_report_period(&mut self, period: Period) {
+        self.report_period = period;
+        self.report_steps_back = 0;
+    }
+
+    /// Moves one whole period into the past.
+    pub fn show_previous_period(&mut self) {
+        self.report_steps_back = self.report_steps_back.saturating_add(1);
+    }
+
+    /// Moves one whole period toward yesterday, stopping at the latest window.
+    pub fn show_next_period(&mut self) {
+        self.report_steps_back = self.report_steps_back.saturating_sub(1);
     }
 
     /// Says whether the day on screen is today.
@@ -329,10 +400,10 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::{DeedId, Error, Mark, WerdyDay};
+    use werdy_core::{DeedId, Error, Mark, Period, WerdyDay};
     use werdy_store::{MemoryStore, OwnerData, Store, StoreError};
 
-    use super::{AppState, SaveStatus, Step, Tap, is_on, stepped, tapped};
+    use super::{AppState, SaveStatus, Screen, Step, Tap, is_on, stepped, tapped};
     use crate::starter::{five_prayers, slot_order};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -517,6 +588,38 @@ mod tests {
         assert_eq!(super::current_slot(18, 0), "maghrib");
         assert_eq!(super::current_slot(19, 30), "isha");
         assert_eq!(super::current_slot(22, 0), "night");
+    }
+
+    #[test]
+    fn period_arrows_step_whole_windows_and_stop_at_latest() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Reports);
+        assert_eq!(state.screen, Screen::Reports);
+        let latest = state.report()?.days;
+        state.show_next_period();
+        assert_eq!(state.report()?.days, latest);
+        state.show_previous_period();
+        assert_eq!(
+            state.report()?.days.last(),
+            latest.first().and_then(|day| day.previous().ok()).as_ref()
+        );
+        state.show_next_period();
+        assert_eq!(state.report()?.days, latest);
+        state.select_report_period(Period::Month);
+        assert_eq!(state.report_steps_back, 0);
+        assert_eq!(state.report()?.days.len(), 30);
+        Ok(())
+    }
+
+    #[test]
+    fn empty_report_has_no_percent_or_missed_deeds() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.data.deeds.clear();
+        let report = state.report()?;
+        assert_eq!(report.overall.due, 0);
+        assert_eq!(report.overall.percent, None);
+        assert!(report.missed.is_empty());
+        Ok(())
     }
 
     #[test]

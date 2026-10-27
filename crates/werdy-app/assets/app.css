@@ -1,7 +1,7 @@
 /*
  * Layout and components. Only token variables from tokens.css, never raw
- * colours (a test checks this). One column below 840px; from 840px two panes
- * with a side rail (ADR 0022).
+ * colours (a test checks this). Reports split into two panes from 600px.
+ * The side rail appears from 840px (ADR 0022).
  */
 
 *,
@@ -426,4 +426,319 @@ button:focus-visible {
 .fatal {
   padding: var(--page-gutter);
   color: var(--danger);
+}
+
+/* Reports */
+
+.report-panes {
+  flex: 1;
+  min-width: 0;
+  padding: var(--page-gutter);
+  padding-bottom: calc(var(--touch-min) + var(--gap-l) + var(--page-gutter));
+}
+
+.reports,
+.report-main,
+.report-detail,
+.report-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-m);
+  min-width: 0;
+}
+
+.report-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-l);
+}
+
+.period-chips {
+  display: flex;
+  gap: var(--gap-xs);
+  padding: var(--gap-xs);
+  overflow-x: auto;
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+.period-chip {
+  flex: 1 0 auto;
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-s);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-size: var(--size-label);
+}
+
+.period-chip[aria-pressed="true"] {
+  color: var(--primary);
+  background: var(--surface);
+  font-weight: var(--weight-bold);
+}
+
+.period-nav,
+.report-score-line,
+.report-deed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.period-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-weight: var(--weight-semibold);
+}
+
+.period-dates small,
+.report-muted {
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.report-card {
+  min-width: 0;
+  padding: var(--gap-l);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.report-card p {
+  margin-block: var(--gap-s);
+}
+
+.report-lead {
+  font-size: var(--size-title);
+  font-weight: var(--weight-semibold);
+}
+
+.report-score-line {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.report-score {
+  color: var(--primary);
+  font-size: var(--size-score);
+  line-height: 1;
+}
+
+.report-series {
+  display: grid;
+  gap: var(--gap-xs);
+  margin-block: var(--gap-l);
+}
+
+.report-days {
+  grid-template-columns: repeat(7, minmax(var(--touch-min), 1fr));
+  overflow-x: auto;
+}
+
+.report-months {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.report-day-cell {
+  min-height: var(--touch-min);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  font-size: var(--size-caption);
+}
+
+.report-cell-symbol {
+  font-size: var(--size-title);
+}
+
+.report-day-cell[data-band="good"],
+.report-bar[data-band="good"] {
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.report-day-cell[data-band="mid"],
+.report-bar[data-band="mid"] {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.report-day-cell[data-band="low"],
+.report-bar[data-band="low"] {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.report-today-cell {
+  border: var(--stroke-strong) dashed var(--mark-open);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.report-month-row,
+.report-meter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--gap-s);
+  min-height: var(--touch-min);
+}
+
+.report-meter-row small {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+}
+
+.report-month-row small {
+  grid-column: 1 / -1;
+}
+
+.report-bar-track {
+  height: var(--gap-m);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+}
+
+.report-bar {
+  height: 100%;
+  border-radius: var(--radius-pill);
+}
+
+.report-today-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-s);
+  padding: var(--gap-m);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.report-link {
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-m);
+  border: var(--stroke-thin) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.report-list-row,
+.report-deed-row {
+  min-height: var(--touch-min);
+  padding-block: var(--gap-m);
+  border-top: var(--stroke-thin) solid var(--border);
+}
+
+.report-list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-s);
+}
+
+.report-list-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-history {
+  display: flex;
+  gap: var(--gap-xs);
+  overflow-x: auto;
+  margin-block-start: var(--gap-s);
+}
+
+.report-history-cell {
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--touch-min);
+  min-height: var(--touch-min);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  font-size: var(--size-caption);
+  text-align: center;
+}
+
+.report-history-cell[data-kind="done"] {
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.report-history-cell[data-kind="partial"] {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.report-history-cell[data-kind="missed"] {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.report-not-due {
+  border-style: dashed;
+}
+
+.bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-s);
+  padding: var(--gap-s) var(--page-gutter);
+  border-top: var(--stroke-thin) solid var(--border);
+  background: var(--surface);
+}
+
+.bottom-nav button {
+  min-height: var(--touch-min);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.bottom-nav button[aria-current="page"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: var(--weight-bold);
+}
+
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 839px) {
+  .panes {
+    padding-bottom: calc(var(--touch-min) + var(--gap-l) + var(--page-gutter));
+  }
+}
+
+@media (min-width: 600px) {
+  .report-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+}
+
+@media (min-width: 840px) {
+  .report-panes {
+    padding-bottom: var(--page-gutter);
+  }
+
+  .bottom-nav {
+    display: none;
+  }
 }

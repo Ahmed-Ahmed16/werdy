@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     CategoryKey, DeedId, Error, Fraction, OwnerRecords, Score, ScoreValue, WerdyDay, score,
@@ -100,6 +100,39 @@ pub enum Band {
     Low,
 }
 
+/// A deed's value on one day when it was due.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DeedDay {
+    /// Finished werdy day.
+    pub day: WerdyDay,
+    /// Value after any day credit.
+    pub value: Fraction,
+    /// A mark added more than two days after this day.
+    pub added_later: bool,
+}
+
+/// One sentence chosen from report facts. The caller supplies translated text.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReportLead {
+    /// No deed was due.
+    Empty,
+    /// All due deeds have full value.
+    AllDone,
+    /// Deed with the greatest lost value.
+    MostMissed(DeedId),
+}
+
+/// Selects the plain report lead without language or display logic.
+pub fn report_lead(report: &Report) -> ReportLead {
+    if report.overall.due == 0 {
+        ReportLead::Empty
+    } else if let Some(missed) = report.missed.first() {
+        ReportLead::MostMissed(missed.deed_id)
+    } else {
+        ReportLead::AllDone
+    }
+}
+
 /// One day or Gregorian month in report series.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SeriesEntry {
@@ -139,6 +172,8 @@ pub struct MissedDeed {
 /// Scores and history for one rolling period.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Report {
+    /// Thresholds used for this report's score bands.
+    pub bands: ScoreBands,
     /// Finished days included in this period.
     pub days: Vec<WerdyDay>,
     /// Score across all due deeds.
@@ -151,6 +186,12 @@ pub struct Report {
     pub missed: Vec<MissedDeed>,
     /// Score for each deed due in this period.
     pub per_deed: BTreeMap<DeedId, Score>,
+    /// Values only on days each deed was due.
+    pub per_deed_days: BTreeMap<DeedId, Vec<DeedDay>>,
+    /// Deeds never due in this period.
+    pub not_due: Vec<DeedId>,
+    /// Days with a note or excuse credit.
+    pub noted_days: BTreeSet<WerdyDay>,
 }
 
 /// Builds scores for a rolling period ending yesterday.
@@ -172,14 +213,54 @@ pub fn build_report(
     };
     let by_category = category_scores(records, &days)?;
     let (missed, per_deed) = deed_summaries(records, &days, today)?;
+    let (per_deed_days, not_due) = deed_day_history(records, &days);
+    let noted_days = days
+        .iter()
+        .filter(|day| records.day_notes.contains_key(day))
+        .copied()
+        .collect();
     Ok(Report {
+        bands,
         days,
         overall,
         series,
         by_category,
         missed,
         per_deed,
+        per_deed_days,
+        not_due,
+        noted_days,
     })
+}
+
+fn deed_day_history(
+    records: &OwnerRecords<'_>,
+    days: &[WerdyDay],
+) -> (BTreeMap<DeedId, Vec<DeedDay>>, Vec<DeedId>) {
+    let mut history = BTreeMap::new();
+    let mut not_due = Vec::new();
+    for deed in records.deeds {
+        let due_days: Vec<_> = days
+            .iter()
+            .filter_map(|day| {
+                deed.due_rule_on(*day, &records.calendar)
+                    .map(|rule| DeedDay {
+                        day: *day,
+                        value: crate::score::due_value(records, deed, *day, rule),
+                        added_later: records
+                            .marks
+                            .get(&(deed.id, *day))
+                            .is_some_and(|entry| entry.is_late_for(*day)),
+                    })
+            })
+            .collect();
+        if due_days.is_empty() {
+            not_due.push(deed.id);
+        } else {
+            history.insert(deed.id, due_days);
+        }
+    }
+    (history, not_due)
 }
 
 fn build_day_series(

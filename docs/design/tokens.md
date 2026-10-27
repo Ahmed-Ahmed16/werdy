@@ -63,6 +63,7 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 | `radius-control` | 14 px |
 | `radius-card` | 16 to 18 px |
 | `radius-pill` | half the height |
+| `stroke-thin`, `stroke-strong` | 1 px, 2 px | Card edges and outlined day cells |
 
 ## Layout breakpoints (ADR 0022)
 

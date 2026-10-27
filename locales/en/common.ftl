@@ -7,6 +7,7 @@ nav-reports = Reports
 nav-deeds = My deeds
 nav-settings = Settings
 nav-coming-later = Coming later
+nav-label = Navigation
 
 language-switch = العربية
 

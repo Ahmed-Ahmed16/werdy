@@ -105,6 +105,8 @@
   --radius-control: 14px;
   --radius-card: 16px;
   --radius-pill: 999px;
+  --stroke-thin: 1px;
+  --stroke-strong: 2px;
 
   /* Breakpoints, for reference: media queries cannot read variables.
      bp-medium is 600px and bp-expanded is 840px. */

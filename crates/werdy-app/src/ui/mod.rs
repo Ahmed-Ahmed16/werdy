@@ -6,6 +6,7 @@ mod header;
 mod icons;
 mod marks;
 mod rail;
+mod reports;
 mod sheet;
 mod summary;
 
@@ -15,7 +16,7 @@ use dioxus::prelude::*;
 use werdy_store::Theme;
 
 use crate::i18n::{Language, Texts};
-use crate::state::AppState;
+use crate::state::{AppState, Screen};
 use crate::{platform, starter};
 
 const TOKENS_CSS: Asset = asset!("/assets/tokens.css");
@@ -107,12 +108,18 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             lang: language.code(),
             "data-theme": theme,
             rail::Rail {}
-            main { class: "panes",
-                header::DayHeader {}
-                summary::StatusBanner {}
-                summary::TodayCard {}
-                sheet::Sheet {}
+            main { class: if state.read().screen == Screen::Sheet { "panes" } else { "report-panes" },
+                if state.read().screen == Screen::Sheet {
+                    header::DayHeader {}
+                    summary::StatusBanner {}
+                    summary::TodayCard {}
+                    sheet::Sheet {}
+                } else {
+                    summary::StatusBanner {}
+                    reports::ReportsScreen {}
+                }
             }
+            rail::BottomNav {}
         }
     }
 }
