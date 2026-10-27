@@ -25,7 +25,7 @@ fluent-syntax = "0.12.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Document", "Element", "Event", "Storage", "StorageEvent", "Window", "Navigator", "Geolocation", "Position", "PositionError", "Coordinates"] }
+web-sys = { version = "0.3", features = ["console", "Coordinates", "Document", "Element", "Event", "Geolocation", "HtmlDialogElement", "HtmlElement", "Navigator", "Position", "PositionError", "Storage", "StorageEvent", "Window"] }
 wasm-bindgen = "0.2"
 
 [features]

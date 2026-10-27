@@ -72,3 +72,5 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 | `bp-medium` | 600 dp | Below: phone, one column, bottom tabs |
 | `bp-expanded` | 840 dp | From here: two panes and a navigation rail |
 | `content-max` | `72rem` | First run content width cap on a wide web window. Provisional. ___ Owner to confirm. |
+| `dialog-max-width` | 36 rem | Maximum width of the day note dialog |
+| `overlay-opacity` | 45% | Tint of the shade behind the day note dialog |

@@ -10,16 +10,20 @@ use crate::state::AppState;
 
 /// Date line with previous and next day arrows. Next is off on today.
 #[component]
-pub fn DayHeader() -> Element {
+pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let (viewing, is_today, hijri_offset) = {
+    let (viewing, is_today, hijri_offset, noted, note_late) = {
         let state = state.read();
         (
             state.viewing,
             state.is_today(),
             state.data.settings.calendar.offset_on(state.viewing),
+            state.viewing_note().is_some(),
+            state
+                .viewing_note()
+                .is_some_and(|note| note.is_late_for(state.viewing)),
         )
     };
     let date = date_text(&i18n, viewing);
@@ -39,6 +43,8 @@ pub fn DayHeader() -> Element {
                 div { class: "day-dates",
                     h1 { class: "day-title", "{date}" }
                     p { class: "hijri-date", "{hijri}" }
+                    if noted { span { class: "note-sign", role: "img", aria_label: i18n.t("note-sign"), {i18n.t("note-sign-symbol")} } }
+                    if note_late { span { class: "late-sign", aria_label: i18n.t("mark-added-later"), {i18n.t("mark-added-later")} } }
                 }
                 button {
                     class: "icon-button",
@@ -50,6 +56,7 @@ pub fn DayHeader() -> Element {
                 }
             }
             div { class: "header-tools",
+                button { id: "note-open", class: "text-button", onclick: move |_| on_open_note.call(viewing), {i18n.t("note-button")} }
                 if !is_today {
                     button {
                         class: "text-button",
@@ -83,7 +90,7 @@ fn hijri_text(i18n: &I18n, day: WerdyDay, offset: werdy_core::HijriOffset) -> St
     )
 }
 
-fn date_text(i18n: &I18n, day: WerdyDay) -> String {
+pub(super) fn date_text(i18n: &I18n, day: WerdyDay) -> String {
     let (year, month, day_of_month) = day.date_parts();
     let weekday = i18n.t(weekday_key(day.weekday()));
     let month_name = i18n.t(&format!("month-{month}"));

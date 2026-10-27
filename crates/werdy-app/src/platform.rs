@@ -280,6 +280,58 @@ pub fn scroll_slot(slot: &str) {
     let _ = slot;
 }
 
+/// Opens the browser's modal dialog and puts focus on its note field.
+pub fn open_note_dialog() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(dialog) = note_dialog() {
+            match dialog.show_modal() {
+                Ok(()) => focus_element("note-text"),
+                Err(error) => web_sys::console::error_1(&error),
+            }
+        }
+    }
+}
+
+/// Closes the modal so the Note button can receive focus again.
+pub fn close_note_dialog() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(dialog) = note_dialog() {
+            dialog.close();
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn note_dialog() -> Option<web_sys::HtmlDialogElement> {
+    use wasm_bindgen::JsCast;
+
+    web_sys::window()?
+        .document()?
+        .get_element_by_id("note-dialog")?
+        .dyn_into::<web_sys::HtmlDialogElement>()
+        .ok()
+}
+
+/// Focuses a page control after modal state changes.
+pub fn focus_element(id: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+
+        if let Some(element) = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id(id))
+            .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok())
+        {
+            let _ = element.focus();
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = id;
+}
+
 #[cfg(target_arch = "wasm32")]
 pub use web::WatchHandle;
 

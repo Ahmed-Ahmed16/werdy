@@ -60,6 +60,8 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         mark_revisions: BTreeMap::new(),
         cleared_marks: BTreeMap::new(),
         day_notes,
+        note_revisions: BTreeMap::new(),
+        cleared_notes: BTreeMap::new(),
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
@@ -83,6 +85,100 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn note_edits_and_clears_merge_across_tabs() -> TestResult {
+    let store = MemoryStore::default();
+    let mut first = sample()?;
+    store.save(&first)?;
+    let mut stale = store.load()?.ok_or("missing data")?;
+    let day = WerdyDay::new(2026, 10, 6)?;
+    first.set_day_note(day, Some(DayNote::new("Ill", ExcuseCredit::Half, day)?), 10);
+    store.save(&first)?;
+    stale.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 11);
+    store.save(&werdy_store::merge_records(&first, &stale))?;
+    let merged = store.load()?.ok_or("missing merged data")?;
+    assert_eq!(
+        merged.day_notes.get(&day).map(|note| note.credit()),
+        Some(ExcuseCredit::Half)
+    );
+    let mut deleting = merged.clone();
+    deleting.set_day_note(day, None, 12);
+    let restored = werdy_store::merge_records(&deleting, &stale);
+    assert!(!restored.day_notes.contains_key(&day));
+    assert_eq!(from_json(&to_json(&restored)?)?, restored);
+    Ok(())
+}
+
+#[test]
+fn version_six_notes_load_without_revisions() -> TestResult {
+    let original = sample()?;
+    let mut old: serde_json::Value = serde_json::from_str(&to_json(&original)?)?;
+    old["schema_version"] = 6.into();
+    old.as_object_mut()
+        .ok_or("expected object")?
+        .remove("cleared_notes");
+    for note in old["day_notes"].as_array_mut().ok_or("expected notes")? {
+        note.as_object_mut()
+            .ok_or("expected note")?
+            .remove("changed_at");
+    }
+    assert_eq!(from_json(&serde_json::to_string(&old)?)?, original);
+    Ok(())
+}
+
+#[test]
+fn both_version_seven_formats_still_load() -> TestResult {
+    let original = sample()?;
+    let current: serde_json::Value = serde_json::from_str(&to_json(&original)?)?;
+
+    let mut main = current.clone();
+    main["schema_version"] = 7.into();
+    let main_fields = main.as_object_mut().ok_or("expected object")?;
+    main_fields.remove("day_notes");
+    main_fields.remove("cleared_notes");
+    let mut without_notes = original.clone();
+    without_notes.day_notes.clear();
+    assert_eq!(from_json(&main.to_string())?, without_notes);
+
+    let mut branch = current;
+    branch["schema_version"] = 7.into();
+    let branch_fields = branch.as_object_mut().ok_or("expected object")?;
+    branch_fields.remove("first_run_complete");
+    branch_fields.remove("chosen_sets");
+    branch_fields.remove("starter_keys");
+    let settings = branch_fields["settings"]
+        .as_object_mut()
+        .ok_or("expected settings")?;
+    settings.remove("location");
+    settings.remove("prayer_method");
+    let mut without_first_run = original;
+    without_first_run.chosen_sets.clear();
+    without_first_run.starter_keys.clear();
+    without_first_run.settings.location = None;
+    without_first_run.settings.prayer_method = werdy_store::PrayerMethod::default();
+    assert_eq!(from_json(&branch.to_string())?, without_first_run);
+    Ok(())
+}
+
+#[test]
+fn later_note_edit_wins_for_same_day() -> TestResult {
+    let day = WerdyDay::new(2026, 10, 6)?;
+    let mut earlier = sample()?;
+    let mut later = earlier.clone();
+    earlier.set_day_note(day, Some(DayNote::new("Ill", ExcuseCredit::Half, day)?), 10);
+    later.set_day_note(
+        day,
+        Some(DayNote::new("Travelled", ExcuseCredit::Full, day)?),
+        11,
+    );
+    let merged = werdy_store::merge_records(&earlier, &later);
+    assert_eq!(
+        merged.day_notes.get(&day).map(|note| note.credit()),
+        Some(ExcuseCredit::Full)
+    );
     Ok(())
 }
 

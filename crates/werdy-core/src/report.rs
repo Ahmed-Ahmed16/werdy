@@ -192,6 +192,8 @@ pub struct Report {
     pub not_due: Vec<DeedId>,
     /// Days with a note or excuse credit.
     pub noted_days: BTreeSet<WerdyDay>,
+    /// Days whose note was added more than two days late.
+    pub late_noted_days: BTreeSet<WerdyDay>,
 }
 
 /// Builds scores for a rolling period ending yesterday.
@@ -219,6 +221,16 @@ pub fn build_report(
         .filter(|day| records.day_notes.contains_key(day))
         .copied()
         .collect();
+    let late_noted_days = days
+        .iter()
+        .filter(|day| {
+            records
+                .day_notes
+                .get(day)
+                .is_some_and(|note| note.is_late_for(**day))
+        })
+        .copied()
+        .collect();
     Ok(Report {
         bands,
         days,
@@ -230,6 +242,7 @@ pub fn build_report(
         per_deed_days,
         not_due,
         noted_days,
+        late_noted_days,
     })
 }
 

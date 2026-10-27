@@ -4,9 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    CategoryKey, DailySheet, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, Period, Report,
-    Schedule, ScoreBands, SlotKey, Target, TodaySummary, Weekday, WerdyDay, build_report,
-    convert_mark_for_target, daily_sheet, delete_deed, finished_day_summary, today_summary,
+    CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, Mark, MarkEntry,
+    Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary, Weekday, WerdyDay,
+    build_report, convert_mark_for_target, daily_sheet, delete_deed, finished_day_summary, score,
+    today_summary,
 };
 use werdy_store::{DeedName, Location, OwnerData, PrayerMethod, Store, merge_records};
 
@@ -303,6 +304,46 @@ impl AppState {
             self.today,
             &self.data.settings.calendar,
         )
+    }
+
+    /// Core score for the viewed finished day. Today has no score.
+    pub fn viewing_score(&self) -> Result<Option<Score>, Error> {
+        if self.is_today() {
+            return Ok(None);
+        }
+        score(&self.data.records(), &[self.viewing], self.today).map(Some)
+    }
+
+    /// Note attached to the viewed day.
+    pub fn viewing_note(&self) -> Option<&DayNote> {
+        self.data.day_notes.get(&self.viewing)
+    }
+
+    /// Saves a changed note with the current day as its entry day.
+    pub fn save_day_note(
+        &mut self,
+        day: WerdyDay,
+        text: &str,
+        credit: ExcuseCredit,
+    ) -> Result<(), Error> {
+        if self
+            .data
+            .day_notes
+            .get(&day)
+            .is_some_and(|note| note.text() == text && note.credit() == credit)
+        {
+            return Ok(());
+        }
+        let note = DayNote::new(text, credit, self.today)?;
+        self.data
+            .set_day_note(day, Some(note), crate::platform::change_time());
+        Ok(())
+    }
+
+    /// Deletes a note on its chosen day.
+    pub fn delete_day_note(&mut self, day: WerdyDay) {
+        self.data
+            .set_day_note(day, None, crate::platform::change_time());
     }
 
     /// Builds the selected report from saved records before it is rendered.
@@ -986,7 +1027,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use werdy_core::{DeedId, Error, Mark, Period, WerdyDay};
+    use werdy_core::{DeedId, Error, ExcuseCredit, Mark, Period, WerdyDay};
     use werdy_store::{Location, MemoryStore, OwnerData, PrayerMethod, Store, StoreError};
 
     use super::{
@@ -1784,6 +1825,121 @@ mod tests {
 
         let entry = state.data.marks.get(&(DeedId(2), yesterday));
         assert_eq!(entry.map(|entry| entry.entered_on), Some(today()?));
+        Ok(())
+    }
+
+    #[test]
+    fn marking_yesterday_changes_its_score() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.update_today(today()?.next()?);
+        state.show_previous_day();
+        assert_eq!(
+            state.viewing_score()?.and_then(|score| score.percent),
+            Some(0)
+        );
+        state.tap(DeedId(1), Tap::Done);
+        assert_eq!(
+            state.viewing_score()?.and_then(|score| score.percent),
+            Some(20)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn half_credit_changes_yesterdays_score_and_keeps_entry_day() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.update_today(today()?.next()?);
+        state.show_previous_day();
+        let yesterday = state.viewing;
+        state.save_day_note(yesterday, "Ill", ExcuseCredit::Half)?;
+        assert_eq!(
+            state.viewing_score()?.and_then(|score| score.percent),
+            Some(50)
+        );
+        assert_eq!(
+            state.viewing_note().map(|note| note.entered_on()),
+            Some(state.today)
+        );
+        assert!(state.data.marks.is_empty());
+        assert!(state.data.day_notes.contains_key(&yesterday));
+        Ok(())
+    }
+
+    #[test]
+    fn unchanged_note_keeps_original_entry_day_and_is_not_late() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let day = state.viewing;
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        state.update_today(today()?.next()?.next()?.next()?);
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        let note = state.data.day_notes.get(&day).ok_or("missing note")?;
+        assert_eq!(note.entered_on(), day);
+        assert!(!note.is_late_for(day));
+        Ok(())
+    }
+
+    #[test]
+    fn edited_note_records_edit_day() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let day = state.viewing;
+        state.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        state.update_today(today()?.next()?.next()?.next()?);
+        state.save_day_note(day, "Ill", ExcuseCredit::Full)?;
+        let note = state.data.day_notes.get(&day).ok_or("missing note")?;
+        assert_eq!(note.entered_on(), state.today);
+        assert!(note.is_late_for(day));
+        Ok(())
+    }
+
+    #[test]
+    fn empty_note_without_credit_leaves_day_unchanged() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        assert_eq!(
+            state.save_day_note(state.viewing, "", ExcuseCredit::None),
+            Err(Error::EmptyDayNote)
+        );
+        assert!(state.viewing_note().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn note_dialog_day_survives_today_rolling_over() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let opened_day = state.viewing;
+        let entry_day = opened_day.next()?;
+        state.update_today(entry_day);
+        state.save_day_note(opened_day, "Ill", ExcuseCredit::None)?;
+        assert_eq!(
+            state
+                .data
+                .day_notes
+                .get(&opened_day)
+                .map(|note| note.entered_on()),
+            Some(entry_day)
+        );
+        assert!(!state.data.day_notes.contains_key(&entry_day));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_tab_keeps_note_edit_and_deletion() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        first.show_previous_day();
+        let day = first.viewing;
+        first.save_day_note(day, "Ill", ExcuseCredit::Half)?;
+        first.save_to(&store);
+        stale.tap(DeedId(1), Tap::Done);
+        stale.save_to(&store);
+        assert_eq!(
+            stale.data.day_notes.get(&day).map(|note| note.credit()),
+            Some(ExcuseCredit::Half)
+        );
+        first.delete_day_note(day);
+        first.save_to(&store);
+        stale.save_to(&store);
+        assert!(!started(&store)?.data.day_notes.contains_key(&day));
         Ok(())
     }
 
