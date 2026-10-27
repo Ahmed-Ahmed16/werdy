@@ -13,7 +13,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The browser only code in werdy-app compiles for wasm alone.
+      - run: cargo clippy -p werdy-app --target wasm32-unknown-unknown -- -D warnings

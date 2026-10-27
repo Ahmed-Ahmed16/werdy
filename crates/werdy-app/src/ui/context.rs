@@ -29,7 +29,7 @@ impl I18n {
     }
 }
 
-/// Reads texts and the language from context. The component re-renders when
+/// Reads texts and the language from context. The component renders again when
 /// the language changes.
 pub fn use_i18n() -> I18n {
     let texts = use_context::<Rc<Texts>>();
