@@ -4,7 +4,27 @@ A daily deeds tracker that gets the numbers right.
 
 Track your daily Islamic deeds and life work, mark each one done, half done or missed, and see clear weekly and monthly totals that only count what was actually due.
 
-**Status:** workspace skeleton exists. See [issue #1](https://github.com/Ahmed-Ahmed16/werdy/issues/1) for the plan.
+**Status:** a first web app shows today's sheet and saves marks in the browser. See [issue #1](https://github.com/Ahmed-Ahmed16/werdy/issues/1) for the plan.
+
+## Run it
+
+You need Rust, the wasm target and the Dioxus CLI 0.7:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install dioxus-cli --version 0.7.10 --locked
+```
+
+Then serve the web app locally and open the address it prints:
+
+```sh
+cd crates/werdy-app
+dx serve --platform web
+```
+
+`dx build --platform web` writes a static build to `target/dx/werdy-app/debug/web/public`. Marks are saved in the browser's local storage on this device only.
+
+Run the checks with `cargo test --workspace`.
 
 ## Why
 

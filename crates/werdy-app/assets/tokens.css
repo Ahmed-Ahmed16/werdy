@@ -1,0 +1,118 @@
+/*
+ * Design tokens as CSS custom properties. Values come from docs/design/tokens.md
+ * (ADR 0024); change them there first. A test checks that every colour here
+ * matches that file in both themes.
+ *
+ * Theme: the app root carries data-theme="system", "light" or "dark".
+ * "system" follows prefers-color-scheme.
+ */
+
+:root,
+[data-theme="light"] {
+  --bg: #F4F6F3;
+  --surface: #FFFFFF;
+  --surface-muted: #EDF0EC;
+  --track: #E6EAE6;
+  --border: #E1E6E2;
+  --border-strong: #C9D1CB;
+  --text: #16201B;
+  --text-muted: #56625B;
+  --primary: #0F5C45;
+  --primary-soft: #EAF4EE;
+  --on-primary: #FFFFFF;
+  --mark-done: #1E7A4C;
+  --on-mark-done: #FFFFFF;
+  --mark-partial: #E9A92E;
+  --on-mark-partial: #3B2A00;
+  --mark-missed: #C2413A;
+  --on-mark-missed: #FFFFFF;
+  --mark-open: #8A958E;
+  --danger: #A3332C;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0E1411;
+  --surface: #17201B;
+  --surface-muted: #222C27;
+  --track: #26312B;
+  --border: #26312B;
+  --border-strong: #2C3832;
+  --text: #E7EDE9;
+  --text-muted: #A2AFA7;
+  --primary: #7FD3A8;
+  --primary-soft: #15281D;
+  --on-primary: #08140D;
+  --mark-done: #4FB582;
+  --on-mark-done: #08140D;
+  --mark-partial: #F0B64D;
+  --on-mark-partial: #2A1D00;
+  --mark-missed: #E5736A;
+  --on-mark-missed: #1C0705;
+  --mark-open: #7C8983;
+  --danger: #E5736A;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  [data-theme="system"] {
+    --bg: #0E1411;
+    --surface: #17201B;
+    --surface-muted: #222C27;
+    --track: #26312B;
+    --border: #26312B;
+    --border-strong: #2C3832;
+    --text: #E7EDE9;
+    --text-muted: #A2AFA7;
+    --primary: #7FD3A8;
+    --primary-soft: #15281D;
+    --on-primary: #08140D;
+    --mark-done: #4FB582;
+    --on-mark-done: #08140D;
+    --mark-partial: #F0B64D;
+    --on-mark-partial: #2A1D00;
+    --mark-missed: #E5736A;
+    --on-mark-missed: #1C0705;
+    --mark-open: #7C8983;
+    --danger: #E5736A;
+    color-scheme: dark;
+  }
+}
+
+:root {
+  /* Type */
+  --font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --line-height-body: 1.5;
+  --size-caption: 13px;
+  --size-body: 16px;
+  --size-label: 15px;
+  --size-title: 17px;
+  --size-screen: 24px;
+  --size-score: 48px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Size and space */
+  --touch-min: 48px;
+  --gap-xs: 4px;
+  --gap-s: 8px;
+  --gap-m: 12px;
+  --gap-l: 16px;
+  --page-gutter: 16px;
+  --radius-control: 14px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Breakpoints, for reference: media queries cannot read variables.
+     bp-medium is 600px and bp-expanded is 840px. */
+}
+
+@media (min-width: 600px) {
+  :root {
+    --size-screen: 26px;
+    --page-gutter: 28px;
+  }
+}

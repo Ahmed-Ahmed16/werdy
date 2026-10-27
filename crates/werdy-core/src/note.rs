@@ -1,7 +1,9 @@
-use crate::{Error, WerdyDay, mark};
+use crate::{Error, Fraction, WerdyDay, mark};
 
 /// Credit applied to each due deed on a werdy day.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum ExcuseCredit {
     /// No credit. Marks keep their own values.
     None,
@@ -20,10 +22,20 @@ impl ExcuseCredit {
             Self::Full => 1.0,
         }
     }
+
+    pub(crate) fn exact_value(self) -> Fraction {
+        match self {
+            Self::None => Fraction::ZERO,
+            Self::Half => Fraction::HALF,
+            Self::Full => Fraction::ONE,
+        }
+    }
 }
 
 /// Owner's note and optional credit for one werdy day.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::DayNoteData"))]
 pub struct DayNote {
     text: String,
     credit: ExcuseCredit,

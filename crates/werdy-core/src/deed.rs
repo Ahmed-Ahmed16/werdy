@@ -1,34 +1,43 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Error, MarkEntry, Weekday, WerdyDay};
+use crate::{CalendarSettings, Error, HijriRange, MarkEntry, Weekday, WerdyDay};
 
 /// Rule that says which calendar days a deed is due.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Schedule {
     /// Due every day.
     EveryDay,
     /// Due on the listed weekdays.
     Weekdays(BTreeSet<Weekday>),
+    /// Due on the Hijri days of this range.
+    Hijri(HijriRange),
 }
 
 impl Schedule {
-    /// Says whether the schedule includes this day.
-    pub fn includes(&self, day: WerdyDay) -> bool {
+    /// Says whether the schedule includes this day under the owner's calendar settings.
+    pub fn includes(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
         match self {
             Self::EveryDay => true,
             Self::Weekdays(weekdays) => weekdays.contains(&day.weekday()),
+            Self::Hijri(range) => day
+                .hijri(calendar.offset_on(day))
+                .is_ok_and(|date| range.contains(date)),
         }
     }
 }
 
-// Hijri date ranges belong to a later ticket.
-
 /// Stable identity for a deed.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct DeedId(pub u64);
 
 /// Key for a category stored as deed data.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct CategoryKey(pub String);
 
 impl CategoryKey {
@@ -38,8 +47,24 @@ impl CategoryKey {
     }
 }
 
+/// Key for a time slot stored as deed data, such as `fajr` or `any_time`.
+/// The order of slots on the sheet is data too, given by the caller.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct SlotKey(pub String);
+
+impl SlotKey {
+    /// Creates a time slot key from stored text.
+    pub fn new(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
 /// Positive daily amount with a short unit key, not translated UI text.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::TargetData"))]
 pub struct Target {
     amount: u32,
     unit: String,
@@ -73,6 +98,7 @@ impl Target {
 
 /// Fields that may change for a deed.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeedRule {
     /// Days when this deed is due.
     pub schedule: Schedule,
@@ -80,22 +106,27 @@ pub struct DeedRule {
     pub target: Option<Target>,
     /// Category in force for this rule version.
     pub category: CategoryKey,
+    /// Time slot in force for this rule version.
+    pub slot: SlotKey,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct RuleVersion {
-    from_day: WerdyDay,
-    rule: DeedRule,
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct RuleVersion {
+    pub(crate) from_day: WerdyDay,
+    pub(crate) rule: DeedRule,
 }
 
 /// Deed with dated rules and optional archive day.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::DeedData"))]
 pub struct Deed {
     /// Stable deed identity.
     pub id: DeedId,
-    first_rule: RuleVersion,
-    later_rules: Vec<RuleVersion>,
-    archived_from: Option<WerdyDay>,
+    pub(crate) first_rule: RuleVersion,
+    pub(crate) later_rules: Vec<RuleVersion>,
+    pub(crate) archived_from: Option<WerdyDay>,
 }
 
 impl Deed {
@@ -177,17 +208,22 @@ impl Deed {
             .or(Some(&self.first_rule.rule))
     }
 
-    /// Says whether this deed is due on this day.
-    pub fn is_due_on(&self, day: WerdyDay) -> bool {
-        self.due_rule_on(day).is_some()
+    /// Says whether this deed is due on this day under the owner's calendar settings.
+    pub fn is_due_on(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
+        self.due_rule_on(day, calendar).is_some()
     }
 
     /// Returns the rule if the deed is due on this day.
-    pub(crate) fn due_rule_on(&self, day: WerdyDay) -> Option<&DeedRule> {
+    pub(crate) fn due_rule_on(
+        &self,
+        day: WerdyDay,
+        calendar: &CalendarSettings,
+    ) -> Option<&DeedRule> {
         if self.archived_from.is_some_and(|archived| day >= archived) {
             return None;
         }
-        self.rule_on(day).filter(|rule| rule.schedule.includes(day))
+        self.rule_on(day)
+            .filter(|rule| rule.schedule.includes(day, calendar))
     }
 }
 

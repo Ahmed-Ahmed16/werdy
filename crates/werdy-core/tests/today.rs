@@ -1,22 +1,26 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
-    TodaySummary, WerdyDay, score as score_records, today_summary,
+    CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, Fraction, Mark, MarkEntry,
+    OwnerRecords, Schedule, Score, ScoreValue, SlotKey, TodaySummary, WerdyDay,
+    finished_day_summary, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
 
+#[allow(clippy::expect_used)]
 fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
     score_records(
         &OwnerRecords {
             deeds,
             marks,
             day_notes: &BTreeMap::new(),
+            calendar: CalendarSettings::default(),
         },
         days,
         today,
     )
+    .expect("test score fits")
 }
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -31,6 +35,7 @@ fn deed(id: u64, created_on: WerdyDay) -> Deed {
             schedule: Schedule::EveryDay,
             target: None,
             category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
         },
     )
 }
@@ -50,7 +55,7 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today),
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
         TodaySummary {
             done: 1,
             partial: 1,
@@ -62,12 +67,64 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
 }
 
 #[test]
+fn partial_marks_at_zero_and_one_use_exact_value() -> Result<(), Error> {
+    let today = day(24)?;
+    let deeds = [deed(1, today), deed(2, today)];
+    let marks = Marks::from([
+        (
+            (DeedId(1), today),
+            MarkEntry::new(Mark::Partial(Fraction::ONE), today),
+        ),
+        (
+            (DeedId(2), today),
+            MarkEntry::new(Mark::Partial(Fraction::ZERO), today),
+        ),
+    ]);
+    assert_eq!(
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
+        TodaySummary {
+            done: 1,
+            partial: 0,
+            open: 0,
+            missed: 1
+        }
+    );
+    Ok(())
+}
+
+#[test]
 fn open_deed_today_is_not_missed() -> Result<(), Error> {
     let today = day(24)?;
-    let summary = today_summary(&[deed(1, today)], &Marks::new(), today);
+    let summary = today_summary(
+        &[deed(1, today)],
+        &Marks::new(),
+        today,
+        &CalendarSettings::default(),
+    );
 
     assert_eq!(summary.open, 1);
     assert_eq!(summary.missed, 0);
+    Ok(())
+}
+
+#[test]
+fn unmarked_due_deed_on_finished_day_counts_as_missed() -> Result<(), Error> {
+    let day = day(23)?;
+    let deeds = [deed(1, day), deed(2, day), deed(3, day)];
+    let marks = Marks::from([
+        ((DeedId(1), day), MarkEntry::new(Mark::Done, day)),
+        ((DeedId(2), day), MarkEntry::new(Mark::Missed, day)),
+    ]);
+
+    assert_eq!(
+        finished_day_summary(&deeds, &marks, day, &CalendarSettings::default()),
+        TodaySummary {
+            done: 1,
+            partial: 0,
+            open: 0,
+            missed: 2,
+        }
+    );
     Ok(())
 }
 
@@ -79,7 +136,7 @@ fn unmarked_due_deed_on_finished_day_is_worth_zero() -> Result<(), Error> {
     assert_eq!(
         result,
         Score {
-            earned: 0.0,
+            earned: ScoreValue::ZERO,
             due: 1,
             percent: Some(0),
         }
