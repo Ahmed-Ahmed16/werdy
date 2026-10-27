@@ -7,6 +7,7 @@ nav-reports = التقارير
 nav-deeds = أعمالي
 nav-settings = الإعدادات
 nav-coming-later = قريبًا
+nav-label = التنقل
 
 language-switch = English
 

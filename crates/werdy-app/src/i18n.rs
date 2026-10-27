@@ -54,12 +54,14 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/common.ftl"),
     include_str!("../../../locales/ar/sheet.ftl"),
     include_str!("../../../locales/ar/starter.ftl"),
+    include_str!("../../../locales/ar/reports.ftl"),
     include_str!("../../../locales/ar/deeds.ftl"),
 ];
 const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/common.ftl"),
     include_str!("../../../locales/en/sheet.ftl"),
     include_str!("../../../locales/en/starter.ftl"),
+    include_str!("../../../locales/en/reports.ftl"),
     include_str!("../../../locales/en/deeds.ftl"),
 ];
 
@@ -265,6 +267,29 @@ mod tests {
         assert_eq!(
             texts.get(Language::Arabic, "hijri-month-5", &[]),
             "جمادى الأولى"
+        );
+    }
+
+    #[test]
+    fn report_lead_uses_deed_name_in_both_languages() {
+        let texts = Texts::load();
+        let english = texts.get(
+            Language::English,
+            "reports-lead-missed",
+            &[("deed", FluentValue::from("Witr"))],
+        );
+        let arabic = texts.get(
+            Language::Arabic,
+            "reports-lead-missed",
+            &[("deed", FluentValue::from("الوتر"))],
+        );
+        assert_eq!(
+            english.replace(['\u{2068}', '\u{2069}'], ""),
+            "Most missed: Witr."
+        );
+        assert_eq!(
+            arabic.replace(['\u{2068}', '\u{2069}'], ""),
+            "أكثر ما فاتك: الوتر."
         );
     }
 

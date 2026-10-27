@@ -86,7 +86,10 @@ pub use deed::{
 pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry, convert_mark_for_target};
 pub use note::{DayNote, ExcuseCredit};
-pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
+pub use report::{
+    Band, DeedDay, MissedDeed, Period, Report, ReportLead, ScoreBands, SeriesEntry, build_report,
+    report_lead,
+};
 pub use score::{
     OwnerRecords, Score, ScoreValue, TodaySummary, finished_day_summary, score, today_summary,
 };

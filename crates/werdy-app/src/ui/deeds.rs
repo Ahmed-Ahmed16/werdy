@@ -5,10 +5,9 @@ use fluent_bundle::FluentValue;
 use werdy_core::{Deed, DeedId, Schedule, active_deed_count, archived_deed_count};
 use werdy_store::DeedName;
 
-use super::Page;
 use super::context::{use_actions, use_i18n};
 use crate::editor_data;
-use crate::state::{AppState, EditorError};
+use crate::state::{AppState, EditorError, Screen};
 
 fn deed_name(state: &AppState, id: DeedId, i18n: &super::context::I18n) -> String {
     match state.deed_name(id) {
@@ -22,7 +21,7 @@ fn deed_name(state: &AppState, id: DeedId, i18n: &super::context::I18n) -> Strin
 pub fn MyDeeds() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let mut page = use_context::<Signal<Page>>();
+    let actions = use_actions();
     let mut archived_open = use_signal(|| false);
     let app = state.read();
     let active_count = active_deed_count(&app.data.deeds, app.today);
@@ -74,7 +73,7 @@ pub fn MyDeeds() -> Element {
         section { class: "deeds-screen",
             header { class: "deeds-header",
                 div { h1 { class: "day-title", {i18n.t("deeds-title")} } p { class: "deeds-subtitle", "{count_text}" } }
-                button { class: "primary-button", onclick: move |_| page.set(Page::Editor(None)), {i18n.t("deeds-add")} }
+                button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Editor(None))), {i18n.t("deeds-add")} }
             }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
             for (slot, members) in groups {
@@ -101,7 +100,6 @@ pub fn MyDeeds() -> Element {
 fn DeedListRow(deed: Deed) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let mut page = use_context::<Signal<Page>>();
     let actions = use_actions();
     let mut error = use_signal(|| None::<EditorError>);
     let app = state.read();
@@ -126,7 +124,7 @@ fn DeedListRow(deed: Deed) -> Element {
     let id = deed.id;
     rsx! {
         div { class: "deeds-list-row",
-            button { class: "deeds-row-main", onclick: move |_| page.set(Page::Editor(Some(id))),
+            button { class: "deeds-row-main", onclick: move |_| actions.view(|state| state.show_screen(Screen::Editor(Some(id)))),
                 span { class: "deed-name", "{name}" }
                 span { class: "deeds-meta", "{category} · {schedule}" }
                 if let Some(target) = target { span { class: "deeds-meta", "{target}" } }
@@ -156,7 +154,6 @@ fn error_key(error: EditorError) -> &'static str {
 pub fn DeedEditor(id: Option<DeedId>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let mut page = use_context::<Signal<Page>>();
     let actions = use_actions();
     let mut draft = use_signal(|| {
         let app = state.read();
@@ -190,11 +187,11 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
     rsx! {
         section { class: "editor-screen",
             header { class: "editor-header",
-                button { class: "secondary-button", onclick: move |_| page.set(Page::Deeds), {i18n.t("editor-cancel")} }
+                button { class: "secondary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("editor-cancel")} }
                 h1 { class: "day-title", {i18n.t(if id.is_some() { "editor-edit-title" } else { "editor-add-title" })} }
                 button { class: "primary-button", onclick: move |_| {
                     match actions.change_deed(|state| state.save_deed(id, &draft())) {
-                        Ok(_) => page.set(Page::Deeds),
+                        Ok(_) => actions.view(|state| state.show_screen(Screen::Deeds)),
                         Err(problem) => error.set(Some(problem)),
                     }
                 }, {i18n.t("editor-save")} }
@@ -265,12 +262,12 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
             }
             p { class: "deeds-meta", {i18n.t("editor-from-today")} }
             if let Some(id) = id {
-                if !archived { button { class: "secondary-button", onclick: move |_| { if actions.change_deed(|state| state.archive_deed(id)).is_ok() { page.set(Page::Deeds); } else { error.set(Some(EditorError::RuleChange)); } }, {i18n.t("editor-archive")} } }
+                if !archived { button { class: "secondary-button", onclick: move |_| { if actions.change_deed(|state| state.archive_deed(id)).is_ok() { actions.view(|state| state.show_screen(Screen::Deeds)); } else { error.set(Some(EditorError::RuleChange)); } }, {i18n.t("editor-archive")} } }
                 button { class: "danger-button", onclick: move |_| confirm_delete.set(true), {i18n.t("editor-delete")} }
                 if confirm_delete() {
                     div { class: "confirm-box", role: "alertdialog", aria_label: i18n.t("editor-confirm-delete"),
                         p { {i18n.t("editor-confirm-delete")} }
-                        button { class: "danger-button", onclick: move |_| { if actions.change_deed(|state| state.delete_deed_confirmed(id, true)).is_ok() { page.set(Page::Deeds); } else { error.set(Some(EditorError::RuleChange)); } }, {i18n.t("editor-confirm")} }
+                        button { class: "danger-button", onclick: move |_| { if actions.change_deed(|state| state.delete_deed_confirmed(id, true)).is_ok() { actions.view(|state| state.show_screen(Screen::Deeds)); } else { error.set(Some(EditorError::RuleChange)); } }, {i18n.t("editor-confirm")} }
                         button { class: "secondary-button", onclick: move |_| confirm_delete.set(false), {i18n.t("editor-cancel")} }
                     }
                 }

@@ -7,6 +7,7 @@ mod header;
 mod icons;
 mod marks;
 mod rail;
+mod reports;
 mod sheet;
 mod summary;
 
@@ -16,15 +17,8 @@ use dioxus::prelude::*;
 use werdy_store::Theme;
 
 use crate::i18n::{Language, Texts};
-use crate::state::AppState;
+use crate::state::{AppState, Screen};
 use crate::{platform, starter};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Page {
-    Sheet,
-    Deeds,
-    Editor(Option<werdy_core::DeedId>),
-}
 
 const TOKENS_CSS: Asset = asset!("/assets/tokens.css");
 const APP_CSS: Asset = asset!("/assets/app.css");
@@ -80,7 +74,6 @@ impl PartialEq for StoreHandle {
 #[component]
 fn Shell(initial: AppState, store: StoreHandle) -> Element {
     let mut state = use_signal(|| initial);
-    let page = use_signal(|| Page::Sheet);
     let store = use_signal(|| store.0);
     let _watch = use_hook(move || {
         Rc::new(platform::watch_changes(
@@ -100,7 +93,6 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
     });
     use_context_provider(|| context::Actions::new(state, store));
     use_context_provider(|| state);
-    use_context_provider(|| page);
 
     let settings = &state.read().data.settings;
     let language = Language::from_code(&settings.language);
@@ -117,16 +109,21 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             lang: language.code(),
             "data-theme": theme,
             rail::Rail {}
-            main { class: if page() == Page::Sheet { "panes" } else { "page-content" },
+            main { class: match state.read().screen {
+                Screen::Sheet => "panes",
+                Screen::Reports => "report-panes",
+                Screen::Deeds | Screen::Editor(_) => "page-content",
+            },
                 summary::StatusBanner {}
-                match page() {
-                    Page::Sheet => rsx! {
+                match state.read().screen {
+                    Screen::Sheet => rsx! {
                         header::DayHeader {}
                         summary::TodayCard {}
                         sheet::Sheet {}
                     },
-                    Page::Deeds => rsx! { deeds::MyDeeds {} },
-                    Page::Editor(id) => rsx! { deeds::DeedEditor { key: "{id:?}", id } },
+                    Screen::Reports => rsx! { reports::ReportsScreen {} },
+                    Screen::Deeds => rsx! { deeds::MyDeeds {} },
+                    Screen::Editor(id) => rsx! { deeds::DeedEditor { key: "{id:?}", id } },
                 }
             }
             rail::BottomNav {}
