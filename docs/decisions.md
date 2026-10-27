@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0034 (2026-10-28): Demo data behind ?demo
+Adding `?demo` opens a complete sample sheet with history in a separate browser storage key. The app does not read, write or delete real records in this mode. The sample is deterministic and relative to the current werdy day. Why: testers and people seeing werdy for the first time need reports and history to inspect without setting up months of records. Approved by the owner on 2026-10-28. Revisit: if testers need more sample cases.
+
 ## 0033 (2026-10-28): A watcher sees the day note text
 When sharing is built (#24), a watcher sees the day note text as well as the note sign and the excuse credit, read only. The owner decided this on 2026-10-28. This closes the open question in 0028 and spec story 63g. Why: a watcher needs the owner's explanation to understand a credited day. Revisit: if the owner changes what a watcher may see.
 

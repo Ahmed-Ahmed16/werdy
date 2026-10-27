@@ -46,6 +46,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
     )]);
 
     Ok(OwnerData {
+        demo_generation: None,
         first_run_complete: true,
         chosen_sets: ["five_prayers".to_owned()].into(),
         starter_keys: BTreeMap::from([(DeedId(1), "fajr_on_time".to_owned())]),

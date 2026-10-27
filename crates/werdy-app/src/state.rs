@@ -1203,6 +1203,12 @@ impl AppState {
         }
         self.save_status = match store.load() {
             Ok(stored) => {
+                if stored
+                    .as_ref()
+                    .is_some_and(|data| self.adopt_demo_reset(data))
+                {
+                    return;
+                }
                 if let Some(ref data) = stored
                     && !self.rebase_new_deeds(data)
                 {
@@ -1256,6 +1262,9 @@ impl AppState {
         }
         match store.load() {
             Ok(Some(stored)) => {
+                if self.adopt_demo_reset(&stored) {
+                    return;
+                }
                 if !self.rebase_new_deeds(&stored) {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
@@ -1283,6 +1292,23 @@ impl AppState {
             Ok(None) => {}
             Err(_) => self.save_status = SaveStatus::LoadFailed,
         }
+    }
+
+    fn adopt_demo_reset(&mut self, stored: &OwnerData) -> bool {
+        if stored.demo_generation.is_none() || stored.demo_generation == self.data.demo_generation {
+            return false;
+        }
+        self.data = stored.clone();
+        self.viewing = self.today;
+        self.screen = Screen::Sheet;
+        self.report_steps_back = 0;
+        self.welcome_visible = false;
+        self.pending_settings = PendingSettings::default();
+        self.sets_dirty = false;
+        self.deed_changes.clear();
+        self.invalidate_kept_days();
+        self.save_status = SaveStatus::Saved;
+        true
     }
 }
 

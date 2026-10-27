@@ -1,6 +1,11 @@
 ## Shared text used on more than one screen.
 
 app-name = werdy
+demo-banner = بيانات تجريبية. سجلاتك الخاصة لا تتغير.
+demo-reset = إعادة البيانات التجريبية
+demo-leave = الخروج من التجربة
+demo-note-half = يوم سفر.
+demo-note-full = يوم مرض.
 
 nav-sheet = اليوم
 nav-reports = التقارير
