@@ -1,0 +1,400 @@
+/*
+ * Layout and components. Only token variables from tokens.css, never raw
+ * colours (a test checks this). One column below 840px; from 840px two panes
+ * with a side rail (ADR 0022).
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-family);
+  font-size: var(--size-body);
+  line-height: var(--line-height-body);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+[dir="rtl"] .chevron {
+  transform: scaleX(-1);
+}
+
+/* Page frame */
+
+.werdy-root {
+  min-height: 100vh;
+  display: flex;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-family);
+}
+
+.panes {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--gap-l);
+  align-content: start;
+  padding: var(--page-gutter);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "status"
+    "summary"
+    "sheet";
+}
+
+.day-header {
+  grid-area: header;
+}
+
+.status-banner {
+  grid-area: status;
+}
+
+.today-card {
+  grid-area: summary;
+}
+
+.sheet {
+  grid-area: sheet;
+}
+
+.rail {
+  display: none;
+}
+
+/* content-max is still ___ in tokens.md, so wide windows are not capped yet (#21). */
+@media (min-width: 840px) {
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-s);
+    width: 96px;
+    flex-shrink: 0;
+    padding: var(--gap-l) var(--gap-s);
+    background: var(--surface);
+    border-inline-end: 1px solid var(--border);
+  }
+
+  .panes {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-areas:
+      "header header"
+      "status status"
+      "sheet summary";
+  }
+
+  .today-card {
+    align-self: start;
+    position: sticky;
+    top: var(--page-gutter);
+  }
+}
+
+.rail-brand {
+  font-weight: var(--weight-bold);
+  color: var(--primary);
+  text-align: center;
+  padding-block: var(--gap-s) var(--gap-l);
+}
+
+.rail-item {
+  min-height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.rail-item[aria-current="page"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+/* Header */
+
+.day-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-s);
+}
+
+.day-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.day-title {
+  margin: 0;
+  font-size: var(--size-screen);
+  font-weight: var(--weight-bold);
+}
+
+.header-tools {
+  display: flex;
+  gap: var(--gap-s);
+}
+
+.icon-button {
+  width: var(--touch-min);
+  height: var(--touch-min);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.text-button {
+  min-height: var(--touch-min);
+  padding-inline: var(--gap-l);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+}
+
+.status-banner {
+  margin: 0;
+  padding: var(--gap-m) var(--gap-l);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--danger);
+}
+
+/* Today card */
+
+.today-card {
+  padding: var(--gap-l);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.card-title {
+  margin: 0 0 var(--gap-m);
+  font-size: var(--size-title);
+  font-weight: var(--weight-semibold);
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-s);
+}
+
+.count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--gap-m) var(--gap-s);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.count[data-kind="open"] {
+  background: transparent;
+  border: 2px dashed var(--mark-open);
+}
+
+.count-value {
+  font-size: var(--size-screen);
+  font-weight: var(--weight-bold);
+}
+
+.count[data-kind="done"] .count-value {
+  color: var(--mark-done);
+}
+
+.count-label {
+  font-size: var(--size-caption);
+  color: var(--text-muted);
+}
+
+.card-note {
+  margin: var(--gap-m) 0 0;
+  font-size: var(--size-caption);
+  color: var(--text-muted);
+}
+
+/* Sheet */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-m);
+}
+
+.sheet-empty {
+  margin: 0;
+  padding: var(--gap-l);
+  color: var(--text-muted);
+}
+
+.slot {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.slot-title {
+  margin: 0;
+  padding: var(--gap-m) var(--gap-l) 0;
+  font-size: var(--size-label);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+}
+
+.slot-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  min-height: var(--touch-min);
+  padding: var(--gap-m) var(--gap-l);
+}
+
+.deed-row + .deed-row {
+  border-top: 1px solid var(--border);
+}
+
+.deed-name {
+  font-size: var(--size-body);
+  font-weight: var(--weight-medium);
+}
+
+.deed-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-s);
+}
+
+.slot-folded {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-m);
+  width: 100%;
+  min-height: var(--touch-min);
+  padding: var(--gap-s) var(--gap-l);
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--primary-soft);
+  color: var(--primary);
+  text-align: start;
+}
+
+.slot-folded-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.slot-folded-text {
+  flex: 1;
+  font-weight: var(--weight-semibold);
+}
+
+.slot-folded-show {
+  font-size: var(--size-caption);
+}
+
+/* Mark buttons: each mark has a colour and its own shape. */
+
+.mark-button,
+.step-button {
+  width: var(--touch-min);
+  height: var(--touch-min);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+.mark-button[data-kind="done"][aria-pressed="true"] {
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.mark-button[data-kind="partial"][aria-pressed="true"] {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.mark-button[data-kind="missed"][aria-pressed="true"] {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  padding: 0;
+  border-radius: var(--radius-control);
+}
+
+.step-count {
+  min-width: 72px;
+  text-align: center;
+  font-weight: var(--weight-semibold);
+}
+
+.stepper[data-reached="true"] .step-count {
+  color: var(--mark-done);
+}
+
+.fatal {
+  padding: var(--page-gutter);
+  color: var(--danger);
+}

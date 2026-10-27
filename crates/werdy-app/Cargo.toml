@@ -1,0 +1,34 @@
+[package]
+name = "werdy-app"
+version = "0.1.0"
+description = "The werdy app, built with Dioxus. Web first (ADR 0029)."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+werdy-core = { path = "../werdy-core", features = ["serde"] }
+werdy-store = { path = "../werdy-store" }
+dioxus = "0.7.10"
+fluent-bundle = "0.16.0"
+unic-langid = "0.9.6"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+
+[dev-dependencies]
+fluent-syntax = "0.12.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
+
+[features]
+default = ["web"]
+# dx turns on the feature named after the platform it builds for.
+web = ["dioxus/web"]
+
+[lints]
+workspace = true

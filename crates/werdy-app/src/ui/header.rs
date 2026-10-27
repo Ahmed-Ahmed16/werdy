@@ -1,0 +1,89 @@
+//! Header: the date on screen, day arrows, and the language switch.
+
+use dioxus::prelude::*;
+use fluent_bundle::FluentValue;
+use werdy_core::{Weekday, WerdyDay};
+
+use super::context::{I18n, use_actions, use_i18n};
+use super::icons::{ChevronBack, ChevronForward};
+use crate::state::AppState;
+
+/// Date line with previous and next day arrows. Next is off on today.
+#[component]
+pub fn DayHeader() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let (viewing, is_today) = {
+        let state = state.read();
+        (state.viewing, state.is_today())
+    };
+    let date = date_text(&i18n, viewing);
+    let other = i18n.language.other();
+
+    rsx! {
+        header { class: "day-header",
+            div { class: "day-nav",
+                button {
+                    class: "icon-button",
+                    aria_label: i18n.t("sheet-previous-day"),
+                    title: i18n.t("sheet-previous-day"),
+                    onclick: move |_| actions.view(AppState::show_previous_day),
+                    ChevronBack {}
+                }
+                h1 { class: "day-title", "{date}" }
+                button {
+                    class: "icon-button",
+                    aria_label: i18n.t("sheet-next-day"),
+                    title: i18n.t("sheet-next-day"),
+                    disabled: is_today,
+                    onclick: move |_| actions.view(AppState::show_next_day),
+                    ChevronForward {}
+                }
+            }
+            div { class: "header-tools",
+                if !is_today {
+                    button {
+                        class: "text-button",
+                        onclick: move |_| actions.view(AppState::show_today),
+                        {i18n.t("sheet-back-to-today")}
+                    }
+                }
+                button {
+                    class: "text-button",
+                    lang: other.code(),
+                    onclick: move |_| actions.change(|state| state.set_language(other.code())),
+                    {i18n.t("language-switch")}
+                }
+            }
+        }
+    }
+}
+
+fn date_text(i18n: &I18n, day: WerdyDay) -> String {
+    let (year, month, day_of_month) = day.date_parts();
+    let weekday = i18n.t(weekday_key(day.weekday()));
+    let month_name = i18n.t(&format!("month-{month}"));
+    i18n.t_with(
+        "sheet-date",
+        &[
+            ("weekday", FluentValue::from(weekday)),
+            ("day", FluentValue::from(day_of_month)),
+            ("month", FluentValue::from(month_name)),
+            // As text, so the year is never formatted with a group separator.
+            ("year", FluentValue::from(year.to_string())),
+        ],
+    )
+}
+
+fn weekday_key(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Monday => "weekday-monday",
+        Weekday::Tuesday => "weekday-tuesday",
+        Weekday::Wednesday => "weekday-wednesday",
+        Weekday::Thursday => "weekday-thursday",
+        Weekday::Friday => "weekday-friday",
+        Weekday::Saturday => "weekday-saturday",
+        Weekday::Sunday => "weekday-sunday",
+    }
+}
