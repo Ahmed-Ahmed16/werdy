@@ -2,6 +2,10 @@ use crate::{DeedRule, Error, WerdyDay};
 
 const LATE_AFTER_DAYS: i64 = 2;
 
+pub(crate) fn is_late_for(entered_on: WerdyDay, day: WerdyDay) -> bool {
+    entered_on.days_since(day) > LATE_AFTER_DAYS
+}
+
 /// Value from zero to one inclusive.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fraction(f64);
@@ -73,6 +77,6 @@ impl MarkEntry {
 
     /// Says whether the mark was entered more than two days after its werdy day.
     pub fn is_late_for(self, marked_day: WerdyDay) -> bool {
-        self.entered_on.days_since(marked_day) > LATE_AFTER_DAYS
+        is_late_for(self.entered_on, marked_day)
     }
 }
