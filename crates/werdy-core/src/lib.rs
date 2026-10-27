@@ -1,4 +1,4 @@
-//! Pure deed scoring for finished werdy days.
+//! Pure deed scoring and counts for the current werdy day.
 
 #![forbid(unsafe_code)]
 
@@ -26,5 +26,5 @@ mod score;
 
 pub use day::{Weekday, WerdyDay};
 pub use deed::{Deed, DeedId, DeedRule, Schedule, delete_deed};
-pub use mark::{Fraction, Mark};
-pub use score::{Score, score};
+pub use mark::{Fraction, Mark, MarkEntry};
+pub use score::{Score, TodaySummary, score, today_summary};

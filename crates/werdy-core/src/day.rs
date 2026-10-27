@@ -49,6 +49,10 @@ impl WerdyDay {
     pub fn next(self) -> Result<Self, Error> {
         self.0.checked_add(1).map(Self).ok_or(Error::InvalidDate)
     }
+
+    pub(crate) fn days_since(self, earlier: Self) -> i64 {
+        i64::from(self.0) - i64::from(earlier.0)
+    }
 }
 
 fn is_leap_year(year: i32) -> bool {

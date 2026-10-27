@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    Deed, DeedId, DeedRule, Error, Mark, Schedule, Weekday, WerdyDay, delete_deed, score,
+    Deed, DeedId, DeedRule, Error, Mark, MarkEntry, Schedule, Weekday, WerdyDay, delete_deed, score,
 };
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
@@ -19,8 +19,8 @@ fn score_before_schedule_edit_is_unchanged_after_it() -> Result<(), Error> {
     let friday = day(23)?;
     let saturday = day(24)?;
     let mut deed = Deed::new(DeedId(1), friday, daily());
-    let marks = BTreeMap::from([((deed.id, friday), Mark::Done)]);
-    let before = score(&[deed.clone()], &marks, &[friday]);
+    let marks = BTreeMap::from([((deed.id, friday), MarkEntry::new(Mark::Done, friday))]);
+    let before = score(&[deed.clone()], &marks, &[friday], saturday.next()?);
 
     deed.change_rule(
         saturday,
@@ -29,8 +29,14 @@ fn score_before_schedule_edit_is_unchanged_after_it() -> Result<(), Error> {
         },
     )?;
 
-    assert_eq!(score(&[deed.clone()], &marks, &[friday]), before);
-    assert_eq!(score(&[deed], &marks, &[friday, saturday]).due, 2);
+    assert_eq!(
+        score(&[deed.clone()], &marks, &[friday], saturday.next()?),
+        before
+    );
+    assert_eq!(
+        score(&[deed], &marks, &[friday, saturday], saturday.next()?).due,
+        2
+    );
     Ok(())
 }
 
@@ -39,7 +45,7 @@ fn deed_added_mid_week_is_due_from_that_day_only() -> Result<(), Error> {
     let deed = Deed::new(DeedId(1), day(24)?, daily());
     let days = (21..=27).map(day).collect::<Result<Vec<_>, _>>()?;
 
-    assert_eq!(score(&[deed], &BTreeMap::new(), &days).due, 4);
+    assert_eq!(score(&[deed], &BTreeMap::new(), &days, day(28)?).due, 4);
     Ok(())
 }
 
@@ -47,8 +53,8 @@ fn deed_added_mid_week_is_due_from_that_day_only() -> Result<(), Error> {
 fn archived_deed_counts_for_days_before_archiving() -> Result<(), Error> {
     let mut deed = Deed::new(DeedId(1), day(21)?, daily());
     let marks = BTreeMap::from([
-        ((deed.id, day(22)?), Mark::Done),
-        ((deed.id, day(24)?), Mark::Done),
+        ((deed.id, day(22)?), MarkEntry::new(Mark::Done, day(22)?)),
+        ((deed.id, day(24)?), MarkEntry::new(Mark::Done, day(24)?)),
     ]);
     deed.archive(day(24)?)?;
 
@@ -56,6 +62,7 @@ fn archived_deed_counts_for_days_before_archiving() -> Result<(), Error> {
         &[deed],
         &marks,
         &[day(21)?, day(22)?, day(23)?, day(24)?, day(25)?],
+        day(26)?,
     );
     assert_eq!(result.due, 3);
     assert_eq!(result.earned, 1.0);
@@ -144,14 +151,20 @@ fn deleting_a_deed_removes_its_marks() -> Result<(), Error> {
     let second = Deed::new(DeedId(2), day(21)?, daily());
     let mut deeds = vec![first, second.clone()];
     let mut marks = BTreeMap::from([
-        ((DeedId(1), day(21)?), Mark::Done),
-        ((DeedId(1), day(22)?), Mark::Missed),
-        ((DeedId(2), day(21)?), Mark::Done),
+        ((DeedId(1), day(21)?), MarkEntry::new(Mark::Done, day(21)?)),
+        (
+            (DeedId(1), day(22)?),
+            MarkEntry::new(Mark::Missed, day(22)?),
+        ),
+        ((DeedId(2), day(21)?), MarkEntry::new(Mark::Done, day(21)?)),
     ]);
 
     delete_deed(&mut deeds, &mut marks, DeedId(1));
 
     assert_eq!(deeds, vec![second]);
-    assert_eq!(marks, BTreeMap::from([((DeedId(2), day(21)?), Mark::Done)]));
+    assert_eq!(
+        marks,
+        BTreeMap::from([((DeedId(2), day(21)?), MarkEntry::new(Mark::Done, day(21)?))])
+    );
     Ok(())
 }
