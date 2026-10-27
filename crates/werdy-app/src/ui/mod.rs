@@ -71,8 +71,24 @@ impl PartialEq for StoreHandle {
 /// Page frame: side rail, header, status, sheet and today card.
 #[component]
 fn Shell(initial: AppState, store: StoreHandle) -> Element {
-    let state = use_signal(|| initial);
+    let mut state = use_signal(|| initial);
     let store = use_signal(|| store.0);
+    let _watch = use_hook(move || {
+        Rc::new(platform::watch_changes(
+            move || {
+                if let Ok(today) = platform::today() {
+                    let changed = state.read().today != today;
+                    if changed {
+                        state.write().update_today(today);
+                    }
+                }
+            },
+            move || {
+                let saved = store.read().clone();
+                state.write().reload_from(saved.as_ref());
+            },
+        ))
+    });
     use_context_provider(|| context::Actions::new(state, store));
     use_context_provider(|| state);
 

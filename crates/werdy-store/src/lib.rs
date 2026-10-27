@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use werdy_core::{DayNote, Deed, DeedId, MarkEntry, OwnerRecords, WerdyDay};
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -94,6 +94,10 @@ pub struct OwnerData {
     pub names: BTreeMap<DeedId, DeedName>,
     /// Marks keyed by deed and werdy day.
     pub marks: BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    /// Change time in Unix milliseconds for each live mark. Old marks use zero.
+    pub mark_revisions: BTreeMap<(DeedId, WerdyDay), u64>,
+    /// Cleared marks and their change times. These prevent an old tab restoring a mark.
+    pub cleared_marks: BTreeMap<(DeedId, WerdyDay), u64>,
     /// Day notes keyed by werdy day.
     pub day_notes: BTreeMap<WerdyDay, DayNote>,
     /// Settings.
@@ -115,6 +119,78 @@ impl OwnerData {
         let highest = self.deeds.iter().map(|deed| deed.id.0).max().unwrap_or(0);
         DeedId(highest.saturating_add(1))
     }
+
+    /// Records a mark or a clear. The change time grows within this copy of the data.
+    pub fn set_mark(&mut self, deed_id: DeedId, day: WerdyDay, entry: Option<MarkEntry>, now: u64) {
+        let key = (deed_id, day);
+        let previous = self
+            .mark_revisions
+            .get(&key)
+            .copied()
+            .unwrap_or(0)
+            .max(self.cleared_marks.get(&key).copied().unwrap_or(0));
+        let changed_at = now.max(previous.saturating_add(1));
+        match entry {
+            Some(entry) => {
+                self.marks.insert(key, entry);
+                self.mark_revisions.insert(key, changed_at);
+                self.cleared_marks.remove(&key);
+            }
+            None => {
+                self.marks.remove(&key);
+                self.mark_revisions.remove(&key);
+                self.cleared_marks.insert(key, changed_at);
+            }
+        }
+    }
+}
+
+/// Combines mark changes from tab copies. Other records use the stored copy.
+/// For each deed and day, the greater change time wins.
+/// A clear has a saved tombstone. Equal times keep the first, stored copy.
+/// Version one marks have time zero, so any new change wins over them.
+pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
+    let mut merged = stored.clone();
+    merge_live_marks(&mut merged, local);
+    merge_clears(&mut merged, local);
+    merged
+}
+
+fn merge_live_marks(merged: &mut OwnerData, local: &OwnerData) {
+    for (key, entry) in &local.marks {
+        let local_time = local.mark_revisions.get(key).copied().unwrap_or(0);
+        if local_time > change_time(merged, key) || !has_change(merged, key) {
+            merged.marks.insert(*key, *entry);
+            merged.cleared_marks.remove(key);
+            if local_time > 0 {
+                merged.mark_revisions.insert(*key, local_time);
+            } else {
+                merged.mark_revisions.remove(key);
+            }
+        }
+    }
+}
+
+fn merge_clears(merged: &mut OwnerData, local: &OwnerData) {
+    for (key, local_time) in &local.cleared_marks {
+        if *local_time > change_time(merged, key) || !has_change(merged, key) {
+            merged.marks.remove(key);
+            merged.mark_revisions.remove(key);
+            merged.cleared_marks.insert(*key, *local_time);
+        }
+    }
+}
+
+fn has_change(data: &OwnerData, key: &(DeedId, WerdyDay)) -> bool {
+    data.marks.contains_key(key) || data.cleared_marks.contains_key(key)
+}
+
+fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
+    data.mark_revisions
+        .get(key)
+        .or_else(|| data.cleared_marks.get(key))
+        .copied()
+        .unwrap_or(0)
 }
 
 /// JSON layout. Maps become lists because JSON object keys must be text.
@@ -124,6 +200,8 @@ struct DataFile {
     deeds: Vec<Deed>,
     names: Vec<NameEntry>,
     marks: Vec<MarkRecord>,
+    #[serde(default)]
+    cleared_marks: Vec<ClearRecord>,
     day_notes: Vec<NoteRecord>,
     settings: Settings,
 }
@@ -139,6 +217,15 @@ struct MarkRecord {
     deed_id: DeedId,
     day: WerdyDay,
     entry: MarkEntry,
+    #[serde(default)]
+    changed_at: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ClearRecord {
+    deed_id: DeedId,
+    day: WerdyDay,
+    changed_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -173,6 +260,20 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
                 deed_id: *deed_id,
                 day: *day,
                 entry: *entry,
+                changed_at: data
+                    .mark_revisions
+                    .get(&(*deed_id, *day))
+                    .copied()
+                    .unwrap_or(0),
+            })
+            .collect(),
+        cleared_marks: data
+            .cleared_marks
+            .iter()
+            .map(|((deed_id, day), changed_at)| ClearRecord {
+                deed_id: *deed_id,
+                day: *day,
+                changed_at: *changed_at,
             })
             .collect(),
         day_notes: data
@@ -192,17 +293,28 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
 pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     let corrupt = |error: serde_json::Error| StoreError::Corrupt(error.to_string());
     let probe: VersionProbe = serde_json::from_str(text).map_err(corrupt)?;
-    if probe.schema_version != SCHEMA_VERSION {
+    if probe.schema_version != 1 && probe.schema_version != SCHEMA_VERSION {
         return Err(StoreError::UnsupportedVersion(probe.schema_version));
     }
     let file: DataFile = serde_json::from_str(text).map_err(corrupt)?;
 
     let mut marks = BTreeMap::new();
+    let mut mark_revisions = BTreeMap::new();
     for record in file.marks {
         if marks
             .insert((record.deed_id, record.day), record.entry)
             .is_some()
         {
+            return Err(StoreError::DuplicateEntry);
+        }
+        if record.changed_at > 0 {
+            mark_revisions.insert((record.deed_id, record.day), record.changed_at);
+        }
+    }
+    let mut cleared_marks = BTreeMap::new();
+    for record in file.cleared_marks {
+        let key = (record.deed_id, record.day);
+        if marks.contains_key(&key) || cleared_marks.insert(key, record.changed_at).is_some() {
             return Err(StoreError::DuplicateEntry);
         }
     }
@@ -222,6 +334,8 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         deeds: file.deeds,
         names,
         marks,
+        mark_revisions,
+        cleared_marks,
         day_notes,
         settings: file.settings,
     })

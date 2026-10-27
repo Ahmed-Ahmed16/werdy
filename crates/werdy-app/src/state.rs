@@ -5,7 +5,35 @@ use werdy_core::{
     DailySheet, DeedId, Mark, MarkEntry, SlotKey, TodaySummary, WerdyDay, daily_sheet,
     today_summary,
 };
-use werdy_store::{DeedName, OwnerData, Store};
+use werdy_store::{DeedName, OwnerData, Store, merge_records};
+
+/// Keeps the owner's past day in view, or follows today when today moves.
+pub fn viewing_after_today_change(
+    old_today: WerdyDay,
+    new_today: WerdyDay,
+    viewed: WerdyDay,
+) -> WerdyDay {
+    if viewed == old_today {
+        new_today
+    } else {
+        viewed.min(new_today)
+    }
+}
+
+/// Approximate local time slots until real prayer times arrive in ticket #11.
+pub fn current_slot(hour: u8, minute: u8) -> &'static str {
+    // TODO(#11): replace fixed bounds with computed prayer times.
+    let time = u16::from(hour) * 60 + u16::from(minute);
+    match time {
+        240..360 => "fajr",
+        360..720 => "morning",
+        720..930 => "dhuhr",
+        930..1080 => "asr",
+        1080..1170 => "maghrib",
+        1170..1320 => "isha",
+        _ => "night",
+    }
+}
 
 /// One of the three mark buttons on a deed row.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,6 +120,7 @@ pub struct AppState {
     pub slot_order: Vec<SlotKey>,
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
+    settings_dirty: bool,
 }
 
 impl AppState {
@@ -122,6 +151,7 @@ impl AppState {
             viewing: today,
             slot_order,
             save_status,
+            settings_dirty: false,
         }
     }
 
@@ -179,6 +209,12 @@ impl AppState {
         self.viewing = self.today;
     }
 
+    /// Reads a fresh day without moving a past day the owner chose.
+    pub fn update_today(&mut self, today: WerdyDay) {
+        self.viewing = viewing_after_today_change(self.today, today, self.viewing);
+        self.today = today;
+    }
+
     /// Applies a mark button tap on the day on screen.
     pub fn tap(&mut self, deed_id: DeedId, tap: Tap) {
         let mark = tapped(self.mark(deed_id), tap);
@@ -194,21 +230,17 @@ impl AppState {
     /// Switches the interface language and keeps it in settings.
     pub fn set_language(&mut self, code: &str) {
         code.clone_into(&mut self.data.settings.language);
+        self.settings_dirty = true;
     }
 
     fn set_mark(&mut self, deed_id: DeedId, mark: Option<Mark>) {
-        let key = (deed_id, self.viewing);
-        match mark {
-            // The entry day is today, so core can flag a late mark (ADR 0021).
-            Some(mark) => {
-                self.data
-                    .marks
-                    .insert(key, MarkEntry::new(mark, self.today));
-            }
-            None => {
-                self.data.marks.remove(&key);
-            }
-        }
+        // The entry day is today, so core can flag a late mark (ADR 0021).
+        self.data.set_mark(
+            deed_id,
+            self.viewing,
+            mark.map(|mark| MarkEntry::new(mark, self.today)),
+            crate::platform::change_time(),
+        );
     }
 
     /// Saves the data, unless saved data could not be read at start.
@@ -216,10 +248,50 @@ impl AppState {
         if self.save_status == SaveStatus::LoadFailed {
             return;
         }
-        self.save_status = match store.save(&self.data) {
-            Ok(()) => SaveStatus::Saved,
+        self.save_status = match store.load() {
+            Ok(stored) => {
+                let mut merged = stored.map_or_else(
+                    || self.data.clone(),
+                    |data| merge_records(&data, &self.data),
+                );
+                if self.settings_dirty {
+                    merged.settings = self.data.settings.clone();
+                }
+                match store.save(&merged) {
+                    Ok(()) => {
+                        self.data = merged;
+                        self.settings_dirty = false;
+                        SaveStatus::Saved
+                    }
+                    Err(_) => SaveStatus::SaveFailed,
+                }
+            }
             Err(_) => SaveStatus::SaveFailed,
         };
+    }
+
+    /// Reloads another tab's save and keeps local changes that are newer.
+    pub fn reload_from(&mut self, store: &dyn Store) {
+        if self.save_status == SaveStatus::LoadFailed {
+            return;
+        }
+        match store.load() {
+            Ok(Some(stored)) => {
+                let mut merged = merge_records(&stored, &self.data);
+                if self.settings_dirty {
+                    merged.settings = self.data.settings.clone();
+                }
+                if merged == stored {
+                    self.data = stored;
+                    self.save_status = SaveStatus::Saved;
+                } else {
+                    self.data = merged;
+                    self.save_to(store);
+                }
+            }
+            Ok(None) => {}
+            Err(_) => self.save_status = SaveStatus::LoadFailed,
+        }
     }
 }
 
@@ -387,6 +459,87 @@ mod tests {
 
         let entry = state.data.marks.get(&(DeedId(2), yesterday));
         assert_eq!(entry.map(|entry| entry.entered_on), Some(today()?));
+        Ok(())
+    }
+
+    #[test]
+    fn moving_today_follows_only_when_viewing_old_today() -> TestResult {
+        let old = today()?;
+        let new = old.next()?;
+        assert_eq!(super::viewing_after_today_change(old, new, old), new);
+        assert_eq!(
+            super::viewing_after_today_change(old, new, old.previous()?),
+            old.previous()?
+        );
+        assert_eq!(super::viewing_after_today_change(new, old, new), old);
+        Ok(())
+    }
+
+    #[test]
+    fn current_slot_uses_local_clock_boundaries() {
+        assert_eq!(super::current_slot(3, 59), "night");
+        assert_eq!(super::current_slot(4, 0), "fajr");
+        assert_eq!(super::current_slot(6, 0), "morning");
+        assert_eq!(super::current_slot(12, 0), "dhuhr");
+        assert_eq!(super::current_slot(15, 30), "asr");
+        assert_eq!(super::current_slot(18, 0), "maghrib");
+        assert_eq!(super::current_slot(19, 30), "isha");
+        assert_eq!(super::current_slot(22, 0), "night");
+    }
+
+    #[test]
+    fn date_change_moves_sheet_and_refreshes_counts() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        state.tap(DeedId(1), Tap::Done);
+        assert_eq!(state.summary().done, 1);
+
+        let new_today = today()?.next()?;
+        state.update_today(new_today);
+        assert_eq!(state.viewing, new_today);
+        assert_eq!(state.summary().done, 0);
+        assert_eq!(state.summary().open, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn stale_tab_save_keeps_other_tabs_mark_and_clear() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        first.tap(DeedId(1), Tap::Done);
+        first.save_to(&store);
+        stale.tap(DeedId(2), Tap::Missed);
+        stale.save_to(&store);
+        assert_eq!(stale.mark(DeedId(1)), Some(Mark::Done));
+        assert_eq!(stale.mark(DeedId(2)), Some(Mark::Missed));
+
+        first.reload_from(&store);
+        assert_eq!(first.mark(DeedId(2)), Some(Mark::Missed));
+        first.tap(DeedId(1), Tap::Done);
+        first.save_to(&store);
+        stale.save_to(&store);
+        let saved = started(&store)?;
+        assert_eq!(saved.mark(DeedId(1)), None);
+        assert_eq!(saved.mark(DeedId(2)), Some(Mark::Missed));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_mark_save_keeps_language_change_from_other_tab() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        first.set_language("en");
+        first.save_to(&store);
+
+        stale.tap(DeedId(1), Tap::Done);
+        stale.save_to(&store);
+        assert_eq!(stale.data.settings.language, "en");
+
+        stale.set_language("ar");
+        stale.save_to(&store);
+        assert_eq!(started(&store)?.data.settings.language, "ar");
         Ok(())
     }
 }

@@ -51,6 +51,8 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
             (DeedId(2), DeedName::Text("ورد القرآن".to_owned())),
         ]),
         marks,
+        mark_revisions: BTreeMap::new(),
+        cleared_marks: BTreeMap::new(),
         day_notes,
         settings: Settings {
             language: "ar".to_owned(),
@@ -111,9 +113,84 @@ fn invalid_values_inside_valid_json_are_an_error() -> TestResult {
 
 #[test]
 fn a_newer_schema_version_is_refused() -> TestResult {
-    let json = to_json(&sample()?)?.replace("\"schema_version\":1", "\"schema_version\":99");
+    let json = to_json(&sample()?)?.replace("\"schema_version\":2", "\"schema_version\":99");
 
     assert_eq!(from_json(&json), Err(StoreError::UnsupportedVersion(99)));
+    Ok(())
+}
+
+#[test]
+fn merge_keeps_marks_from_both_tabs() -> TestResult {
+    let mut left = OwnerData::default();
+    let mut right = OwnerData::default();
+    let day = WerdyDay::new(2026, 10, 27)?;
+    left.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
+    right.set_mark(DeedId(2), day, Some(MarkEntry::new(Mark::Missed, day)), 11);
+
+    let merged = werdy_store::merge_records(&left, &right);
+    assert_eq!(merged.marks.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn later_change_wins_for_same_mark() -> TestResult {
+    let mut first = OwnerData::default();
+    let mut later = OwnerData::default();
+    let day = WerdyDay::new(2026, 10, 27)?;
+    first.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
+    later.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Missed, day)), 11);
+
+    let merged = werdy_store::merge_records(&later, &first);
+    assert_eq!(merged.marks[&(DeedId(1), day)].mark, Mark::Missed);
+    Ok(())
+}
+
+#[test]
+fn clear_survives_round_trip_and_stale_merge() -> TestResult {
+    let mut stale = OwnerData::default();
+    let day = WerdyDay::new(2026, 10, 27)?;
+    stale.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
+    let mut cleared = stale.clone();
+    cleared.set_mark(DeedId(1), day, None, 11);
+    let loaded = from_json(&to_json(&cleared)?)?;
+
+    let merged = werdy_store::merge_records(&loaded, &stale);
+    assert!(!merged.marks.contains_key(&(DeedId(1), day)));
+    assert_eq!(merged.cleared_marks.get(&(DeedId(1), day)), Some(&11));
+    Ok(())
+}
+
+#[test]
+fn version_one_marks_load_with_zero_revision() -> TestResult {
+    let mut json: serde_json::Value = serde_json::from_str(&to_json(&sample()?)?)?;
+    json["schema_version"] = 1.into();
+    let object = json.as_object_mut().ok_or("file is not an object")?;
+    object.remove("cleared_marks");
+    for mark in object["marks"]
+        .as_array_mut()
+        .ok_or("marks is not a list")?
+    {
+        mark.as_object_mut()
+            .ok_or("mark is not an object")?
+            .remove("changed_at");
+    }
+
+    let loaded = from_json(&json.to_string())?;
+    assert_eq!(loaded.mark_revisions, BTreeMap::new());
+    assert_eq!(loaded.marks, sample()?.marks);
+    Ok(())
+}
+
+#[test]
+fn equal_change_times_keep_stored_mark() -> TestResult {
+    let day = WerdyDay::new(2026, 10, 27)?;
+    let mut stored = OwnerData::default();
+    let mut local = OwnerData::default();
+    stored.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
+    local.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Missed, day)), 10);
+
+    let merged = werdy_store::merge_records(&stored, &local);
+    assert_eq!(merged.marks[&(DeedId(1), day)].mark, Mark::Done);
     Ok(())
 }
 

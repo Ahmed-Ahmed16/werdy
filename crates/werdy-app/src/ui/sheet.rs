@@ -9,6 +9,7 @@ use super::context::use_i18n;
 use super::icons::CheckIcon;
 use super::marks::{CountStepper, MarkButton};
 use crate::state::{AppState, Tap};
+use crate::{platform, state};
 
 /// All slots of the day on screen, in slot order.
 #[component]
@@ -16,6 +17,38 @@ pub fn Sheet() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     let sheet = state.read().sheet();
+    let mut last_scroll_day = use_signal(|| None::<(werdy_core::WerdyDay, werdy_core::WerdyDay)>);
+    use_effect(move || {
+        let app = state.read();
+        let day = (app.today, app.viewing);
+        if last_scroll_day() == Some(day) {
+            return;
+        }
+        last_scroll_day.set(Some(day));
+        if app.is_today() {
+            let (hour, minute) = platform::local_time();
+            let wanted = state::current_slot(hour, minute);
+            let slots = app.sheet().slots;
+            let order = &app.slot_order;
+            let target = slots
+                .iter()
+                .find(|slot| slot.slot.0 == wanted)
+                .or_else(|| {
+                    let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
+                    slots.iter().find(|slot| {
+                        order
+                            .iter()
+                            .position(|key| key == &slot.slot)
+                            .unwrap_or(order.len())
+                            >= wanted_index
+                    })
+                })
+                .or_else(|| slots.last());
+            if let Some(slot) = target {
+                platform::scroll_slot(&slot.slot.0);
+            }
+        }
+    });
 
     rsx! {
         section { class: "sheet",
@@ -40,6 +73,7 @@ fn SlotGroup(slot: SheetSlot) -> Element {
         let line = i18n.t_with("slot-folded", &[("slot", FluentValue::from(name))]);
         return rsx! {
             button {
+                id: "slot-{slot.slot.0}",
                 class: "slot-folded",
                 aria_expanded: "false",
                 onclick: move |_| opened.set(true),
@@ -52,6 +86,7 @@ fn SlotGroup(slot: SheetSlot) -> Element {
 
     rsx! {
         div { class: "slot",
+            id: "slot-{slot.slot.0}",
             h2 { class: "slot-title", "{name}" }
             ul { class: "slot-rows",
                 for row in slot.rows {
