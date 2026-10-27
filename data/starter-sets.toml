@@ -1,0 +1,803 @@
+# werdy starter sets (ADR 0019, ADR 0024).
+#
+# Our own writing from common practice and the owner's own sheet. Werd's
+# wording, order, sections and points are never copied. Every deed weighs
+# the same (ADR 0008), so there are no points here.
+#
+# How to edit:
+# * Each deed is written once under [[deeds]]. A set lists deed keys.
+#   Two sets that share a deed list the same key, so the deed is added once.
+# * "name" is a Fluent key. Add it to locales/ar/starter-sets.ftl and
+#   locales/en/starter-sets.ftl, or the tests fail.
+# * A schedule is "every_day", { weekdays = ["friday"] } or
+#   { hijri = "ramadan" }. Hijri range keys must be in hijri_ranges.
+# * A target is optional: { amount = 20, unit = "pages" }.
+
+# Time slots in sheet order (ADR 0007).
+slots = ["fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night", "any_time"]
+
+# The fixed v1 categories (ADR 0007).
+categories = [
+    "prayer",
+    "quran",
+    "adhkar",
+    "fasting",
+    "charity",
+    "study",
+    "family",
+    "health",
+    "work",
+    "other",
+]
+
+# Hijri ranges by key (ADR 0009). The days each key covers:
+# ramadan: the whole of Ramadan.
+# last_ten_nights: the last ten nights of Ramadan.
+# dhul_hijjah_first_ten: 1 to 10 Dhul Hijjah.
+# dhul_hijjah_first_nine: 1 to 9 Dhul Hijjah (no fasting on Eid).
+# dhul_hijjah_takbir: 1 Dhul Hijjah to the end of the takbir days. End day ___ (to confirm, the draft says 13).
+# arafah: 9 Dhul Hijjah.
+# tasua_and_ashura: 9 and 10 Muharram.
+# ashura: 10 Muharram.
+# ayyam_al_bid: 13 to 15 of every Hijri month.
+hijri_ranges = [
+    "ramadan",
+    "last_ten_nights",
+    "dhul_hijjah_first_ten",
+    "dhul_hijjah_first_nine",
+    "dhul_hijjah_takbir",
+    "arafah",
+    "tasua_and_ashura",
+    "ashura",
+    "ayyam_al_bid",
+]
+
+[[units]]
+key = "pages"
+name = "unit-pages"
+
+[[units]]
+key = "rakaat"
+name = "unit-rakaat"
+
+[[units]]
+key = "times"
+name = "unit-times"
+
+# Set 1: the five prayers.
+
+[[deeds]]
+key = "fajr_on_time"
+name = "deed-fajr-on-time"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_on_time"
+name = "deed-dhuhr-on-time"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_on_time"
+name = "deed-asr-on-time"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_on_time"
+name = "deed-maghrib-on-time"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_on_time"
+name = "deed-isha-on-time"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+# Set 2: sunnah prayers with the fard.
+
+[[deeds]]
+key = "sunnah_before_fajr"
+name = "deed-sunnah-before-fajr"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "sunnah_before_dhuhr"
+name = "deed-sunnah-before-dhuhr"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+target = { amount = 4, unit = "rakaat" }
+
+[[deeds]]
+key = "sunnah_after_dhuhr"
+name = "deed-sunnah-after-dhuhr"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "sunnah_after_maghrib"
+name = "deed-sunnah-after-maghrib"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "sunnah_after_isha"
+name = "deed-sunnah-after-isha"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+# Set 3: prayer in the mosque, three deeds per prayer.
+
+[[deeds]]
+key = "fajr_congregation"
+name = "deed-fajr-congregation"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "fajr_opening_takbir"
+name = "deed-fajr-opening-takbir"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "fajr_first_row"
+name = "deed-fajr-first-row"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_congregation"
+name = "deed-dhuhr-congregation"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_opening_takbir"
+name = "deed-dhuhr-opening-takbir"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_first_row"
+name = "deed-dhuhr-first-row"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_congregation"
+name = "deed-asr-congregation"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_opening_takbir"
+name = "deed-asr-opening-takbir"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_first_row"
+name = "deed-asr-first-row"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_congregation"
+name = "deed-maghrib-congregation"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_opening_takbir"
+name = "deed-maghrib-opening-takbir"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_first_row"
+name = "deed-maghrib-first-row"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_congregation"
+name = "deed-isha-congregation"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_opening_takbir"
+name = "deed-isha-opening-takbir"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_first_row"
+name = "deed-isha-first-row"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+# Set 4: with every prayer, two deeds per prayer.
+
+[[deeds]]
+key = "fajr_dua_before_iqama"
+name = "deed-fajr-dua-before-iqama"
+slot = "fajr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "fajr_adhkar_after"
+name = "deed-fajr-adhkar-after"
+slot = "fajr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_dua_before_iqama"
+name = "deed-dhuhr-dua-before-iqama"
+slot = "dhuhr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "dhuhr_adhkar_after"
+name = "deed-dhuhr-adhkar-after"
+slot = "dhuhr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_dua_before_iqama"
+name = "deed-asr-dua-before-iqama"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "asr_adhkar_after"
+name = "deed-asr-adhkar-after"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_dua_before_iqama"
+name = "deed-maghrib-dua-before-iqama"
+slot = "maghrib"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "maghrib_adhkar_after"
+name = "deed-maghrib-adhkar-after"
+slot = "maghrib"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_dua_before_iqama"
+name = "deed-isha-dua-before-iqama"
+slot = "isha"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "isha_adhkar_after"
+name = "deed-isha-adhkar-after"
+slot = "isha"
+category = "adhkar"
+schedule = "every_day"
+
+# Set 5: morning and evening.
+
+[[deeds]]
+key = "morning_adhkar"
+name = "deed-morning-adhkar"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "tahlil"
+name = "deed-tahlil"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+target = { amount = 100, unit = "times" }
+
+[[deeds]]
+key = "sitting_until_sunrise"
+name = "deed-sitting-until-sunrise"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "duha"
+name = "deed-duha"
+slot = "morning"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "evening_adhkar"
+name = "deed-evening-adhkar"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "istighfar"
+name = "deed-istighfar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+target = { amount = 100, unit = "times" }
+
+# Shared with set 8.
+[[deeds]]
+key = "sleep_adhkar"
+name = "deed-sleep-adhkar"
+slot = "night"
+category = "adhkar"
+schedule = "every_day"
+
+# Set 6: night prayer.
+
+[[deeds]]
+key = "qiyam"
+name = "deed-qiyam"
+slot = "night"
+category = "prayer"
+schedule = "every_day"
+target = { amount = 4, unit = "rakaat" }
+
+[[deeds]]
+key = "witr"
+name = "deed-witr"
+slot = "night"
+category = "prayer"
+schedule = "every_day"
+
+# Set 7: Quran.
+
+[[deeds]]
+key = "quran_reading"
+name = "deed-quran-reading"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+target = { amount = 20, unit = "pages" }
+
+[[deeds]]
+key = "quran_memorising"
+name = "deed-quran-memorising"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "quran_review"
+name = "deed-quran-review"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+# Set 8: everyday adhkar. Adhkar before sleep comes from set 5.
+
+[[deeds]]
+key = "waking_adhkar"
+name = "deed-waking-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "toilet_adhkar"
+name = "deed-toilet-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "wudu_adhkar"
+name = "deed-wudu-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "dressing_adhkar"
+name = "deed-dressing-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "home_adhkar"
+name = "deed-home-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "food_adhkar"
+name = "deed-food-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "riding_adhkar"
+name = "deed-riding-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "mosque_adhkar"
+name = "deed-mosque-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "walking_to_mosque_adhkar"
+name = "deed-walking-to-mosque-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+# Set 9: Friday.
+
+[[deeds]]
+key = "friday_ghusl"
+name = "deed-friday-ghusl"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "sunan_al_fitra"
+name = "deed-sunan-al-fitra"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "best_clothes_and_perfume"
+name = "deed-best-clothes-and-perfume"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "siwak"
+name = "deed-siwak"
+slot = "any_time"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "early_to_jumuah"
+name = "deed-early-to-jumuah"
+slot = "dhuhr"
+category = "prayer"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "surah_al_kahf"
+name = "deed-surah-al-kahf"
+slot = "any_time"
+category = "quran"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "salawat"
+name = "deed-salawat"
+slot = "any_time"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+target = { amount = 100, unit = "times" }
+
+[[deeds]]
+key = "friday_last_hour_dua"
+name = "deed-friday-last-hour-dua"
+slot = "asr"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+
+# Set 10: knowledge and dawah. The owner can narrow lessons to weekdays.
+
+[[deeds]]
+key = "attending_lesson"
+name = "deed-attending-lesson"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "reviewing_lessons"
+name = "deed-reviewing-lessons"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "dawah"
+name = "deed-dawah"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+# Set 11: fasting and seasons. Each deed has its own schedule.
+
+[[deeds]]
+key = "fasting_monday_thursday"
+name = "deed-fasting-monday-thursday"
+slot = "any_time"
+category = "fasting"
+schedule = { weekdays = ["monday", "thursday"] }
+
+[[deeds]]
+key = "fasting_ayyam_al_bid"
+name = "deed-fasting-ayyam-al-bid"
+slot = "any_time"
+category = "fasting"
+schedule = { hijri = "ayyam_al_bid" }
+
+[[deeds]]
+key = "fasting_ashura"
+name = "deed-fasting-ashura"
+slot = "any_time"
+category = "fasting"
+schedule = { hijri = "tasua_and_ashura" }
+
+[[deeds]]
+key = "charity_ashura"
+name = "deed-charity-ashura"
+slot = "any_time"
+category = "charity"
+schedule = { hijri = "ashura" }
+
+[[deeds]]
+key = "family_ashura"
+name = "deed-family-ashura"
+slot = "any_time"
+category = "family"
+schedule = { hijri = "ashura" }
+
+[[deeds]]
+key = "fasting_dhul_hijjah"
+name = "deed-fasting-dhul-hijjah"
+slot = "any_time"
+category = "fasting"
+schedule = { hijri = "dhul_hijjah_first_nine" }
+
+[[deeds]]
+key = "fasting_arafah"
+name = "deed-fasting-arafah"
+slot = "any_time"
+category = "fasting"
+schedule = { hijri = "arafah" }
+
+[[deeds]]
+key = "takbir_dhul_hijjah"
+name = "deed-takbir-dhul-hijjah"
+slot = "any_time"
+category = "adhkar"
+schedule = { hijri = "dhul_hijjah_takbir" }
+
+# Set 12: Ramadan. Proposed from common practice; the owner confirms.
+
+[[deeds]]
+key = "ramadan_fasting"
+name = "deed-ramadan-fasting"
+slot = "any_time"
+category = "fasting"
+schedule = { hijri = "ramadan" }
+
+[[deeds]]
+key = "taraweeh"
+name = "deed-taraweeh"
+slot = "isha"
+category = "prayer"
+schedule = { hijri = "ramadan" }
+
+# Target pages are ___ (to confirm), so no target for now.
+[[deeds]]
+key = "ramadan_quran"
+name = "deed-ramadan-quran"
+slot = "any_time"
+category = "quran"
+schedule = { hijri = "ramadan" }
+
+[[deeds]]
+key = "ramadan_charity"
+name = "deed-ramadan-charity"
+slot = "any_time"
+category = "charity"
+schedule = { hijri = "ramadan" }
+
+[[deeds]]
+key = "last_ten_qiyam"
+name = "deed-last-ten-qiyam"
+slot = "night"
+category = "prayer"
+schedule = { hijri = "last_ten_nights" }
+
+[[deeds]]
+key = "laylat_al_qadr_dua"
+name = "deed-laylat-al-qadr-dua"
+slot = "night"
+category = "adhkar"
+schedule = { hijri = "last_ten_nights" }
+
+# The sets, in the order they are offered. The first is the default for a new sheet.
+
+[[sets]]
+key = "five_prayers"
+name = "set-five-prayers"
+deeds = ["fajr_on_time", "dhuhr_on_time", "asr_on_time", "maghrib_on_time", "isha_on_time"]
+
+[[sets]]
+key = "sunnah_prayers"
+name = "set-sunnah-prayers"
+deeds = [
+    "sunnah_before_fajr",
+    "sunnah_before_dhuhr",
+    "sunnah_after_dhuhr",
+    "sunnah_after_maghrib",
+    "sunnah_after_isha",
+]
+
+[[sets]]
+key = "mosque_prayer"
+name = "set-mosque-prayer"
+deeds = [
+    "fajr_congregation",
+    "fajr_opening_takbir",
+    "fajr_first_row",
+    "dhuhr_congregation",
+    "dhuhr_opening_takbir",
+    "dhuhr_first_row",
+    "asr_congregation",
+    "asr_opening_takbir",
+    "asr_first_row",
+    "maghrib_congregation",
+    "maghrib_opening_takbir",
+    "maghrib_first_row",
+    "isha_congregation",
+    "isha_opening_takbir",
+    "isha_first_row",
+]
+
+[[sets]]
+key = "with_every_prayer"
+name = "set-with-every-prayer"
+deeds = [
+    "fajr_dua_before_iqama",
+    "fajr_adhkar_after",
+    "dhuhr_dua_before_iqama",
+    "dhuhr_adhkar_after",
+    "asr_dua_before_iqama",
+    "asr_adhkar_after",
+    "maghrib_dua_before_iqama",
+    "maghrib_adhkar_after",
+    "isha_dua_before_iqama",
+    "isha_adhkar_after",
+]
+
+[[sets]]
+key = "morning_evening"
+name = "set-morning-evening"
+deeds = [
+    "morning_adhkar",
+    "tahlil",
+    "sitting_until_sunrise",
+    "duha",
+    "evening_adhkar",
+    "istighfar",
+    "sleep_adhkar",
+]
+
+[[sets]]
+key = "night_prayer"
+name = "set-night-prayer"
+deeds = ["qiyam", "witr"]
+
+[[sets]]
+key = "quran"
+name = "set-quran"
+deeds = ["quran_reading", "quran_memorising", "quran_review"]
+
+[[sets]]
+key = "daily_adhkar"
+name = "set-daily-adhkar"
+deeds = [
+    "waking_adhkar",
+    "toilet_adhkar",
+    "wudu_adhkar",
+    "dressing_adhkar",
+    "home_adhkar",
+    "food_adhkar",
+    "riding_adhkar",
+    "mosque_adhkar",
+    "walking_to_mosque_adhkar",
+    "sleep_adhkar",
+]
+
+[[sets]]
+key = "friday"
+name = "set-friday"
+deeds = [
+    "friday_ghusl",
+    "sunan_al_fitra",
+    "best_clothes_and_perfume",
+    "siwak",
+    "early_to_jumuah",
+    "surah_al_kahf",
+    "salawat",
+    "friday_last_hour_dua",
+]
+
+[[sets]]
+key = "knowledge_dawah"
+name = "set-knowledge-dawah"
+deeds = ["attending_lesson", "reviewing_lessons", "dawah"]
+
+[[sets]]
+key = "fasting_seasons"
+name = "set-fasting-seasons"
+deeds = [
+    "fasting_monday_thursday",
+    "fasting_ayyam_al_bid",
+    "fasting_ashura",
+    "charity_ashura",
+    "family_ashura",
+    "fasting_dhul_hijjah",
+    "fasting_arafah",
+    "takbir_dhul_hijjah",
+]
+
+[[sets]]
+key = "ramadan"
+name = "set-ramadan"
+deeds = [
+    "ramadan_fasting",
+    "taraweeh",
+    "ramadan_quran",
+    "ramadan_charity",
+    "last_ten_qiyam",
+    "laylat_al_qadr_dua",
+]
