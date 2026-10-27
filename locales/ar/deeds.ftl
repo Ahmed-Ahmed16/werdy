@@ -42,7 +42,12 @@ schedule-no-weekdays = اختر يومًا واحدًا على الأقل.
 schedule-list-separator = { "، " }
 schedule-pair-separator = { " و" }
 schedule-final-separator = { "، و" }
-deeds-target = الهدف: { $amount } { $unit }
+deeds-target =
+    { $amount ->
+        [one] الهدف: { $unit }
+        [two] الهدف: { $unit }
+       *[other] الهدف: { $amount } { $unit }
+    }
 category-prayer = صلاة
 category-quran = قرآن
 category-adhkar = أذكار

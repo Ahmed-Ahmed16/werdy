@@ -11,9 +11,25 @@ reports-range = { $startDay } { $startMonth } { $startYear } to { $endDay } { $e
 reports-until-yesterday = Up to yesterday
 reports-lead-missed = Most missed: { $deed }.
 reports-lead-all-done = All due deeds were done.
-reports-score-due = Out of { $due } due
+reports-due-deeds =
+    { $due ->
+        [one] { $due } due deed
+       *[other] { $due } due deeds
+    }
+reports-cell-due-deeds = { reports-due-deeds }
+reports-due-days =
+    { $due ->
+        [one] { $due } due day
+       *[other] { $due } due days
+    }
+reports-missed-due-days =
+    { $days ->
+        [one] { $days } due day not done
+       *[other] { $days } due days not done
+    }
+reports-score-due = Out of { reports-due-deeds }
 reports-percent = { $percent }%
-reports-previous-score = Previous period: { $percent }%, out of { $due } due
+reports-previous-score = Previous period: { $percent }%, out of { reports-due-deeds }
 reports-previous-empty = No deeds were due in the previous period.
 reports-previous-unavailable = Could not calculate the previous period.
 reports-series = Days and months
@@ -23,18 +39,18 @@ reports-today-counts = { $done } done, { $partial } partial, { $open } open, { $
 reports-open-today = Open Today
 reports-category = By category
 reports-missed = What did I miss?
-reports-missed-days = { $days } due days not done
+reports-missed-days = { reports-missed-due-days }
 reports-none-missed = No missed deeds in this period.
 reports-deeds = Each deed, on due days only
-reports-deed-due = Out of { $due } due days
-reports-category-due = Out of { $due } due
-reports-cell-due = { $due } due
+reports-deed-due = Out of { reports-due-days }
+reports-category-due = Out of { reports-due-deeds }
+reports-cell-due = { reports-cell-due-deeds }
 reports-not-due = Not due in this period, so not counted
 reports-empty = No deeds were due in this period. Open Today to see what is due now.
 reports-error = Could not calculate this report.
 reports-no-score = No deeds due
-reports-day-value = { $day } { $month }: { $percent }%, out of { $due } due
-reports-month-value = { $month } { $year }: { $percent }%, out of { $due } due
+reports-day-value = { $day } { $month }: { $percent }%, out of { reports-due-deeds }
+reports-month-value = { $month } { $year }: { $percent }%, out of { reports-due-deeds }
 reports-day-no-due = { $day } { $month }: no deeds due
 reports-month-no-due = { $month } { $year }: no deeds due
 reports-history-day = { $day } { $month }
