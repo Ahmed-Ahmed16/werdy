@@ -27,6 +27,8 @@ pub enum Error {
     EmptyDayNote,
     /// Hijri offset is outside minus one to plus one day.
     InvalidHijriOffset,
+    /// Hijri offset change starts before the latest change.
+    OffsetBeforeLatest,
     /// Hijri range has a month outside 1 to 12 or days outside 1 to 30, or ends before it starts.
     InvalidHijriRange,
 }

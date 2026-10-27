@@ -54,7 +54,7 @@ fn today_returns_counts_and_no_percent() -> Result<(), Error> {
     ]);
 
     assert_eq!(
-        today_summary(&deeds, &marks, today, CalendarSettings::default()),
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
         TodaySummary {
             done: 1,
             partial: 1,
@@ -80,7 +80,7 @@ fn partial_marks_at_zero_and_one_use_exact_value() -> Result<(), Error> {
         ),
     ]);
     assert_eq!(
-        today_summary(&deeds, &marks, today, CalendarSettings::default()),
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()),
         TodaySummary {
             done: 1,
             partial: 0,
@@ -98,7 +98,7 @@ fn open_deed_today_is_not_missed() -> Result<(), Error> {
         &[deed(1, today)],
         &Marks::new(),
         today,
-        CalendarSettings::default(),
+        &CalendarSettings::default(),
     );
 
     assert_eq!(summary.open, 1);

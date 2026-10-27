@@ -15,12 +15,12 @@ pub enum Schedule {
 
 impl Schedule {
     /// Says whether the schedule includes this day under the owner's calendar settings.
-    pub fn includes(&self, day: WerdyDay, calendar: CalendarSettings) -> bool {
+    pub fn includes(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
         match self {
             Self::EveryDay => true,
             Self::Weekdays(weekdays) => weekdays.contains(&day.weekday()),
             Self::Hijri(range) => day
-                .hijri(calendar.hijri_offset)
+                .hijri(calendar.offset_on(day))
                 .is_ok_and(|date| range.contains(date)),
         }
     }
@@ -181,7 +181,7 @@ impl Deed {
     }
 
     /// Says whether this deed is due on this day under the owner's calendar settings.
-    pub fn is_due_on(&self, day: WerdyDay, calendar: CalendarSettings) -> bool {
+    pub fn is_due_on(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
         self.due_rule_on(day, calendar).is_some()
     }
 
@@ -189,7 +189,7 @@ impl Deed {
     pub(crate) fn due_rule_on(
         &self,
         day: WerdyDay,
-        calendar: CalendarSettings,
+        calendar: &CalendarSettings,
     ) -> Option<&DeedRule> {
         if self.archived_from.is_some_and(|archived| day >= archived) {
             return None;
