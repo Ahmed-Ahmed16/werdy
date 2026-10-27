@@ -3,6 +3,7 @@ first-run-intro = اختر مكانك ثم أعمالك. يمكنك تغييره
 first-run-location-title = مكانك
 first-run-location-help = يحدد مكانك بداية اليوم عند الفجر. يبقى على هذا الجهاز.
 location-use-current = استخدم موقعي
+location-finding = جارٍ تحديد موقعك. قد يستغرق هذا بضع ثوانٍ.
 location-choose-city = اختر مدينة
 location-choose-placeholder = اختر مدينتك
 location-country = بلد هذا الموقع

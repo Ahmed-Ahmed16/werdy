@@ -3,6 +3,7 @@ first-run-intro = Choose a place, then choose deeds. You can change both later.
 first-run-location-title = Your place
 first-run-location-help = Your place sets the Fajr boundary. It stays on this device.
 location-use-current = Use my location
+location-finding = Finding your location. This can take a few seconds.
 location-choose-city = Choose a city
 location-choose-placeholder = Select a city
 location-country = Country for this location

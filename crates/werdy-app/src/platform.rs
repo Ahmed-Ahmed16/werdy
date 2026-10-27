@@ -184,6 +184,9 @@ pub fn fajr_today(settings: &Settings) -> Result<Option<u16>, Error> {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+const LOCATION_TIMEOUT_MS: u32 = 15_000;
+
 /// Browser GPS is requested only after a tap.
 pub fn request_location(
     on_success: impl FnOnce(Location) + 'static,
@@ -201,12 +204,35 @@ pub fn request_location(
             return;
         };
         let error_callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_error)));
+        // Browser timeout excludes the permission prompt, so bound the full wait too.
+        let timer_error = error_callback.clone();
+        let timer = wasm_bindgen::closure::Closure::once(move || {
+            if let Some(callback) = timer_error.borrow_mut().take() {
+                callback();
+            }
+        });
+        if window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                timer.as_ref().unchecked_ref(),
+                LOCATION_TIMEOUT_MS as i32,
+            )
+            .is_err()
+            && let Some(callback) = error_callback.borrow_mut().take()
+        {
+            callback();
+            return;
+        }
+        timer.forget();
         let invalid_coordinates = error_callback.clone();
+        let completed_error = error_callback.clone();
         let success =
             wasm_bindgen::closure::Closure::once_into_js(move |position: web_sys::Position| {
                 let coordinates = position.coords();
                 match Location::new(None, None, coordinates.latitude(), coordinates.longitude()) {
-                    Some(location) => on_success(location),
+                    Some(location) => {
+                        let _ = completed_error.borrow_mut().take();
+                        on_success(location);
+                    }
                     None => {
                         if let Some(callback) = invalid_coordinates.borrow_mut().take() {
                             callback();
@@ -221,10 +247,13 @@ pub fn request_location(
                     callback();
                 }
             });
+        let options = web_sys::PositionOptions::new();
+        options.set_timeout(LOCATION_TIMEOUT_MS);
         if geo
-            .get_current_position_with_error_callback(
+            .get_current_position_with_error_callback_and_options(
                 success.unchecked_ref(),
                 Some(failure.unchecked_ref()),
+                &options,
             )
             .is_err()
             && let Some(callback) = error_callback.borrow_mut().take()
