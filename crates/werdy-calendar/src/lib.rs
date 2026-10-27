@@ -253,7 +253,8 @@ pub fn fajr(date: Date, place: Place, method: Method) -> Result<LocalTime, Error
             f64::from(day_offset) * 1440.0 + utc_minutes + f64::from(place.utc_offset_minutes);
         if (0.0..1440.0).contains(&local_minutes) {
             return Ok(LocalTime {
-                minutes_since_midnight: local_minutes.round().rem_euclid(1440.0) as u16,
+                // Cap rounded midnight at 23:59 to keep Fajr on this date.
+                minutes_since_midnight: local_minutes.round().min(1439.0) as u16,
             });
         }
     }

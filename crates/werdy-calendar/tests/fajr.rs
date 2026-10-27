@@ -107,6 +107,27 @@ fn fajr_near_date_line_west() {
 }
 
 #[test]
+fn fajr_rounded_at_midnight_stays_on_same_date() {
+    let today = date(6, 21);
+    let place = place(48.3684, 126.0, 480);
+    let method = Method::MuslimWorldLeague;
+
+    assert_eq!(
+        fajr(today, place, method).unwrap(),
+        LocalTime::new(23, 59).unwrap()
+    );
+    assert_eq!(
+        werdy_day_for(
+            Moment::new(today, LocalTime::new(12, 0).unwrap()),
+            place,
+            method
+        )
+        .unwrap(),
+        date(6, 20)
+    );
+}
+
+#[test]
 fn fajr_stays_continuous_across_consecutive_days_in_cairo() {
     let cairo = place(30.0444, 31.2357, 120);
     let mut previous: Option<LocalTime> = None;
