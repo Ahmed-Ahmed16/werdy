@@ -76,6 +76,74 @@ fn fajr_in_alexandria_matches_reference_within_two_minutes() {
 }
 
 #[test]
+fn fajr_near_date_line_east() {
+    let time = fajr(
+        date(6, 21),
+        place(-18.14, 178.44, 720),
+        Method::MuslimWorldLeague,
+    )
+    .unwrap();
+    assert!((210..=390).contains(&time.minutes_since_midnight()));
+}
+
+#[test]
+fn fajr_near_date_line_west() {
+    for (latitude, longitude, offset) in [
+        (-13.83, -171.76, 780),
+        (1.87, -157.4, 840),
+        (-14.28, -170.7, -660),
+    ] {
+        let time = fajr(
+            date(6, 21),
+            place(latitude, longitude, offset),
+            Method::MuslimWorldLeague,
+        )
+        .unwrap();
+        assert!(
+            (210..=390).contains(&time.minutes_since_midnight()),
+            "place: {latitude}, {longitude}, UTC offset: {offset}, time: {time:?}"
+        );
+    }
+}
+
+#[test]
+fn fajr_stays_continuous_across_consecutive_days_in_cairo() {
+    let cairo = place(30.0444, 31.2357, 120);
+    let mut previous: Option<LocalTime> = None;
+    for (month, days) in [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        .into_iter()
+        .enumerate()
+    {
+        for day in 1..=days {
+            let today = Date::new(2026, (month + 1) as u8, day).unwrap();
+            let current = fajr(today, cairo, Method::EgyptianGeneralAuthority).unwrap();
+            if let Some(previous) = previous {
+                assert!(
+                    current
+                        .minutes_since_midnight()
+                        .abs_diff(previous.minutes_since_midnight())
+                        <= 10,
+                    "date: {today:?}, previous: {previous:?}, current: {current:?}"
+                );
+            }
+            previous = Some(current);
+        }
+    }
+    let next_year = fajr(
+        Date::new(2027, 1, 1).unwrap(),
+        cairo,
+        Method::EgyptianGeneralAuthority,
+    )
+    .unwrap();
+    assert!(
+        next_year
+            .minutes_since_midnight()
+            .abs_diff(previous.unwrap().minutes_since_midnight())
+            <= 10
+    );
+}
+
+#[test]
 fn witr_at_one_thirty_belongs_to_the_day_before() {
     let moment = Moment::new(date(7, 2), LocalTime::new(1, 30).unwrap());
     assert_eq!(

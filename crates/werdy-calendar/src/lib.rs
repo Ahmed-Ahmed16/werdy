@@ -76,6 +76,10 @@ fn leap_year(year: u16) -> bool {
     year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
+fn days_in_year(year: u16) -> u16 {
+    if leap_year(year) { 366 } else { 365 }
+}
+
 fn days_in_month(year: u16, month: u8) -> u8 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -229,39 +233,45 @@ pub enum Error {
     DateOutOfRange,
     /// The sun does not cross the Fajr angle that day.
     FajrDoesNotOccur,
-    /// The computed Fajr is outside the given local date.
-    FajrOutsideLocalDay,
 }
 
 /// Computes Fajr for a Gregorian date and a known local UTC offset.
 pub fn fajr(date: Date, place: Place, method: Method) -> Result<LocalTime, Error> {
-    let (equation_of_time, declination) = solar_position(date);
     let latitude = place.latitude * PI / 180.0;
     let fajr_altitude = -method.angles().0 * PI / 180.0;
-    let cosine_hour_angle = (fajr_altitude.sin() - latitude.sin() * declination.sin())
-        / (latitude.cos() * declination.cos());
-    if !(-1.0..=1.0).contains(&cosine_hour_angle) {
-        return Err(Error::FajrDoesNotOccur);
+    // Cases: prior, same, and next solar date can map to the requested local date.
+    for day_offset in -1..=1 {
+        let (equation_of_time, declination) = solar_position(date, day_offset);
+        let cosine_hour_angle = (fajr_altitude.sin() - latitude.sin() * declination.sin())
+            / (latitude.cos() * declination.cos());
+        if !(-1.0..=1.0).contains(&cosine_hour_angle) {
+            continue;
+        }
+        let hour_angle = cosine_hour_angle.acos() * 180.0 / PI;
+        let utc_minutes = 720.0 - 4.0 * (place.longitude + hour_angle) - equation_of_time;
+        let local_minutes =
+            f64::from(day_offset) * 1440.0 + utc_minutes + f64::from(place.utc_offset_minutes);
+        if (0.0..1440.0).contains(&local_minutes) {
+            return Ok(LocalTime {
+                minutes_since_midnight: local_minutes.round().rem_euclid(1440.0) as u16,
+            });
+        }
     }
-    let hour_angle = cosine_hour_angle.acos() * 180.0 / PI;
-    let minutes = 720.0 - 4.0 * (place.longitude + hour_angle) - equation_of_time
-        + f64::from(place.utc_offset_minutes);
-    if !(0.0..1440.0).contains(&minutes) {
-        return Err(Error::FajrOutsideLocalDay);
-    }
-    let rounded = minutes.round();
-    if rounded >= 1440.0 {
-        return Err(Error::FajrOutsideLocalDay);
-    }
-    Ok(LocalTime {
-        minutes_since_midnight: rounded as u16,
-    })
+    Err(Error::FajrDoesNotOccur)
 }
 
-fn solar_position(date: Date) -> (f64, f64) {
+fn solar_position(date: Date, day_offset: i32) -> (f64, f64) {
     // NOAA solar position equations: https://gml.noaa.gov/grad/solcalc/solareqns.PDF
-    let days_in_year = if leap_year(date.year) { 366.0 } else { 365.0 };
-    let gamma = TAU / days_in_year * (f64::from(date.day_of_year()) - 1.0);
+    let mut year = date.year;
+    let mut day_of_year = i32::from(date.day_of_year()) + day_offset;
+    if day_of_year < 1 {
+        year -= 1;
+        day_of_year += i32::from(days_in_year(year));
+    } else if day_of_year > i32::from(days_in_year(year)) {
+        year += 1;
+        day_of_year -= i32::from(days_in_year(date.year));
+    }
+    let gamma = TAU / f64::from(days_in_year(year)) * f64::from(day_of_year - 1);
     let equation_of_time = 229.18
         * (0.000075 + 0.001868 * gamma.cos()
             - 0.032077 * gamma.sin()
