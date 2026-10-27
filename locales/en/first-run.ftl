@@ -15,8 +15,6 @@ location-error = Location was not available. Choose a city instead.
 location-save-error = Could not save this location.
 location-data-error = City list could not be read.
 location-method = Prayer time method
-# Open question for the owner: Umm al Qura for Saudi Arabia.
-location-sa-method-unknown = Umm al Qura is not available yet, so the Muslim World League method is used.
 location-skip = Continue without location
 location-manage-title = City and Fajr
 location-manage-intro = Change your city or location for the Fajr boundary.
@@ -27,6 +25,7 @@ location-open-detail = Change where your day starts
 first-run-next = Continue to starter sets
 method-egyptian = Egyptian General Authority
 method-mwl = Muslim World League
+method-umm-al-qura = Umm al Qura
 sets-title = Start with a ready set
 sets-help = Tap a set to add its deeds. Tap again to remove it.
 sets-separator = { ", " }

@@ -47,6 +47,7 @@ fn method(method: PrayerMethod) -> Method {
     match method {
         PrayerMethod::EgyptianGeneralAuthority => Method::EgyptianGeneralAuthority,
         PrayerMethod::MuslimWorldLeague => Method::MuslimWorldLeague,
+        PrayerMethod::UmmAlQura => Method::UmmAlQura,
     }
 }
 
@@ -434,6 +435,25 @@ mod tests {
     fn week_card_starts_at_expanded_breakpoint() {
         assert!(!super::week_card_visible_at(839.0));
         assert!(super::week_card_visible_at(840.0));
+    }
+
+    #[test]
+    fn saudi_setting_uses_umm_al_qura_fajr() -> Result<(), Box<dyn std::error::Error>> {
+        let settings = Settings {
+            location: Location::new(
+                Some("riyadh".to_owned()),
+                Some("SA".to_owned()),
+                24.71,
+                46.67,
+            ),
+            prayer_method: PrayerMethod::UmmAlQura,
+            ..Settings::default()
+        };
+        let time =
+            super::fajr_with_offset_lookup(WerdyDay::new(2026, 1, 1)?, &settings, 180, |_| 180)?
+                .ok_or("no Fajr")?;
+        assert!(time.abs_diff(5 * 60 + 14) <= 2);
+        Ok(())
     }
 
     #[test]

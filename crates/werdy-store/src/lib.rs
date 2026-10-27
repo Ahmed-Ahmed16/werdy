@@ -15,7 +15,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
 
 /// Device only coordinates, stored as hundredths of a degree.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -64,6 +64,7 @@ pub enum PrayerMethod {
     EgyptianGeneralAuthority,
     #[default]
     MuslimWorldLeague,
+    UmmAlQura,
 }
 
 /// Error from loading or saving records. Bad data never panics.

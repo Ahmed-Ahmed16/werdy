@@ -15,8 +15,6 @@ location-error = تعذر تحديد الموقع. اختر مدينة بدلً�
 location-save-error = تعذر حفظ هذا المكان.
 location-data-error = تعذر قراءة قائمة المدن.
 location-method = طريقة حساب الصلاة
-# Open question for the owner: Umm al Qura for Saudi Arabia.
-location-sa-method-unknown = طريقة أم القرى غير متاحة بعد، فنستخدم طريقة رابطة العالم الإسلامي.
 location-skip = تابع دون مكان
 location-manage-title = المدينة والفجر
 location-manage-intro = غيّر مدينتك أو موقعك لتحديد بداية اليوم عند الفجر.
@@ -27,6 +25,7 @@ location-open-detail = غيّر مكان بداية يومك
 first-run-next = تابع إلى المجموعات
 method-egyptian = الهيئة المصرية العامة للمساحة
 method-mwl = رابطة العالم الإسلامي
+method-umm-al-qura = أم القرى
 sets-title = ابدأ بمجموعة جاهزة
 sets-help = اضغط على مجموعة لإضافة أعمالها. اضغط ثانية لإزالتها.
 sets-separator = { "، " }

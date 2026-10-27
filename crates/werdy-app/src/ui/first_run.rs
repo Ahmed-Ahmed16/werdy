@@ -101,17 +101,17 @@ pub fn LocationStep() -> Element {
                         for country in countries { option { key: "{country}", value: "{country}", {i18n.t(&format!("country-{country}"))} } }
                     }
                 }
-                if selected.as_ref().and_then(|place| place.country.as_deref()) == Some("SA") { p { class: "location-warning", {i18n.t("location-sa-method-unknown")} } }
                 if let Some(key) = state.read().location_request.error_key() { p { class: "editor-error", role: "alert", {i18n.t(key)} } }
                 if selected.is_some() {
                     label { r#for: "prayer-method", {i18n.t("location-method")} }
-                    select { id: "prayer-method", class: "editor-input", value: match state.read().data.settings.prayer_method { PrayerMethod::EgyptianGeneralAuthority => "egyptian_general_authority", PrayerMethod::MuslimWorldLeague => "muslim_world_league" },
+                    select { id: "prayer-method", class: "editor-input", value: match state.read().data.settings.prayer_method { PrayerMethod::EgyptianGeneralAuthority => "egyptian_general_authority", PrayerMethod::MuslimWorldLeague => "muslim_world_league", PrayerMethod::UmmAlQura => "umm_al_qura" },
                         onchange: move |event| {
-                            let method = if event.value() == "egyptian_general_authority" { PrayerMethod::EgyptianGeneralAuthority } else { PrayerMethod::MuslimWorldLeague };
+                            let method = match event.value().as_str() { "egyptian_general_authority" => PrayerMethod::EgyptianGeneralAuthority, "umm_al_qura" => PrayerMethod::UmmAlQura, _ => PrayerMethod::MuslimWorldLeague };
                             actions.change(|state| state.set_prayer_method(method));
                         },
                         option { value: "egyptian_general_authority", {i18n.t("method-egyptian")} }
                         option { value: "muslim_world_league", {i18n.t("method-mwl")} }
+                        option { value: "umm_al_qura", {i18n.t("method-umm-al-qura")} }
                     }
                 }
             }
