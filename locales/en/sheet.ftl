@@ -25,6 +25,7 @@ summary-title-past = This day
 summary-done = Done
 summary-partial = Partial
 summary-open = Open
+summary-missed = Missed
 summary-in-progress = Today is not over yet, so it has no percent until it ends.
 
 slot-fajr = Fajr

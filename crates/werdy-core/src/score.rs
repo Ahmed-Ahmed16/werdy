@@ -236,7 +236,7 @@ pub(crate) fn score_from_totals(earned: ScoreValue, due: usize) -> Score {
     }
 }
 
-/// Counts due deeds on the current werdy day without a percent.
+/// Counts due deeds on one werdy day without a percent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TodaySummary {
     /// Due deeds marked Done.
@@ -245,7 +245,7 @@ pub struct TodaySummary {
     pub partial: usize,
     /// Due deeds with no mark yet.
     pub open: usize,
-    /// Due deeds marked Missed by the owner.
+    /// Due deeds with zero mark value, plus unmarked due deeds on a finished day.
     pub missed: usize,
 }
 
@@ -275,6 +275,19 @@ pub fn today_summary(
             None => summary.open += 1,
         }
     }
+    summary
+}
+
+/// Counts due deeds on a finished day, when unmarked due deeds count as Missed.
+pub fn finished_day_summary(
+    deeds: &[Deed],
+    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    day: WerdyDay,
+    calendar: &CalendarSettings,
+) -> TodaySummary {
+    let mut summary = today_summary(deeds, marks, day, calendar);
+    summary.missed += summary.open;
+    summary.open = 0;
     summary
 }
 

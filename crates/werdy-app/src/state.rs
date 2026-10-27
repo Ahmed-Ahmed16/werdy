@@ -3,7 +3,7 @@
 
 use werdy_core::{
     DailySheet, DeedId, Mark, MarkEntry, SlotKey, TodaySummary, WerdyDay, daily_sheet,
-    today_summary,
+    finished_day_summary, today_summary,
 };
 use werdy_store::{DeedName, OwnerData, Store, merge_records};
 
@@ -168,9 +168,14 @@ impl AppState {
         )
     }
 
-    /// Returns done, partial and open counts for the day on screen.
+    /// Returns done, partial and open or missed counts for the day on screen.
     pub fn summary(&self) -> TodaySummary {
-        today_summary(
+        let summarize = if self.is_today() {
+            today_summary
+        } else {
+            finished_day_summary
+        };
+        summarize(
             &self.data.deeds,
             &self.data.marks,
             self.viewing,
@@ -526,6 +531,17 @@ mod tests {
         assert_eq!(state.viewing, new_today);
         assert_eq!(state.summary().done, 0);
         assert_eq!(state.summary().open, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn unmarked_due_deeds_on_a_past_day_show_as_missed() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.update_today(today()?.next()?);
+        state.show_previous_day();
+
+        assert_eq!(state.summary().open, 0);
+        assert_eq!(state.summary().missed, 5);
         Ok(())
     }
 

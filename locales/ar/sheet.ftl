@@ -25,6 +25,7 @@ summary-title-past = هذا اليوم
 summary-done = تم
 summary-partial = جزئي
 summary-open = باقٍ
+summary-missed = فائت
 summary-in-progress = اليوم لم ينته بعد، فلا نسبة له حتى يتم.
 
 slot-fajr = الفجر

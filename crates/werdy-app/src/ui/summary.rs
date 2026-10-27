@@ -5,8 +5,7 @@ use dioxus::prelude::*;
 use super::context::use_i18n;
 use crate::state::{AppState, SaveStatus};
 
-/// Done, partial and open counts for the day on screen. No percent: the day is
-/// not finished (ADR 0013).
+/// Done, partial and open or missed counts for the day on screen.
 #[component]
 pub fn TodayCard() -> Element {
     let i18n = use_i18n();
@@ -27,7 +26,11 @@ pub fn TodayCard() -> Element {
             div { class: "counts",
                 Count { kind: "done", value: summary.done, label: i18n.t("summary-done") }
                 Count { kind: "partial", value: summary.partial, label: i18n.t("summary-partial") }
-                Count { kind: "open", value: summary.open, label: i18n.t("summary-open") }
+                if is_today {
+                    Count { kind: "open", value: summary.open, label: i18n.t("summary-open") }
+                } else {
+                    Count { kind: "missed", value: summary.missed, label: i18n.t("summary-missed") }
+                }
             }
             if is_today {
                 p { class: "card-note", {i18n.t("summary-in-progress")} }
