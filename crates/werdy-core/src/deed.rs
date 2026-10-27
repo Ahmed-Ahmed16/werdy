@@ -27,6 +27,17 @@ impl Schedule {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DeedId(pub u64);
 
+/// Key for a category stored as deed data.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CategoryKey(pub String);
+
+impl CategoryKey {
+    /// Creates a category key from stored text.
+    pub fn new(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
 /// Positive daily amount with a short unit key, not translated UI text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Target {
@@ -67,6 +78,8 @@ pub struct DeedRule {
     pub schedule: Schedule,
     /// Daily target, if this deed uses counts.
     pub target: Option<Target>,
+    /// Category in force for this rule version.
+    pub category: CategoryKey,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -50,6 +50,26 @@ impl WerdyDay {
         self.0.checked_add(1).map(Self).ok_or(Error::InvalidDate)
     }
 
+    /// Returns Gregorian year and month of this werdy day label.
+    pub fn year_month(self) -> (i32, u8) {
+        let days = i64::from(self.0) + 719_468;
+        let era = days.div_euclid(146_097);
+        let day_in_era = days - era * 146_097;
+        let year_in_era =
+            (day_in_era - day_in_era / 1_460 + day_in_era / 36_524 - day_in_era / 146_096) / 365;
+        let year = year_in_era + era * 400;
+        let day_in_year = day_in_era - (365 * year_in_era + year_in_era / 4 - year_in_era / 100);
+        let month_from_march = (5 * day_in_year + 2) / 153;
+        let month = month_from_march + if month_from_march < 10 { 3 } else { -9 };
+        let year = year + i64::from(month <= 2);
+        (year as i32, month as u8)
+    }
+
+    pub(crate) fn checked_sub_days(self, days: i64) -> Option<Self> {
+        let count = i64::from(self.0).checked_sub(days)?;
+        i32::try_from(count).ok().map(Self)
+    }
+
     pub(crate) fn days_since(self, earlier: Self) -> i64 {
         i64::from(self.0) - i64::from(earlier.0)
     }
