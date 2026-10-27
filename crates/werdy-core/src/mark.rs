@@ -8,6 +8,8 @@ pub(crate) fn is_late_for(entered_on: WerdyDay, day: WerdyDay) -> bool {
 
 /// Value from zero to one inclusive.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "f64", into = "f64"))]
 pub struct Fraction(f64);
 
 impl Fraction {
@@ -25,8 +27,24 @@ impl Fraction {
     }
 }
 
+impl TryFrom<f64> for Fraction {
+    type Error = Error;
+
+    fn try_from(value: f64) -> Result<Self, Error> {
+        Self::new(value)
+    }
+}
+
+impl From<Fraction> for f64 {
+    fn from(fraction: Fraction) -> Self {
+        fraction.0
+    }
+}
+
 /// Owner's record for one deed on one werdy day.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Mark {
     /// Deed was done in full.
     Done,
@@ -62,6 +80,7 @@ impl Mark {
 
 /// Mark and the werdy day when the owner entered it.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MarkEntry {
     /// The owner's mark for a due deed.
     pub mark: Mark,

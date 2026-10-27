@@ -2,6 +2,8 @@ use crate::{Error, WerdyDay, mark};
 
 /// Credit applied to each due deed on a werdy day.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum ExcuseCredit {
     /// No credit. Marks keep their own values.
     None,
@@ -24,6 +26,8 @@ impl ExcuseCredit {
 
 /// Owner's note and optional credit for one werdy day.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "crate::stored::DayNoteData"))]
 pub struct DayNote {
     text: String,
     credit: ExcuseCredit,

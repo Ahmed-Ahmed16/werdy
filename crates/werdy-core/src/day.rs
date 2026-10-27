@@ -2,6 +2,8 @@ use crate::Error;
 
 /// Calendar label for a werdy day, stored as days since 1970-01-01.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct WerdyDay(i32);
 
 impl WerdyDay {
@@ -102,6 +104,8 @@ fn is_leap_year(year: i32) -> bool {
 
 /// Weekday in Monday through Sunday order.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Weekday {
     /// Monday.
     Monday,

@@ -25,6 +25,25 @@ pub enum Error {
     EmptyDayNote,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            Self::InvalidDate => "day is invalid or outside the supported range",
+            Self::FractionOutOfRange => "fraction is not from zero to one",
+            Self::InvalidTargetAmount => "target amount must be at least one",
+            Self::EmptyTargetUnit => "target unit is empty",
+            Self::RuleBeforeCreation => "rule change starts before the deed was created",
+            Self::RuleBeforeLatest => "rule change starts before the latest rule",
+            Self::ArchiveBeforeCreation => "archive starts before the deed was created",
+            Self::AlreadyArchived => "deed was already archived",
+            Self::EmptyDayNote => "day note is empty and has no credit",
+        };
+        formatter.write_str(text)
+    }
+}
+
+impl std::error::Error for Error {}
+
 mod consistency;
 mod day;
 mod deed;
@@ -33,6 +52,8 @@ mod note;
 mod report;
 mod score;
 mod sheet;
+#[cfg(feature = "serde")]
+mod stored;
 
 pub use consistency::{Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days};
 pub use day::{Weekday, WerdyDay};
