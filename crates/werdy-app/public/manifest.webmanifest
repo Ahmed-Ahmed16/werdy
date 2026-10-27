@@ -1,0 +1,29 @@
+{
+  "name": "werdy",
+  "short_name": "werdy",
+  "start_url": "/werdy/",
+  "scope": "/werdy/",
+  "display": "standalone",
+  "theme_color": "#0F5C45",
+  "background_color": "#F4F6F3",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
