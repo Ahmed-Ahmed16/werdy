@@ -3326,6 +3326,7 @@ dependencies = [
  "unic-langid",
  "wasm-bindgen",
  "web-sys",
+ "werdy-calendar",
  "werdy-core",
  "werdy-data",
  "werdy-store",

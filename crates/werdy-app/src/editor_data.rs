@@ -19,6 +19,7 @@ impl RangeChoice {
 }
 
 pub fn ranges() -> Result<Vec<RangeChoice>, serde_json::Error> {
+    // ___ The takbir end day is 13 in the draft. Owner must confirm it.
     serde_json::from_str(include_str!("../../../data/editor-hijri-ranges.json"))
 }
 

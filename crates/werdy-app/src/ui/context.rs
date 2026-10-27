@@ -62,7 +62,11 @@ impl Actions {
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
-        if state.change_on_day(crate::platform::today(), change) {
+        let today = crate::platform::today_with_settings(&state.data.settings);
+        if state.change_on_day(today, change) {
+            if let Ok(today) = crate::platform::today_with_settings(&state.data.settings) {
+                state.update_today(today);
+            }
             state.save_to(store.as_ref());
         }
     }
@@ -74,12 +78,15 @@ impl Actions {
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
-        let today = crate::platform::today().map_err(|_| {
+        let today = crate::platform::today_with_settings(&state.data.settings).map_err(|_| {
             state.save_status = crate::state::SaveStatus::DateFailed;
             EditorError::RuleChange
         })?;
         state.update_today(today);
         let changed = change(&mut state)?;
+        if let Ok(today) = crate::platform::today_with_settings(&state.data.settings) {
+            state.update_today(today);
+        }
         state.save_to(store.as_ref());
         Ok(changed)
     }

@@ -15,7 +15,56 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
+
+/// Device only coordinates, stored as hundredths of a degree.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Location {
+    /// Bundled city key, or none for a browser location.
+    pub city_key: Option<String>,
+    /// Two letter country code, when known.
+    pub country: Option<String>,
+    pub latitude_hundredths: i32,
+    pub longitude_hundredths: i32,
+}
+
+impl Location {
+    pub fn new(
+        city_key: Option<String>,
+        country: Option<String>,
+        latitude: f64,
+        longitude: f64,
+    ) -> Option<Self> {
+        if !latitude.is_finite()
+            || !longitude.is_finite()
+            || !(-90.0..=90.0).contains(&latitude)
+            || !(-180.0..=180.0).contains(&longitude)
+        {
+            return None;
+        }
+        Some(Self {
+            city_key,
+            country,
+            latitude_hundredths: (latitude * 100.0).round() as i32,
+            longitude_hundredths: (longitude * 100.0).round() as i32,
+        })
+    }
+
+    pub fn coordinates(&self) -> (f64, f64) {
+        (
+            f64::from(self.latitude_hundredths) / 100.0,
+            f64::from(self.longitude_hundredths) / 100.0,
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrayerMethod {
+    EgyptianGeneralAuthority,
+    #[default]
+    MuslimWorldLeague,
+}
 
 /// Error from loading or saving records. Bad data never panics.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +127,10 @@ pub struct Settings {
     pub theme: Theme,
     /// Dated local moon sighting corrections for Hijri dates and schedules.
     pub calendar: CalendarSettings,
+    #[serde(default)]
+    pub location: Option<Location>,
+    #[serde(default)]
+    pub prayer_method: PrayerMethod,
 }
 
 fn default_calendar() -> CalendarSettings {
@@ -90,6 +143,8 @@ impl Default for Settings {
             language: "ar".to_owned(),
             theme: Theme::System,
             calendar: default_calendar(),
+            location: None,
+            prayer_method: PrayerMethod::default(),
         }
     }
 }
@@ -97,6 +152,12 @@ impl Default for Settings {
 /// Everything the app keeps for one owner, in the shapes core works with.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OwnerData {
+    /// Setup is complete. Older saved records count as complete.
+    pub first_run_complete: bool,
+    /// Set keys currently chosen by the owner.
+    pub chosen_sets: BTreeSet<String>,
+    /// Catalog key of each deed added from a set.
+    pub starter_keys: BTreeMap<DeedId, String>,
     /// Deeds with their dated rules.
     pub deeds: Vec<Deed>,
     /// Highest id issued, including deeds removed later.
@@ -213,6 +274,9 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
         .names
         .retain(|id, _| !merged.deleted_deeds.contains(id));
     merged
+        .starter_keys
+        .retain(|id, _| !merged.deleted_deeds.contains(id));
+    merged
         .marks
         .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
     merged
@@ -302,6 +366,12 @@ fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
 #[derive(Serialize, Deserialize)]
 struct DataFile<S = Settings> {
     schema_version: u32,
+    #[serde(default = "legacy_complete")]
+    first_run_complete: bool,
+    #[serde(default)]
+    chosen_sets: Vec<String>,
+    #[serde(default)]
+    starter_keys: Vec<StarterKeyEntry>,
     deeds: Vec<Deed>,
     #[serde(default)]
     last_deed_id: u64,
@@ -311,6 +381,7 @@ struct DataFile<S = Settings> {
     marks: Vec<MarkRecord>,
     #[serde(default)]
     cleared_marks: Vec<ClearRecord>,
+    #[serde(default)]
     day_notes: Vec<NoteRecord>,
     #[serde(default)]
     cleared_notes: Vec<NoteClearRecord>,
@@ -326,6 +397,16 @@ struct LegacySettings {
     hijri_offset: HijriOffset,
 }
 
+fn legacy_complete() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize)]
+struct StarterKeyEntry {
+    deed_id: DeedId,
+    key: String,
+}
+
 fn default_hijri_offset() -> HijriOffset {
     HijriOffset::PLUS_ONE
 }
@@ -336,6 +417,8 @@ impl From<LegacySettings> for Settings {
             language: old.language,
             theme: old.theme,
             calendar: CalendarSettings::new(old.hijri_offset),
+            location: None,
+            prayer_method: PrayerMethod::default(),
         }
     }
 }
@@ -344,6 +427,9 @@ impl<S> DataFile<S> {
     fn map_settings<T>(self, convert: impl FnOnce(S) -> T) -> DataFile<T> {
         DataFile {
             schema_version: self.schema_version,
+            first_run_complete: self.first_run_complete,
+            chosen_sets: self.chosen_sets,
+            starter_keys: self.starter_keys,
             deeds: self.deeds,
             last_deed_id: self.last_deed_id,
             deleted_deeds: self.deleted_deeds,
@@ -403,6 +489,16 @@ struct VersionProbe {
 pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
     let file = DataFile {
         schema_version: SCHEMA_VERSION,
+        first_run_complete: data.first_run_complete,
+        chosen_sets: data.chosen_sets.iter().cloned().collect(),
+        starter_keys: data
+            .starter_keys
+            .iter()
+            .map(|(deed_id, key)| StarterKeyEntry {
+                deed_id: *deed_id,
+                key: key.clone(),
+            })
+            .collect(),
         deeds: data.deeds.clone(),
         last_deed_id: data
             .last_deed_id
@@ -474,6 +570,14 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     } else {
         serde_json::from_str(text).map_err(corrupt)?
     };
+    if let Some(location) = &file.settings.location
+        && (!(-9_000..=9_000).contains(&location.latitude_hundredths)
+            || !(-18_000..=18_000).contains(&location.longitude_hundredths))
+    {
+        return Err(StoreError::Corrupt(
+            "location is outside coordinate range".to_owned(),
+        ));
+    }
 
     let mut deed_ids = BTreeSet::new();
     for deed in &file.deeds {
@@ -542,7 +646,22 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
             return Err(StoreError::DuplicateEntry);
         }
     }
+    let chosen_sets: BTreeSet<_> = file.chosen_sets.iter().cloned().collect();
+    if chosen_sets.len() != file.chosen_sets.len() {
+        return Err(StoreError::DuplicateEntry);
+    }
+    let mut starter_keys = BTreeMap::new();
+    for entry in file.starter_keys {
+        if !deed_ids.contains(&entry.deed_id)
+            || starter_keys.insert(entry.deed_id, entry.key).is_some()
+        {
+            return Err(StoreError::DuplicateEntry);
+        }
+    }
     Ok(OwnerData {
+        first_run_complete: file.first_run_complete,
+        chosen_sets,
+        starter_keys,
         deeds: file.deeds,
         last_deed_id,
         deleted_deeds,

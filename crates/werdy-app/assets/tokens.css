@@ -102,6 +102,7 @@
   --gap-m: 12px;
   --gap-l: 16px;
   --page-gutter: 16px;
+  --content-max: 72rem;
   --radius-control: 14px;
   --radius-card: 16px;
   --radius-pill: 999px;

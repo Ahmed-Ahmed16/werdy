@@ -3,6 +3,7 @@
 
 mod context;
 mod deeds;
+mod first_run;
 mod header;
 mod icons;
 mod marks;
@@ -32,12 +33,11 @@ pub fn App() -> Element {
     let store = use_hook(platform::open_store);
     let initial = use_hook(|| {
         platform::today().map(|today| {
-            AppState::start(
-                store.as_ref(),
-                today,
-                starter::slot_order(),
-                starter::five_prayers,
-            )
+            let mut state = AppState::start(store.as_ref(), today, starter::slot_order());
+            if let Ok(day) = platform::today_with_settings(&state.data.settings) {
+                state.update_today(day);
+            }
+            state
         })
     });
     use_context_provider(|| texts.clone());
@@ -80,7 +80,8 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
     let _watch = use_hook(move || {
         Rc::new(platform::watch_changes(
             move || {
-                if let Ok(today) = platform::today() {
+                let settings = state.read().data.settings.clone();
+                if let Ok(today) = platform::today_with_settings(&settings) {
                     let changed = state.read().today != today;
                     if changed {
                         state.write().update_today(today);
@@ -110,14 +111,17 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
             dir: language.dir(),
             lang: language.code(),
             "data-theme": theme,
-            rail::Rail {}
+            if state.read().data.first_run_complete { rail::Rail {} }
             main { class: match state.read().screen {
+                Screen::FirstRunLocation | Screen::SetPicker => "onboarding-content",
                 Screen::Sheet => "panes",
                 Screen::Reports => "report-panes",
                 Screen::Deeds | Screen::Editor(_) => "page-content",
             },
                 summary::StatusBanner {}
                 match state.read().screen {
+                    Screen::FirstRunLocation => rsx! { first_run::LocationStep {} },
+                    Screen::SetPicker => rsx! { first_run::SetPicker {} },
                     Screen::Sheet => rsx! {
                         header::DayHeader { on_open_note: move |day| note_day.set(Some(day)) }
                         summary::TodayCard {}
@@ -128,7 +132,7 @@ fn Shell(initial: AppState, store: StoreHandle) -> Element {
                     Screen::Editor(id) => rsx! { deeds::DeedEditor { key: "{id:?}", id } },
                 }
             }
-            rail::BottomNav {}
+            if state.read().data.first_run_complete { rail::BottomNav {} }
             if let Some(day) = note_day() {
                 note::NoteDialog {
                     key: "{day:?}",

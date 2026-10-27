@@ -56,6 +56,8 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/starter.ftl"),
     include_str!("../../../locales/ar/reports.ftl"),
     include_str!("../../../locales/ar/deeds.ftl"),
+    include_str!("../../../locales/ar/starter-sets.ftl"),
+    include_str!("../../../locales/ar/first-run.ftl"),
 ];
 const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/common.ftl"),
@@ -63,6 +65,8 @@ const ENGLISH: &[&str] = &[
     include_str!("../../../locales/en/starter.ftl"),
     include_str!("../../../locales/en/reports.ftl"),
     include_str!("../../../locales/en/deeds.ftl"),
+    include_str!("../../../locales/en/starter-sets.ftl"),
+    include_str!("../../../locales/en/first-run.ftl"),
 ];
 
 /// All translations, loaded once at start.
