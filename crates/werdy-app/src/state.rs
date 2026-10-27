@@ -10,7 +10,7 @@ use werdy_core::{
     finished_day_summary, score, today_summary,
 };
 use werdy_store::{
-    DeedName, Digits, Location, OwnerData, PrayerMethod, Store, Theme, merge_records,
+    DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, Store, Theme, merge_records,
 };
 
 /// Keeps the owner's past day in view, or follows today when today moves.
@@ -221,6 +221,37 @@ enum DeedChange {
     Delete,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+struct PendingSettings {
+    language: Option<String>,
+    digits: Option<Digits>,
+    theme: Option<Theme>,
+    location: Option<Option<Location>>,
+    prayer_method: Option<PrayerMethod>,
+    offsets: BTreeMap<WerdyDay, HijriOffset>,
+}
+
+impl PendingSettings {
+    fn apply_to(&self, settings: &mut Settings) {
+        if let Some(language) = &self.language {
+            settings.language.clone_from(language);
+        }
+        if let Some(digits) = self.digits {
+            settings.digits = digits;
+        }
+        if let Some(theme) = self.theme {
+            settings.theme = theme;
+        }
+        if let Some(location) = &self.location {
+            settings.location.clone_from(location);
+        }
+        if let Some(method) = self.prayer_method {
+            settings.prayer_method = method;
+        }
+        settings.calendar.merge_changes(&self.offsets);
+    }
+}
+
 /// Everything the screen shows, in one place.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -242,7 +273,7 @@ pub struct AppState {
     pub report_period: Period,
     /// Number of whole periods before the latest one.
     pub report_steps_back: usize,
-    settings_dirty: bool,
+    pending_settings: PendingSettings,
     sets_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
 }
@@ -271,7 +302,7 @@ impl AppState {
             location_return: Screen::Deeds,
             report_period: Period::Week,
             report_steps_back: 0,
-            settings_dirty: false,
+            pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             deed_changes: BTreeMap::new(),
         }
@@ -389,19 +420,20 @@ impl AppState {
         let method = crate::location::method_for_country(location.country.as_deref().unwrap_or(""))
             .map_err(|_| EditorError::RuleChange)?;
         self.data.settings.prayer_method = method;
+        self.pending_settings.prayer_method = Some(method);
+        self.pending_settings.location = Some(Some(location.clone()));
         self.data.settings.location = Some(location);
-        self.settings_dirty = true;
         Ok(())
     }
 
     pub fn set_prayer_method(&mut self, method: PrayerMethod) {
         self.data.settings.prayer_method = method;
-        self.settings_dirty = true;
+        self.pending_settings.prayer_method = Some(method);
     }
 
     pub fn clear_location(&mut self) {
         self.data.settings.location = None;
-        self.settings_dirty = true;
+        self.pending_settings.location = Some(None);
     }
 
     pub fn finish_first_run(&mut self, screen: Screen) {
@@ -409,7 +441,6 @@ impl AppState {
             self.redate_setup_deeds();
         }
         self.data.first_run_complete = true;
-        self.settings_dirty = true;
         self.screen = screen;
     }
 
@@ -806,18 +837,18 @@ impl AppState {
     pub fn set_language(&mut self, code: &str) {
         if matches!(code, "ar" | "en") {
             code.clone_into(&mut self.data.settings.language);
-            self.settings_dirty = true;
+            self.pending_settings.language = Some(code.to_owned());
         }
     }
 
     pub fn set_digits(&mut self, digits: Digits) {
         self.data.settings.digits = digits;
-        self.settings_dirty = true;
+        self.pending_settings.digits = Some(digits);
     }
 
     pub fn set_theme(&mut self, theme: Theme) {
         self.data.settings.theme = theme;
-        self.settings_dirty = true;
+        self.pending_settings.theme = Some(theme);
     }
 
     pub fn set_hijri_offset(&mut self, offset: HijriOffset) -> Result<(), Error> {
@@ -825,7 +856,7 @@ impl AppState {
             .settings
             .calendar
             .change_offset(self.today, offset)?;
-        self.settings_dirty = true;
+        self.pending_settings.offsets.insert(self.today, offset);
         Ok(())
     }
 
@@ -989,9 +1020,7 @@ impl AppState {
                     || self.data.clone(),
                     |data| merge_records(&data, &self.data),
                 );
-                if self.settings_dirty {
-                    merged.settings = self.data.settings.clone();
-                }
+                self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
@@ -1008,7 +1037,7 @@ impl AppState {
                 match store.save(&merged) {
                     Ok(()) => {
                         self.data = merged;
-                        self.settings_dirty = false;
+                        self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
                         self.deed_changes.clear();
                         SaveStatus::Saved
@@ -1032,9 +1061,7 @@ impl AppState {
                     return;
                 }
                 let mut merged = merge_records(&stored, &self.data);
-                if self.settings_dirty {
-                    merged.settings = self.data.settings.clone();
-                }
+                self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
@@ -1044,7 +1071,7 @@ impl AppState {
                     self.data = stored;
                     self.save_status = SaveStatus::Saved;
                     self.deed_changes.clear();
-                    self.settings_dirty = false;
+                    self.pending_settings = PendingSettings::default();
                     self.sets_dirty = false;
                 } else {
                     self.data = merged;
@@ -2199,6 +2226,45 @@ mod tests {
         stale.set_language("ar");
         stale.save_to(&store);
         assert_eq!(started(&store)?.data.settings.language, "ar");
+        Ok(())
+    }
+
+    #[test]
+    fn stale_theme_save_keeps_other_tabs_hijri_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        let yesterday = today()?.previous()?;
+        let original = first.data.settings.calendar.offset_on(yesterday);
+
+        first.set_hijri_offset(HijriOffset::new(-1)?)?;
+        first.save_to(&store);
+        stale.set_theme(Theme::Dark);
+        stale.save_to(&store);
+
+        let saved = started(&store)?.data.settings;
+        assert_eq!(saved.theme, Theme::Dark);
+        assert_eq!(saved.calendar.offset_on(yesterday), original);
+        assert_eq!(saved.calendar.offset_on(today()?).days(), -1);
+        Ok(())
+    }
+
+    #[test]
+    fn stale_offset_change_keeps_other_tabs_earlier_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = started(&store)?;
+        let mut stale = started(&store)?;
+        let next_day = today()?.next()?;
+
+        first.set_hijri_offset(HijriOffset::new(-1)?)?;
+        first.save_to(&store);
+        stale.update_today(next_day);
+        stale.set_hijri_offset(HijriOffset::new(0)?)?;
+        stale.save_to(&store);
+
+        let saved = started(&store)?.data.settings;
+        assert_eq!(saved.calendar.offset_on(today()?).days(), -1);
+        assert_eq!(saved.calendar.offset_on(next_day).days(), 0);
         Ok(())
     }
 }

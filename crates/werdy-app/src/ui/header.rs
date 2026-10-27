@@ -85,7 +85,7 @@ fn hijri_text(i18n: &I18n, day: WerdyDay, offset: werdy_core::HijriOffset) -> St
         &[
             ("day", FluentValue::from(date.day)),
             ("month", FluentValue::from(month)),
-            ("year", FluentValue::from(date.year.to_string())),
+            ("year", FluentValue::from(i18n.num(date.year))),
         ],
     )
 }
@@ -101,7 +101,7 @@ pub(super) fn date_text(i18n: &I18n, day: WerdyDay) -> String {
             ("day", FluentValue::from(day_of_month)),
             ("month", FluentValue::from(month_name)),
             // As text, so the year is never formatted with a group separator.
-            ("year", FluentValue::from(year.to_string())),
+            ("year", FluentValue::from(i18n.num(year))),
         ],
     )
 }

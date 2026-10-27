@@ -61,38 +61,60 @@ pub fn SettingsScreen() -> Element {
             div { class: "settings-card",
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-language")} }
-                    div { class: "settings-options", role: "radiogroup", aria_label: i18n.t("settings-language"),
-                        button { class: "settings-choice", role: "radio", aria_checked: language == Language::Arabic, onclick: move |_| actions.change(|state| state.set_language("ar")), {i18n.t("settings-arabic")} }
-                        button { class: "settings-choice", role: "radio", aria_checked: language == Language::English, onclick: move |_| actions.change(|state| state.set_language("en")), {i18n.t("settings-english")} }
+                    div { class: "settings-options",
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-language", checked: language == Language::Arabic, onchange: move |_| actions.change(|state| state.set_language("ar")) }
+                            span { {i18n.t("settings-arabic")} }
+                        }
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-language", checked: language == Language::English, onchange: move |_| actions.change(|state| state.set_language("en")) }
+                            span { {i18n.t("settings-english")} }
+                        }
                     }
                 }
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-digits")} }
-                    div { class: "settings-options", role: "radiogroup", aria_label: i18n.t("settings-digits"),
-                        button { class: "settings-choice", role: "radio", aria_checked: digits == Digits::Western, onclick: move |_| actions.change(|state| state.set_digits(Digits::Western)), {i18n.t("settings-western")} }
-                        button { class: "settings-choice", role: "radio", aria_checked: digits == Digits::ArabicIndic, onclick: move |_| actions.change(|state| state.set_digits(Digits::ArabicIndic)), {i18n.t("settings-arabic-indic")} }
+                    div { class: "settings-options",
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-digits", checked: digits == Digits::Western, onchange: move |_| actions.change(|state| state.set_digits(Digits::Western)) }
+                            span { {i18n.t("settings-western")} }
+                        }
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-digits", checked: digits == Digits::ArabicIndic, onchange: move |_| actions.change(|state| state.set_digits(Digits::ArabicIndic)) }
+                            span { {i18n.t("settings-arabic-indic")} }
+                        }
                     }
                 }
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-theme")} }
-                    div { class: "settings-options", role: "radiogroup", aria_label: i18n.t("settings-theme"),
-                        button { class: "settings-choice", role: "radio", aria_checked: theme == Theme::System, onclick: move |_| actions.change(|state| state.set_theme(Theme::System)), {i18n.t("settings-system")} }
-                        button { class: "settings-choice", role: "radio", aria_checked: theme == Theme::Light, onclick: move |_| actions.change(|state| state.set_theme(Theme::Light)), {i18n.t("settings-light")} }
-                        button { class: "settings-choice", role: "radio", aria_checked: theme == Theme::Dark, onclick: move |_| actions.change(|state| state.set_theme(Theme::Dark)), {i18n.t("settings-dark")} }
+                    div { class: "settings-options",
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-theme", checked: theme == Theme::System, onchange: move |_| actions.change(|state| state.set_theme(Theme::System)) }
+                            span { {i18n.t("settings-system")} }
+                        }
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-theme", checked: theme == Theme::Light, onchange: move |_| actions.change(|state| state.set_theme(Theme::Light)) }
+                            span { {i18n.t("settings-light")} }
+                        }
+                        label { class: "settings-choice",
+                            input { r#type: "radio", name: "settings-theme", checked: theme == Theme::Dark, onchange: move |_| actions.change(|state| state.set_theme(Theme::Dark)) }
+                            span { {i18n.t("settings-dark")} }
+                        }
                     }
                 }
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-offset")} }
                     p { class: "settings-help", {i18n.t("settings-offset-help")} }
-                    div { class: "settings-options", role: "radiogroup", aria_label: i18n.t("settings-offset"),
+                    div { class: "settings-options",
                         for days in [-1_i8, 0, 1] {
-                            button { class: "settings-choice", key: "{days}", role: "radio", aria_checked: offset == days,
-                                onclick: move |_| {
+                            label { class: "settings-choice", key: "{days}",
+                                input { r#type: "radio", name: "settings-offset", checked: offset == days,
+                                onchange: move |_| {
                                     if let Ok(value) = HijriOffset::new(days) {
                                         error.set(actions.change_deed(|state| state.set_hijri_offset(value).map_err(|_| EditorError::RuleChange)).is_err());
                                     }
-                                },
-                                {i18n.t(match days { -1 => "settings-offset-minus", 0 => "settings-offset-zero", _ => "settings-offset-plus" })}
+                                } }
+                                span { {i18n.t(match days { -1 => "settings-offset-minus", 0 => "settings-offset-zero", _ => "settings-offset-plus" })} }
                             }
                         }
                     }

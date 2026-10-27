@@ -116,13 +116,13 @@ fn range_text(i18n: &I18n, first: WerdyDay, last: WerdyDay) -> String {
                 "startMonth",
                 FluentValue::from(i18n.t(&format!("month-{start_month}"))),
             ),
-            ("startYear", FluentValue::from(start_year.to_string())),
+            ("startYear", FluentValue::from(i18n.num(start_year))),
             ("endDay", FluentValue::from(end_day)),
             (
                 "endMonth",
                 FluentValue::from(i18n.t(&format!("month-{end_month}"))),
             ),
-            ("endYear", FluentValue::from(end_year.to_string())),
+            ("endYear", FluentValue::from(i18n.num(end_year))),
         ],
     )
 }
@@ -333,7 +333,7 @@ fn series_label(i18n: &I18n, entry: &SeriesEntry) -> String {
             "month",
             FluentValue::from(i18n.t(&format!("month-{month}"))),
         ),
-        (date_key, FluentValue::from(date_value)),
+        (date_key, FluentValue::from(i18n.num(date_value))),
     ];
     if let Some(percent) = score.percent {
         args.push(("percent", FluentValue::from(percent)));

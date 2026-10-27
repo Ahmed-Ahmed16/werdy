@@ -1236,6 +1236,22 @@ button:focus-visible {
 .settings-choice {
   flex: 1;
   min-width: var(--touch-min);
+  position: relative;
+}
+
+.settings-choice input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.settings-choice span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: var(--touch-min);
   padding-inline: var(--gap-s);
   border: var(--stroke-thin) solid transparent;
@@ -1244,11 +1260,16 @@ button:focus-visible {
   color: var(--text);
 }
 
-.settings-choice[aria-checked="true"] {
+.settings-choice input:checked + span {
   background: var(--surface);
   border-color: var(--border-strong);
   color: var(--primary);
   font-weight: var(--weight-semibold);
+}
+
+.settings-choice input:focus-visible + span {
+  outline: var(--stroke-strong) solid var(--primary);
+  outline-offset: 2px;
 }
 
 .settings-help {

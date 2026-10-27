@@ -1,5 +1,7 @@
 //! Hijri dates from the tabular Islamic calendar, with the owner's dated offset.
 
+use std::collections::BTreeMap;
+
 use crate::{Error, WerdyDay};
 
 // Days from the Islamic civil epoch, 1 Muharram 1 (Friday 16 July 622, Julian),
@@ -189,6 +191,13 @@ impl CalendarSettings {
         }
         self.later_offsets.push((from_day, offset));
         Ok(())
+    }
+
+    /// Adds dated changes to existing history. New changes win on the same day.
+    pub fn merge_changes(&mut self, changes: &BTreeMap<WerdyDay, HijriOffset>) {
+        let mut by_day: BTreeMap<_, _> = self.later_offsets.iter().copied().collect();
+        by_day.extend(changes);
+        self.later_offsets = by_day.into_iter().collect();
     }
 }
 

@@ -24,7 +24,7 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
             "location-fajr",
             &[
                 ("city", FluentValue::from(city)),
-                ("time", FluentValue::from(fajr_clock(minutes))),
+                ("time", FluentValue::from(i18n.num(fajr_clock(minutes)))),
             ],
         )),
         _ => Some(i18n.t_with(

@@ -28,7 +28,8 @@ impl I18n {
 
     /// Text for a key with variables.
     pub fn t_with(&self, key: &str, args: &[(&str, FluentValue<'_>)]) -> String {
-        crate::i18n::format_digits(&self.texts.get(self.language, key, args), self.digits)
+        self.texts
+            .get_with_digits(self.language, self.digits, key, args)
     }
 
     pub fn num(&self, value: impl std::fmt::Display) -> String {
@@ -147,4 +148,32 @@ impl Actions {
 /// Reads the actions handle from context.
 pub fn use_actions() -> Actions {
     use_context::<Actions>()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use fluent_bundle::FluentValue;
+    use werdy_store::Digits;
+
+    use super::{I18n, Language, Texts};
+
+    #[test]
+    fn fluent_arguments_keep_name_digits_and_format_number_digits() {
+        for (digits, count) in [(Digits::Western, "2"), (Digits::ArabicIndic, "٢")] {
+            let i18n = I18n {
+                texts: Rc::new(Texts::load()),
+                language: Language::English,
+                digits,
+            };
+            let name = i18n.t_with(
+                "reports-lead-missed",
+                &[("deed", FluentValue::from("Read 2 pages"))],
+            );
+            let due = i18n.t_with("reports-cell-due", &[("due", FluentValue::from(2))]);
+            assert!(name.contains("Read 2 pages"));
+            assert!(due.contains(count));
+        }
+    }
 }
