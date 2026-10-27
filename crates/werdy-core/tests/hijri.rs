@@ -64,6 +64,19 @@ fn owner_reference_day_with_offset_plus_one() -> Result<(), Error> {
     Ok(())
 }
 
+// Reference month from hijri-calendar.com, shared by the owner on 2026-10-27:
+// Jumada al Ula 1448 runs from 2026-10-12 to 2026-11-10, 30 days.
+#[test]
+fn owner_reference_month_with_offset_plus_one() -> Result<(), Error> {
+    let plus_one = HijriOffset::new(1)?;
+
+    assert_eq!(day(2026, 10, 12)?.hijri(plus_one)?, hijri(1448, 5, 1));
+    assert_eq!(day(2026, 10, 23)?.hijri(plus_one)?, hijri(1448, 5, 12));
+    assert_eq!(day(2026, 11, 10)?.hijri(plus_one)?, hijri(1448, 5, 30));
+    assert_eq!(day(2026, 11, 11)?.hijri(plus_one)?, hijri(1448, 6, 1));
+    Ok(())
+}
+
 #[test]
 fn offset_moves_every_date_by_one_day() -> Result<(), Error> {
     for current in days_from(day(2026, 1, 1)?, 400)? {
