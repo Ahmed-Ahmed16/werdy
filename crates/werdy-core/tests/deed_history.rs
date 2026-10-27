@@ -1,8 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
-    Deed, DeedId, DeedRule, Error, Mark, MarkEntry, Schedule, Weekday, WerdyDay, delete_deed, score,
+    Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score, Weekday,
+    WerdyDay, delete_deed, score as score_records,
 };
+
+type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
+
+fn score(deeds: &[Deed], marks: &Marks, days: &[WerdyDay], today: WerdyDay) -> Score {
+    score_records(
+        &OwnerRecords {
+            deeds,
+            marks,
+            day_notes: &BTreeMap::new(),
+        },
+        days,
+        today,
+    )
+}
 
 fn day(number: u8) -> Result<WerdyDay, Error> {
     WerdyDay::new(2026, 10, number)

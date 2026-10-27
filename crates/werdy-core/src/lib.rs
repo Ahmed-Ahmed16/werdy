@@ -21,14 +21,18 @@ pub enum Error {
     ArchiveBeforeCreation,
     /// Deed was already archived.
     AlreadyArchived,
+    /// Day note text is empty and no credit was chosen.
+    EmptyDayNote,
 }
 
 mod day;
 mod deed;
 mod mark;
+mod note;
 mod score;
 
 pub use day::{Weekday, WerdyDay};
 pub use deed::{Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
 pub use mark::{Fraction, Mark, MarkEntry};
-pub use score::{Score, TodaySummary, score, today_summary};
+pub use note::{DayNote, ExcuseCredit};
+pub use score::{OwnerRecords, Score, TodaySummary, score, today_summary};

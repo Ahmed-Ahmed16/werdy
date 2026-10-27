@@ -1,11 +1,21 @@
 use std::collections::BTreeMap;
 
-use crate::{Deed, DeedId, Mark, MarkEntry, WerdyDay};
+use crate::{DayNote, Deed, DeedId, Mark, MarkEntry, WerdyDay};
 
-/// Total mark fractions, due deed count, and rounded percent.
+/// Owner's deeds, marks, and day notes used by a score.
+pub struct OwnerRecords<'a> {
+    /// Deeds and their dated rules.
+    pub deeds: &'a [Deed],
+    /// Marks keyed by deed and werdy day.
+    pub marks: &'a BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    /// Day notes keyed by werdy day.
+    pub day_notes: &'a BTreeMap<WerdyDay, DayNote>,
+}
+
+/// Total earned value, due deed count, and rounded percent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Score {
-    /// Sum of mark fractions for due deeds.
+    /// Sum of mark values after any day credit for due deeds.
     pub earned: f64,
     /// Number of due deeds across included finished days.
     pub due: usize,
@@ -13,25 +23,27 @@ pub struct Score {
     pub percent: Option<u8>,
 }
 
-/// Scores deeds on supplied days before today. Today and later days are skipped.
-pub fn score(
-    deeds: &[Deed],
-    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
-    days: &[WerdyDay],
-    today: WerdyDay,
-) -> Score {
+/// Scores due deeds with any day credit on supplied days before today.
+/// Today and later days are skipped.
+pub fn score(records: &OwnerRecords<'_>, days: &[WerdyDay], today: WerdyDay) -> Score {
     let mut earned = 0.0;
     let mut due = 0;
     for day in days {
         if *day >= today {
             continue;
         }
-        for deed in deeds {
+        let credit = records
+            .day_notes
+            .get(day)
+            .map_or(0.0, |note| note.credit().value());
+        for deed in records.deeds {
             if let Some(rule) = deed.due_rule_on(*day) {
                 due += 1;
-                earned += marks
+                let mark_value = records
+                    .marks
                     .get(&(deed.id, *day))
                     .map_or(0.0, |entry| entry.mark.value(rule));
+                earned += mark_value.max(credit);
             }
         }
     }
