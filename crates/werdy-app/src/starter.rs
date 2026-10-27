@@ -4,7 +4,46 @@ use std::collections::BTreeSet;
 
 use werdy_core::{CategoryKey, DeedRule, Schedule, SlotKey, Target, Weekday};
 use werdy_data::{Catalog, Deed as CatalogDeed, Schedule as CatalogSchedule};
-use werdy_store::OwnerData;
+use werdy_store::{DeedName, OwnerData};
+
+/// Recognise prayer deeds from saved sheets made before set identities existed.
+pub fn migrate_legacy_prayers(data: &mut OwnerData) -> bool {
+    let Ok(catalog) = crate::editor_data::catalog() else {
+        return false;
+    };
+    let Some(set) = catalog.set("five_prayers") else {
+        return false;
+    };
+    let mut changed = false;
+    for deed in &data.deeds {
+        if data.starter_keys.contains_key(&deed.id) {
+            continue;
+        }
+        let Some(DeedName::Key(name)) = data.names.get(&deed.id) else {
+            continue;
+        };
+        if let Some(key) = set.deeds.iter().find(|key| {
+            catalog.deed(key).is_some_and(|catalog_deed| {
+                catalog_deed
+                    .name
+                    .strip_prefix("deed-")
+                    .is_some_and(|stem| name == &format!("starter-{stem}"))
+            })
+        }) {
+            data.starter_keys.insert(deed.id, key.clone());
+            changed = true;
+        }
+    }
+    if changed
+        && set
+            .deeds
+            .iter()
+            .all(|key| data.starter_keys.values().any(|stored| stored == key))
+    {
+        data.chosen_sets.insert("five_prayers".to_owned());
+    }
+    changed
+}
 
 #[cfg(test)]
 pub fn five_prayers(today: werdy_core::WerdyDay) -> Result<OwnerData, werdy_data::Error> {

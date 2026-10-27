@@ -10,6 +10,7 @@ deeds-archived = Archived ({ $count })
 deeds-restore = Restore
 deeds-not-due = Not due today
 deeds-empty = No active deeds.
+deeds-name-unavailable = Name unavailable
 editor-add-title = Add deed
 editor-edit-title = Edit deed
 editor-name = Name

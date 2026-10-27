@@ -13,7 +13,7 @@ fn deed_name(state: &AppState, id: DeedId, i18n: &super::context::I18n) -> Strin
     match state.deed_name(id) {
         Some(DeedName::Key(key)) => i18n.t(key),
         Some(DeedName::Text(name)) => name.clone(),
-        None => "___".to_owned(),
+        None => i18n.t("deeds-name-unavailable"),
     }
 }
 
@@ -78,6 +78,10 @@ pub fn MyDeeds() -> Element {
             button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)),
                 span { {i18n.t("sets-open-from-deeds")} }
                 span { class: "deeds-meta", {i18n.t("sets-open-detail")} }
+            }
+            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::FirstRunLocation)),
+                span { {i18n.t("location-open-from-deeds")} }
+                span { class: "deeds-meta", {i18n.t("location-open-detail")} }
             }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
             for (slot, members) in groups {

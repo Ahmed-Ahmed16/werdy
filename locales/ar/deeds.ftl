@@ -6,6 +6,7 @@ deeds-archived = المؤرشفة ({ $count })
 deeds-restore = استعادة
 deeds-not-due = ليس اليوم
 deeds-empty = لا توجد أعمال بعد.
+deeds-name-unavailable = الاسم غير متاح
 editor-add-title = عمل جديد
 editor-edit-title = تعديل عمل
 editor-name = الاسم

@@ -45,14 +45,15 @@ pub fn LocationStep() -> Element {
     let countries: BTreeSet<_> = cities.iter().map(|city| city.country.clone()).collect();
     let state = use_context::<Signal<AppState>>();
     let selected = state.read().data.settings.location.clone();
+    let first_run = !state.read().data.first_run_complete;
     let confirmation = place_summary(&i18n, &state.read().data.settings);
 
     rsx! {
         section { class: "first-run-screen",
             header { class: "first-run-header",
                 span { class: "rail-brand", {i18n.t("app-name")} }
-                h1 { {i18n.t("first-run-title")} }
-                p { {i18n.t("first-run-intro")} }
+                h1 { {i18n.t(if first_run { "first-run-title" } else { "location-manage-title" })} }
+                p { {i18n.t(if first_run { "first-run-intro" } else { "location-manage-intro" })} }
             }
             section { class: "first-run-card",
                 h2 { {i18n.t("first-run-location-title")} }
@@ -104,8 +105,13 @@ pub fn LocationStep() -> Element {
                 }
             }
             footer { class: "first-run-footer",
-                button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("first-run-next")} }
-                button { class: "text-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("location-skip")} }
+                if first_run {
+                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("first-run-next")} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(Screen::SetPicker); }), {i18n.t("location-skip")} }
+                } else {
+                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("location-back-deeds")} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| { state.clear_location(); state.show_screen(Screen::Deeds); }), {i18n.t("location-remove")} }
+                }
             }
         }
     }
@@ -142,7 +148,7 @@ pub fn SetPicker() -> Element {
                                 h2 { {i18n.t(&set.name)} }
                                 p { "{contents}" }
                             }
-                            button { class: "set-toggle", aria_pressed: "{active}", onclick: move |_| {
+                            button { class: "set-toggle", aria_label: i18n.t_with(if active { "sets-remove-named" } else { "sets-add-named" }, &[("set", FluentValue::from(i18n.t(&set.name)))]), aria_pressed: "{active}", onclick: move |_| {
                                 if actions.change_deed(|state| state.toggle_set(&key)).is_err() { error.set(true); }
                             }, {i18n.t(if active { "sets-remove" } else { "sets-add" })} }
                         }
@@ -164,8 +170,32 @@ pub fn SetPicker() -> Element {
 
 #[cfg(test)]
 mod tests {
+    use crate::i18n::{Language, Texts};
+    use fluent_bundle::FluentValue;
+
     #[test]
     fn fajr_clock_formats_local_minutes() {
         assert_eq!(super::fajr_clock(5 * 60 + 7), "05:07");
+    }
+
+    #[test]
+    fn set_button_names_include_each_translated_set() {
+        let texts = Texts::load();
+        for language in [Language::Arabic, Language::English] {
+            let prayer = texts.get(language, "set-five-prayers", &[]);
+            let adhkar = texts.get(language, "set-morning-evening", &[]);
+            let add_prayer = texts.get(
+                language,
+                "sets-add-named",
+                &[("set", FluentValue::from(prayer))],
+            );
+            let add_adhkar = texts.get(
+                language,
+                "sets-add-named",
+                &[("set", FluentValue::from(adhkar))],
+            );
+            assert_ne!(add_prayer, add_adhkar);
+            assert!(add_prayer.contains(&texts.get(language, "set-five-prayers", &[])));
+        }
     }
 }
