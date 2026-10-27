@@ -29,10 +29,12 @@ mod day;
 mod deed;
 mod mark;
 mod note;
+mod report;
 mod score;
 
 pub use day::{Weekday, WerdyDay};
-pub use deed::{Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
+pub use deed::{CategoryKey, Deed, DeedId, DeedRule, Schedule, Target, delete_deed};
 pub use mark::{Fraction, Mark, MarkEntry};
 pub use note::{DayNote, ExcuseCredit};
+pub use report::{Band, MissedDeed, Period, Report, ScoreBands, SeriesEntry, build_report};
 pub use score::{OwnerRecords, Score, TodaySummary, score, today_summary};

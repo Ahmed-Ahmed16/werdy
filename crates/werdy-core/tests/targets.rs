@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use werdy_core::{
-    Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score, Target,
-    TodaySummary, WerdyDay, score as score_records, today_summary,
+    CategoryKey, Deed, DeedId, DeedRule, Error, Mark, MarkEntry, OwnerRecords, Schedule, Score,
+    Target, TodaySummary, WerdyDay, score as score_records, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -27,6 +27,7 @@ fn daily(target: Option<Target>) -> DeedRule {
     DeedRule {
         schedule: Schedule::EveryDay,
         target,
+        category: CategoryKey::new("other"),
     }
 }
 

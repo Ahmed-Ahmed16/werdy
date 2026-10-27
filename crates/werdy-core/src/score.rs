@@ -32,22 +32,34 @@ pub fn score(records: &OwnerRecords<'_>, days: &[WerdyDay], today: WerdyDay) -> 
         if *day >= today {
             continue;
         }
-        let credit = records
-            .day_notes
-            .get(day)
-            .map_or(0.0, |note| note.credit().value());
         for deed in records.deeds {
             if let Some(rule) = deed.due_rule_on(*day) {
                 due += 1;
-                let mark_value = records
-                    .marks
-                    .get(&(deed.id, *day))
-                    .map_or(0.0, |entry| entry.mark.value(rule));
-                earned += mark_value.max(credit);
+                earned += due_value(records, deed, *day, rule);
             }
         }
     }
+    score_from_totals(earned, due)
+}
 
+pub(crate) fn due_value(
+    records: &OwnerRecords<'_>,
+    deed: &Deed,
+    day: WerdyDay,
+    rule: &crate::DeedRule,
+) -> f64 {
+    let credit = records
+        .day_notes
+        .get(&day)
+        .map_or(0.0, |note| note.credit().value());
+    let mark_value = records
+        .marks
+        .get(&(deed.id, day))
+        .map_or(0.0, |entry| entry.mark.value(rule));
+    mark_value.max(credit)
+}
+
+pub(crate) fn score_from_totals(earned: f64, due: usize) -> Score {
     Score {
         earned,
         due,
