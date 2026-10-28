@@ -51,17 +51,22 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
             ("target", FluentValue::from(target)),
         ],
     );
-    let kind = count_kind(count, target);
+    let kind = count_kind(mark, target);
     let mut editing = use_signal(|| false);
     let mut draft = use_signal(String::new);
     let mut invalid = use_signal(|| false);
     let mut save = move || {
-        // Closing first prevents the blur after Enter or Escape from saving twice.
+        // Closing after a valid save stops the following blur from saving twice.
+        // Invalid text keeps the field open with the person's draft.
         if !editing() {
             return;
         }
-        editing.set(false);
-        actions.change(|state| invalid.set(!state.type_count(deed_id, &draft())));
+        let mut accepted = false;
+        actions.change(|state| accepted = state.type_count(deed_id, &draft()));
+        invalid.set(!accepted);
+        if accepted {
+            editing.set(false);
+        }
     };
 
     rsx! {
@@ -122,11 +127,14 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
     }
 }
 
-fn count_kind(count: u32, target: u32) -> &'static str {
-    match count {
-        0 => "missed",
-        _ if count >= target => "done",
-        _ => "partial",
+fn count_kind(mark: Option<Mark>, target: u32) -> &'static str {
+    match mark {
+        None => "open",
+        Some(mark) => match shown_count(Some(mark)) {
+            0 => "missed",
+            count if count >= target => "done",
+            _ => "partial",
+        },
     }
 }
 
@@ -144,6 +152,9 @@ mod tests {
 
     #[test]
     fn counter_colors_follow_zero_partial_and_full_values() {
+        use werdy_core::Mark;
+        // An unmarked counter is still open; only an explicit zero is a miss.
+        assert_eq!(count_kind(None, 100), "open");
         for (count, expected) in [
             (0, "missed"),
             (1, "partial"),
@@ -152,7 +163,7 @@ mod tests {
             (101, "done"),
             (u32::MAX, "done"),
         ] {
-            assert_eq!(count_kind(count, 100), expected);
+            assert_eq!(count_kind(Some(Mark::Count(count)), 100), expected);
         }
     }
 }

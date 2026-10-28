@@ -28,3 +28,27 @@ test("Arabic digits from typing and paste reach the number input as ASCII", () =
         assert.equal(insertions.length, before);
     }
 });
+
+test("Arabic digits still reach the input when insertText is unavailable", () => {
+    const listeners = {};
+    const events = [];
+    const input = {
+        value: "7",
+        focus() {},
+        select() {},
+        addEventListener(kind, listener) { listeners[kind] = listener; },
+        dispatchEvent(event) { events.push(event.type); return true; }
+    };
+    vm.runInNewContext(script, {
+        inputId: "count-input-1",
+        Event: class { constructor(type, options) { this.type = type; this.bubbles = options?.bubbles; } },
+        document: { getElementById: () => input, execCommand: () => false }
+    });
+    const typed = text => listeners.beforeinput({ data: text, preventDefault() {} });
+    // The current value starts selected, so the first digit replaces it.
+    typed("١");
+    assert.equal(input.value, "1");
+    typed("٢");
+    assert.equal(input.value, "12");
+    assert.deepEqual(events, ["input", "input"]);
+});
