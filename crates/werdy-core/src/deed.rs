@@ -141,6 +141,18 @@ pub struct Deed {
 }
 
 impl Deed {
+    /// Dated rules in ascending day order, for lossless sync and export.
+    pub fn rule_versions(&self) -> impl Iterator<Item = (WerdyDay, &DeedRule)> {
+        std::iter::once(&self.first_rule)
+            .chain(&self.later_rules)
+            .map(|version| (version.from_day, &version.rule))
+    }
+
+    /// Closed archive periods. The end day is active again.
+    pub fn past_archives(&self) -> &[(WerdyDay, WerdyDay)] {
+        &self.past_archives
+    }
+
     /// Creates a deed with its first rule from its creation day.
     pub fn new(id: DeedId, created_on: WerdyDay, rule: DeedRule) -> Self {
         Self {
