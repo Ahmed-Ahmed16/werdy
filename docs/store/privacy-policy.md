@@ -1,13 +1,13 @@
 # Privacy policy draft
 
 Not ready to publish. Resolve every `___` and the gaps below first.
-Effective date: ___. Contact: ___.
+Effective date: ___. Contact: ahmadhossam16@gmail.com.
 
 ## العربية
 
 ### سياسة خصوصية werdy
 
-تاريخ السريان: ___. المسؤول عن البيانات: ___. للتواصل: ___.
+تاريخ السريان: ___. المسؤول عن البيانات: ___. للتواصل: ahmadhossam16@gmail.com.
 
 يمكنك استخدام werdy دون تسجيل الدخول. عند استخدامه دون حساب، تبقى سجلات أعمالك على جهازك ولا تدخل في المزامنة.
 
@@ -53,7 +53,7 @@ Effective date: ___. Contact: ___.
 
 ### werdy privacy policy
 
-Effective date: ___. Data controller: ___. Contact: ___.
+Effective date: ___. Data controller: ___. Contact: ahmadhossam16@gmail.com.
 
 You can use werdy without signing in. Without an account, your deed records stay on your device and do not enter sync.
 
@@ -83,7 +83,7 @@ A watcher cannot edit your records. You can revoke access in Settings, and a wat
 
 Signing out keeps local records. You can delete a day note in its note dialog, or delete a deed and all its marks in the deed editor after confirmation. Archiving keeps history. When synced, these actions record removals rather than erase earlier versions from the server history.
 
-Deleting all device data through the app: ___. Deleting your account and all its data in the app: ___. Deletion request link or contact: ___. These gaps must be closed before publication. Signing out does not delete your account or records.
+Deleting all device data through the app: ___. Deleting your account and all its data in the app: ___. Deletion request contact: ahmadhossam16@gmail.com. These gaps must be closed before publication. Signing out does not delete your account or records.
 
 Database relations remove linked sync and sharing rows when the Supabase account is deleted. The app currently provides no way to initiate that account deletion. Account, sync history and service log retention, and deletion request completion time: ___. Removing device data does not delete the server copy.
 
