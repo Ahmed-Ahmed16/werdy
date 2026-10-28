@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0036 (2026-10-28): Android saves the same JSON as the web, in a private file
+On Android, `FileStore` keeps the owner's records as one JSON file, `werdy.json`, in the app's private files folder. It is the same JSON the web keeps in localStorage, through the same `to_json` and `from_json`. A save writes a temporary file and renames it over the old one, so a crash in the middle never leaves half a file. If the files folder cannot be read, the app falls back to memory rather than crash. Why: the data is small (an estimated few hundred KB a year), all scoring runs in Rust on data in memory so SQL queries would go unused, one format means one set of tests, and SQLite is C code that needs cross compiling with the NDK on Windows. Decided by the agent while the owner was out (#12 had asked: SQLite or a JSON file); the owner reviews it in the PR. Rejected for now: SQLite through rusqlite. Revisit: if the file grows to many MB, or if saving one change without rewriting the file is needed. The `Store` trait keeps a later switch inside `werdy-store`.
+
 ## 0034 (2026-10-28): Demo data behind ?demo
 Adding `?demo` opens a complete sample sheet with history in a separate browser storage key. The app does not read, write or delete real records in this mode. The sample is deterministic and relative to the current werdy day. Why: testers and people seeing werdy for the first time need reports and history to inspect without setting up months of records. Approved by the owner on 2026-10-28. Revisit: if testers need more sample cases.
 
