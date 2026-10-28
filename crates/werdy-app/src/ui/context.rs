@@ -74,6 +74,7 @@ pub fn use_i18n() -> I18n {
 /// Changes to the app state. Data changes are saved right away.
 #[derive(Clone, Copy)]
 pub struct Actions {
+    read_only: bool,
     state: Signal<AppState>,
     store: Signal<Rc<dyn Store>>,
 }
@@ -81,11 +82,26 @@ pub struct Actions {
 impl Actions {
     /// Creates the handle from the state and store signals.
     pub fn new(state: Signal<AppState>, store: Signal<Rc<dyn Store>>) -> Self {
-        Self { state, store }
+        Self {
+            state,
+            store,
+            read_only: false,
+        }
+    }
+
+    pub fn read_only(state: Signal<AppState>, store: Signal<Rc<dyn Store>>) -> Self {
+        Self {
+            state,
+            store,
+            read_only: true,
+        }
     }
 
     /// Changes the owner's data, then saves it.
     pub fn change(self, change: impl FnOnce(&mut AppState)) {
+        if self.read_only {
+            return;
+        }
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
@@ -102,6 +118,9 @@ impl Actions {
         self,
         change: impl FnOnce(&mut AppState) -> Result<T, EditorError>,
     ) -> Result<T, EditorError> {
+        if self.read_only {
+            return Err(EditorError::RuleChange);
+        }
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
@@ -123,6 +142,9 @@ impl Actions {
         day: WerdyDay,
         change: impl FnOnce(&mut AppState) -> Result<(), NoteError>,
     ) -> Result<(), NoteError> {
+        if self.read_only {
+            return Err(Error::InvalidDate.into());
+        }
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
@@ -177,6 +199,52 @@ mod tests {
 
     use super::{I18n, Language, Texts};
     use werdy_core::Consistency;
+
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::panic)]
+    fn watched_actions_refuse_all_mutations_and_never_save() {
+        use dioxus::prelude::*;
+        use werdy_store::{MemoryStore, Store};
+        fn root() -> Element {
+            let memory = use_hook(|| Rc::new(MemoryStore::default()));
+            let state = use_signal(|| {
+                crate::state::AppState::start(
+                    memory.as_ref(),
+                    werdy_core::WerdyDay::new(2026, 10, 28).unwrap(),
+                    vec![],
+                )
+            });
+            let store = use_signal(|| {
+                let store: Rc<dyn Store> = memory.clone();
+                store
+            });
+            let actions = super::Actions::read_only(state, store);
+            use_hook(move || {
+                let before = state.read().data.clone();
+                actions.change(|_| panic!("read only change ran"));
+                assert!(
+                    actions
+                        .change_deed::<()>(|_| panic!("read only deed change ran"))
+                        .is_err()
+                );
+                assert!(
+                    actions
+                        .save_note(
+                            state.read().today,
+                            "forbidden",
+                            werdy_core::ExcuseCredit::None
+                        )
+                        .is_err()
+                );
+                assert!(actions.delete_note(state.read().today).is_err());
+                assert!(state.read().data == before);
+                assert!(memory.load().unwrap().is_none());
+            });
+            rsx! {}
+        }
+        let mut dom = VirtualDom::new(root);
+        dom.rebuild_in_place();
+    }
 
     #[test]
     fn fluent_arguments_keep_name_digits_and_format_number_digits() {

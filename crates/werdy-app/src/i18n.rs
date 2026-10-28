@@ -74,6 +74,7 @@ impl Language {
 
 /// Fluent files for one language, one per feature.
 const ARABIC: &[&str] = &[
+    include_str!("../../../locales/ar/sharing.ftl"),
     include_str!("../../../locales/ar/common.ftl"),
     include_str!("../../../locales/ar/sheet.ftl"),
     include_str!("../../../locales/ar/starter.ftl"),
@@ -85,6 +86,7 @@ const ARABIC: &[&str] = &[
     include_str!("../../../locales/ar/reminders.ftl"),
 ];
 const ENGLISH: &[&str] = &[
+    include_str!("../../../locales/en/sharing.ftl"),
     include_str!("../../../locales/en/common.ftl"),
     include_str!("../../../locales/en/sheet.ftl"),
     include_str!("../../../locales/en/starter.ftl"),

@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0039 (2026-10-28): Watchers see day note text
+The owner decided that a watcher sees day note text as well as marks, late signs and excuse credits, read only. The note explains late and excused days, and the owner chooses whom to share with. Sharing needs sign in for both people and can be revoked. Location and prayer method still never leave the phone (0010). Without that location a watched view uses the device's civil date for today, and says so. Revisit: if owners ask for finer control over which notes a watcher sees.
+
 ## 0038 (2026-10-28): Reminders: when they fire
 Prayer slot reminders for Fajr, Dhuhr, Asr, Maghrib and Isha fire at that prayer plus 0 to 120 minutes, with zero as the default. Morning, night and any_time slot reminders use a clock time picked by the owner. Deed reminders also use a clock time picked by the owner. One slot notification covers the deeds in that slot that are due and not marked Done. A deed reminder fires only if that deed is due and not Done. Partial still needs a reminder. The dated rule, schedule and marks are checked for the werdy day at the notification time, using the Fajr boundary. A delay that crosses midnight keeps its source prayer date in its stable id.
 

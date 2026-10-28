@@ -1426,3 +1426,11 @@ textarea:focus-visible {
 @media (min-width: 600px) {
   .set-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Share codes keep their own reading direction in both interface languages. */
+.share-code {
+  font-size: var(--size-screen);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

@@ -1,7 +1,7 @@
 # Account and background sync
 
 The app works without an account. Settings offers Google sign in for backup
-across phones. Sharing remains issue #24. Public ids and the publishable key
+across phones. Watcher sharing is described in `sharing.md`. Public ids and the publishable key
 live in `crates/werdy-app/src/account/config.rs`.
 
 Android uses Credential Manager in the existing Kotlin library. Rust loads both

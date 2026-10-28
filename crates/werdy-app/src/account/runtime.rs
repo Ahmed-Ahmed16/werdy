@@ -46,7 +46,10 @@ pub fn use_background(mut state: Signal<AppState>) {
                 let flight =
                     {
                         let mut account = store.account.borrow_mut();
-                        if account.session.is_some() && account.schedule.start(elapsed_ms()) {
+                        if account.session.is_some()
+                            && !account.sharing_busy
+                            && account.schedule.start(elapsed_ms())
+                        {
                             account.session.clone().zip(account.checkpoint.clone()).map(
                                 |(session, checkpoint)| (session, checkpoint, account.generation),
                             )
@@ -169,7 +172,11 @@ async fn attempt(
     Ok(checkpoint)
 }
 
-fn save_refresh(store: &AccountStore, session: &Session, generation: u64) -> Result<(), SyncError> {
+pub(crate) fn save_refresh(
+    store: &AccountStore,
+    session: &Session,
+    generation: u64,
+) -> Result<(), SyncError> {
     if store.account.borrow().generation != generation {
         return Err(SyncError::Invalid("account changed".into()));
     }

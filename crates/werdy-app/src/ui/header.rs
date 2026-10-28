@@ -56,7 +56,9 @@ pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
                 }
             }
             div { class: "header-tools",
-                button { id: "note-open", class: "text-button", onclick: move |_| on_open_note.call(viewing), {i18n.t("note-button")} }
+                if !super::sharing::read_only() {
+                    button { id: "note-open", class: "text-button", onclick: move |_| on_open_note.call(viewing), {i18n.t("note-button")} }
+                }
                 if !is_today {
                     button {
                         class: "text-button",
@@ -67,6 +69,7 @@ pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
                 button {
                     class: "text-button",
                     lang: other.code(),
+                    disabled: super::sharing::read_only(),
                     onclick: move |_| actions.change(|state| state.set_language(other.code())),
                     {i18n.t("language-switch")}
                 }

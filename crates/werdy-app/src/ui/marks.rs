@@ -22,6 +22,7 @@ pub fn MarkButton(deed_id: DeedId, tap: Tap, mark: Option<Mark>) -> Element {
 
     rsx! {
         button {
+            disabled: super::sharing::read_only(),
             class: "mark-button",
             "data-kind": kind,
             aria_pressed: if on { "true" } else { "false" },
@@ -57,7 +58,7 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
             button {
                 class: "step-button",
                 aria_label: i18n.t("count-minus"),
-                disabled: count == 0,
+                disabled: count == 0 || super::sharing::read_only(),
                 onclick: move |_| actions.change(|state| state.step(deed_id, Step::Minus)),
                 MinusIcon {}
             }
@@ -65,6 +66,7 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
             button {
                 class: "step-button",
                 aria_label: i18n.t("count-plus"),
+                disabled: super::sharing::read_only(),
                 onclick: move |_| actions.change(|state| state.step(deed_id, Step::Plus)),
                 PlusIcon {}
             }

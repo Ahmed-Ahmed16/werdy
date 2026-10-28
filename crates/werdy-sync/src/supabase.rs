@@ -10,8 +10,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{Backend, Batch, Pending, SyncError, invalid, rows};
 
 pub(crate) mod auth;
+pub(crate) mod sharing;
 
-/// Client for the RPCs in `supabase/migrations/20261028000000_sync.sql`.
+/// Client for the sync and sharing RPCs in `supabase/migrations`.
 /// Uses only a public publishable key and the owner's current access token.
 /// No Debug or Serialize implementation can expose these credentials.
 pub struct SupabaseBackend {
