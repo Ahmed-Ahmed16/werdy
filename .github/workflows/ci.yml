@@ -19,7 +19,18 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       # The browser only code in werdy-app compiles for wasm alone.
-      - run: cargo clippy -p werdy-app --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p werdy-app --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - name: Install browser test runner
+        run: |
+          version=$(python3 -c 'import tomllib; lock = tomllib.load(open("Cargo.lock", "rb")); print(next(p["version"] for p in lock["package"] if p["name"] == "wasm-bindgen"))')
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - name: Run browser tests in headless Chrome
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: |
+          export CHROMEDRIVER="$(command -v chromedriver)"
+          test -n "$CHROMEDRIVER"
+          cargo test --locked -p werdy-app --bin werdy-app --target wasm32-unknown-unknown
 
   pages:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
