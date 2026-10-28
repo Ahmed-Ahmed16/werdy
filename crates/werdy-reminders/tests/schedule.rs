@@ -306,3 +306,33 @@ fn dated_hijri_offset_changes_isha_interval_at_ramadan_boundary() {
         shaban.notifications[0].minute + 30
     );
 }
+
+#[test]
+fn london_missing_summer_prayer_keeps_clock_reminder() {
+    let date = WerdyDay::new(2026, 6, 21).unwrap();
+    for slot in ["fajr", "isha"] {
+        let mut owner = OwnerData::default();
+        owner.settings.location = Location::new(None, None, 51.5074, -0.1278);
+        owner.settings.prayer_method = PrayerMethod::MuslimWorldLeague;
+        owner.deeds.push(Deed::new(
+            DeedId(1),
+            date,
+            DeedRule {
+                schedule: Schedule::EveryDay,
+                target: None,
+                category: CategoryKey::new("other"),
+                slot: SlotKey::new("any_time"),
+            },
+        ));
+        prayer(&mut owner, slot, 0);
+        clock(&mut owner, "any_time", 12, 0);
+        let plan = schedule(&owner, LocalMoment::new(date, 0, 0).unwrap(), 1, |_, _| 60).unwrap();
+        assert_eq!(plan.notifications.len(), 1);
+        assert_eq!(
+            plan.notifications[0].target,
+            werdy_reminders::Target::Slot(SlotKey::new("any_time"))
+        );
+        assert_eq!(plan.notifications[0].minute, 720);
+        assert!(!plan.prayer_slots_skipped_no_location);
+    }
+}

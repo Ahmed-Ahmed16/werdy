@@ -38,7 +38,7 @@ fn start_worker() -> Option<mpsc::Sender<OwnerData>> {
     }
 }
 
-fn epoch_at(date: WerdyDay, minute: u16) -> Result<i64, String> {
+fn epoch_at(date: WerdyDay, minute: u16) -> Result<Option<i64>, String> {
     reminders::epoch_with_lookup(date, minute, super::android::offset_at)
 }
 
@@ -50,7 +50,10 @@ fn replace(owner: &OwnerData, texts: &Texts) -> Result<(), String> {
     let mut midnights = std::collections::BTreeMap::new();
     let mut date = clock.day.previous().map_err(|error| error.to_string())?;
     for _ in 0..3 {
-        midnights.insert(date, epoch_at(date, 0)? / 1000);
+        midnights.insert(
+            date,
+            reminders::day_start_with_lookup(date, super::android::offset_at)? / 1000,
+        );
         date = date.next().map_err(|error| error.to_string())?;
     }
     let plan = werdy_reminders::schedule(owner, now, 2, |date, minute| {

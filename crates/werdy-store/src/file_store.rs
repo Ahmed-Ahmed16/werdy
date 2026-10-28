@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use crate::{OwnerData, Store, StoreError, from_json, to_json};
@@ -39,7 +39,13 @@ impl Store for FileStore {
         let mut temporary = self.path.as_os_str().to_os_string();
         temporary.push(".tmp");
         let temporary = PathBuf::from(temporary);
-        let saved = fs::write(&temporary, text).and_then(|()| fs::rename(&temporary, &self.path));
+        let saved = (|| {
+            let mut file = fs::File::create(&temporary)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&temporary, &self.path)
+        })();
         if saved.is_err() {
             let _ = fs::remove_file(&temporary);
         }

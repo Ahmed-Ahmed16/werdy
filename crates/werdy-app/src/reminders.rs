@@ -34,42 +34,63 @@ pub fn epoch_millis(date: WerdyDay, minute: u16, offset: i32) -> Result<i64, Str
 }
 
 /// Resolves a wall time with the offset at its instant, not the offset at midnight.
-/// Chooses one occurrence of a repeated minute. A skipped minute returns an error.
+/// Chooses one occurrence of a repeated minute. A skipped minute returns None.
 pub fn epoch_with_lookup(
     date: WerdyDay,
     minute: u16,
     offset_at: impl Fn(i64) -> i32,
+) -> Result<Option<i64>, String> {
+    let (_, actual) = epoch_candidates(date, minute, &offset_at)?;
+    let resolved = epoch_millis(date, minute, offset_at(actual / 1000))?;
+    Ok((resolved == actual).then_some(actual))
+}
+
+/// Uses the start of the day when midnight is skipped, expressed with the offset
+/// before the gap. Repeated midnights use the same occurrence as clock reminders.
+pub fn day_start_with_lookup(
+    date: WerdyDay,
+    offset_at: impl Fn(i64) -> i32,
 ) -> Result<i64, String> {
+    if let Some(midnight) = epoch_with_lookup(date, 0, &offset_at)? {
+        return Ok(midnight);
+    }
+    let (first, actual) = epoch_candidates(date, 0, &offset_at)?;
+    Ok(first.max(actual))
+}
+
+fn epoch_candidates(
+    date: WerdyDay,
+    minute: u16,
+    offset_at: &impl Fn(i64) -> i32,
+) -> Result<(i64, i64), String> {
     let local = epoch_millis(date, minute, 0)?;
     let first = epoch_millis(date, minute, offset_at(local / 1000))?;
     let actual_offset = offset_at(first / 1000);
     let actual = epoch_millis(date, minute, actual_offset)?;
-    if offset_at(actual / 1000) != actual_offset {
-        return Err("reminder clock time does not exist on this date".to_owned());
-    }
-    Ok(actual)
+    Ok((first, actual))
 }
 
+/// Omits notifications in a clock gap. Other conversion errors remain errors.
 pub fn payload(
     owner: &OwnerData,
     plan: &Plan,
     texts: &Texts,
-    epoch_at: impl Fn(WerdyDay, u16) -> Result<i64, String>,
+    epoch_at: impl Fn(WerdyDay, u16) -> Result<Option<i64>, String>,
 ) -> Result<Payload, String> {
     let language = Language::from_code(&owner.settings.language);
-    let notifications = plan
-        .notifications
-        .iter()
-        .map(|notice| {
-            let (title, body) = notification_text(owner, notice, texts);
-            Ok(Alarm {
-                id: notice.id.clone(),
-                epoch_millis: epoch_at(notice.date, notice.minute)?,
-                title,
-                body,
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
+    let mut notifications = Vec::new();
+    for notice in &plan.notifications {
+        let Some(epoch_millis) = epoch_at(notice.date, notice.minute)? else {
+            continue;
+        };
+        let (title, body) = notification_text(owner, notice, texts);
+        notifications.push(Alarm {
+            id: notice.id.clone(),
+            epoch_millis,
+            title,
+            body,
+        });
+    }
     Ok(Payload {
         channel_name: texts.get(language, "reminders-title", &[]),
         notifications,

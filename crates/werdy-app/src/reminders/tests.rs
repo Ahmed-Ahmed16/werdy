@@ -33,13 +33,13 @@ fn epoch_lookup_uses_offset_at_event_and_rejects_spring_gap() -> TestResult {
     let offset = |seconds| if seconds < change { 60 } else { 120 };
     assert_eq!(
         epoch_with_lookup(date, 210, offset)?,
-        epoch_millis(date, 210, 120)?
+        Some(epoch_millis(date, 210, 120)?)
     );
-    assert!(epoch_with_lookup(date, 150, offset).is_err());
+    assert_eq!(epoch_with_lookup(date, 150, offset)?, None);
     let autumn = |seconds| if seconds < change { 120 } else { 60 };
     assert_eq!(
         epoch_with_lookup(date, 150, autumn)?,
-        epoch_millis(date, 150, 60)?
+        Some(epoch_millis(date, 150, 60)?)
     );
     Ok(())
 }
@@ -90,7 +90,7 @@ fn real_plan_becomes_localized_payload_with_stable_ids_and_short_pending_list() 
         owner.settings.language = language.into();
         owner.settings.digits = Digits::ArabicIndic;
         let payload = payload(&owner, &plan, &texts, |date, minute| {
-            epoch_millis(date, minute, 120)
+            epoch_millis(date, minute, 120).map(Some)
         })?;
         assert_eq!(payload.notifications.len(), 4);
         assert_eq!(payload.notifications[0].id, plan.notifications[0].id);
@@ -150,5 +150,109 @@ fn android_replies_report_errors_and_clock_inputs_validate_before_saving() -> Te
     for bad in ["24:00", "12:60", "", "12:30:00", "text"] {
         assert!(parse_time(bad).is_none());
     }
+    Ok(())
+}
+
+#[test]
+fn midnight_gap_skips_only_missing_clock_notification() -> TestResult {
+    let owner = owner()?;
+    let date = WerdyDay::new(2026, 4, 24)?;
+    let transition = epoch_millis(date, 0, 120)? / 1000;
+    let offset = |seconds| if seconds < transition { 120 } else { 180 };
+    let plan = Plan {
+        notifications: [30, 90]
+            .into_iter()
+            .map(|minute| Notification {
+                id: format!("gap-{minute}"),
+                date,
+                minute,
+                werdy_day: date,
+                target: Target::Deed(DeedId(1)),
+                deeds: vec![DeedId(1)],
+            })
+            .collect(),
+        ..Plan::default()
+    };
+    let payload = payload(&owner, &plan, &Texts::load(), |date, minute| {
+        epoch_with_lookup(date, minute, offset)
+    })?;
+    assert_eq!(payload.notifications.len(), 1);
+    assert_eq!(payload.notifications[0].id, "gap-90");
+    assert_eq!(
+        payload.notifications[0].epoch_millis,
+        epoch_millis(date, 90, 180)?
+    );
+    Ok(())
+}
+
+#[test]
+fn day_anchor_survives_midnight_forward_and_backward_changes() -> TestResult {
+    let date = WerdyDay::new(2026, 4, 24)?;
+    for (before, after) in [(120, 180), (180, 120), (-180, -120), (-120, -180)] {
+        let transition = epoch_millis(date, 0, before)? / 1000;
+        let offset = |seconds| if seconds < transition { before } else { after };
+        let expected_offset = before.min(after);
+        assert_eq!(
+            day_start_with_lookup(date, offset)?,
+            epoch_millis(date, 0, expected_offset)?
+        );
+        if after > before {
+            assert_eq!(epoch_with_lookup(date, 0, offset)?, None);
+        } else {
+            assert_eq!(
+                epoch_with_lookup(date, 0, offset)?,
+                Some(epoch_millis(date, 0, after)?)
+            );
+        }
+        assert_eq!(
+            day_start_with_lookup(date.previous()?, offset)?,
+            epoch_millis(date.previous()?, 0, before)?
+        );
+        assert_eq!(
+            day_start_with_lookup(date.next()?, offset)?,
+            epoch_millis(date.next()?, 0, after)?
+        );
+    }
+    // A change later in the day must not move a midnight that exists.
+    let transition = epoch_millis(date, 120, 180)? / 1000;
+    let offset = |seconds| if seconds < transition { 180 } else { 120 };
+    assert_eq!(
+        day_start_with_lookup(date, offset)?,
+        epoch_millis(date, 0, 180)?
+    );
+    assert!(day_start_with_lookup(date, |_| 841).is_err());
+    Ok(())
+}
+
+#[test]
+fn all_clock_gap_notifications_still_produce_empty_replacement_and_other_errors_propagate()
+-> TestResult {
+    let owner = owner()?;
+    let date = WerdyDay::new(2026, 4, 24)?;
+    let transition = epoch_millis(date, 0, 120)? / 1000;
+    let offset = |seconds| if seconds < transition { 120 } else { 180 };
+    let plan = Plan {
+        notifications: vec![Notification {
+            id: "gap-only".into(),
+            date,
+            minute: 30,
+            werdy_day: date,
+            target: Target::Deed(DeedId(1)),
+            deeds: vec![DeedId(1)],
+        }],
+        ..Plan::default()
+    };
+    let texts = Texts::load();
+    let empty = payload(&owner, &plan, &texts, |date, minute| {
+        epoch_with_lookup(date, minute, offset)
+    })?;
+    assert_eq!(
+        serde_json::to_value(empty)?["notifications"],
+        serde_json::json!([])
+    );
+    let failed = payload(&owner, &plan, &texts, |_, _| {
+        Err("invalid UTC offset".into())
+    });
+    assert_eq!(failed.err().as_deref(), Some("invalid UTC offset"));
     Ok(())
 }
