@@ -14,6 +14,7 @@ werdy-core = { path = "../werdy-core", features = ["serde"] }
 werdy-store = { path = "../werdy-store" }
 werdy-data = { path = "../werdy-data" }
 werdy-calendar = { path = "../werdy-calendar" }
+werdy-reminders = { path = "../werdy-reminders" }
 dioxus = "0.7.10"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"

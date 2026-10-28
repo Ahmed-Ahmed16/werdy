@@ -5965,6 +5965,7 @@ dependencies = [
  "werdy-calendar",
  "werdy-core",
  "werdy-data",
+ "werdy-reminders",
  "werdy-store",
 ]
 

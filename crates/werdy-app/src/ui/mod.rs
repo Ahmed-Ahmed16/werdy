@@ -9,6 +9,8 @@ mod icons;
 mod marks;
 mod note;
 mod rail;
+#[cfg(target_os = "android")]
+mod reminders;
 mod reports;
 mod settings;
 mod sheet;
@@ -170,6 +172,12 @@ impl PartialEq for StoreHandle {
 #[component]
 fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Element {
     let mut state = use_signal(|| initial);
+    use_hook(move || {
+        let app = state.read();
+        if app.save_status != SaveStatus::LoadFailed {
+            platform::reschedule_reminders(&app.data);
+        }
+    });
     let mut wide_layout = use_signal(platform::wide_layout);
     let mut last_screen = use_signal(|| state.read().screen);
     use_effect(move || {
@@ -190,6 +198,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                     let changed = state.read().today != today;
                     if changed {
                         state.write().update_today(today);
+                        platform::reschedule_reminders(&state.read().data);
                     }
                 }
             },
