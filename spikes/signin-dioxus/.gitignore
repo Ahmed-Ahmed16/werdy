@@ -1,0 +1,7 @@
+/target
+*.log
+*.log.err
+# Screenshots with the owner's email stay local.
+emulator-window.png
+gate2-*.png
+gate3-*.png

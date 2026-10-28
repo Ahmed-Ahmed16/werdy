@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0035 (2026-10-28): Dioxus stays the UI stack on Android, after the sign in spike
+The spike for #13 (`spikes/signin-dioxus`) showed that Dioxus 0.7.10 can do Google sign in on Android the native way: the system Credential Manager sheet appears (not a webview page), the Google ID token reaches Rust, and Rust trades it for a Supabase session with `grant_type=id_token` and a hashed nonce. This confirms 0029, so the Tauri 2 track was not built. The cost is small and known: about 120 lines of Kotlin and Gradle for Credential Manager, called through `manganis::ffi`, and about 30 lines of JavaScript for Google Identity Services on the web. Three workarounds are needed today: the MSVC Rust toolchain on Windows, older Android libraries because dx 0.7.10 generates a Kotlin 2.0.20 compiler, and loading the Kotlin class through the activity's class loader (Dioxus issue #5629). Each is listed in the spike's README. Open: the web sign in giving the same Supabase user id is `___` (the button works; the owner still has to complete the sign in), and release builds and a real phone are untested. Revisit: if the web sign in cannot reach the same user, if a release build hits the dx Windows linker bug, or if a Dioxus update breaks the Kotlin bridge.
+
 ## 0034 (2026-10-28): Demo data behind ?demo
 Adding `?demo` opens a complete sample sheet with history in a separate browser storage key. The app does not read, write or delete real records in this mode. The sample is deterministic and relative to the current werdy day. Why: testers and people seeing werdy for the first time need reports and history to inspect without setting up months of records. Approved by the owner on 2026-10-28. Revisit: if testers need more sample cases.
 
