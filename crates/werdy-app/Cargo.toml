@@ -28,10 +28,14 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console", "Coordinates", "Document", "Element", "Event", "Geolocation", "HtmlDialogElement", "HtmlElement", "Navigator", "Position", "PositionError", "PositionOptions", "Storage", "StorageEvent", "Window"] }
 wasm-bindgen = "0.2"
 
+[target.'cfg(target_os = "android")'.dependencies]
+manganis = "=0.7.10"
+
 [features]
 default = ["web"]
 # dx turns on the feature named after the platform it builds for.
 web = ["dioxus/web"]
+mobile = ["dioxus/mobile"]
 
 [lints]
 workspace = true

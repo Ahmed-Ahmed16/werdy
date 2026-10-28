@@ -70,18 +70,52 @@ pub fn app_address() -> String {
     }
 }
 
-/// Opens the store for this platform: browser localStorage on the web, and an
-/// in memory store elsewhere until a file or SQLite store exists.
+/// Opens browser localStorage on the web or a private JSON file on Android.
+/// Uses memory elsewhere, or when Android's files folder cannot be read.
 pub fn open_store(mode: DataMode) -> Rc<dyn Store> {
     #[cfg(target_arch = "wasm32")]
     {
         Rc::new(web::LocalStore { key: mode.key() })
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        let _ = mode;
+        if let Some(path) = android_store_path() {
+            return Rc::new(werdy_store::FileStore::new(path));
+        }
+        Rc::new(werdy_store::MemoryStore::default())
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         let _ = mode;
         Rc::new(werdy_store::MemoryStore::default())
     }
+}
+
+#[cfg(target_os = "android")]
+fn android_store_path() -> Option<std::path::PathBuf> {
+    use manganis::jni::objects::JString;
+
+    manganis::android::with_activity(|env, activity| {
+        let path = (|| -> manganis::jni::errors::Result<std::path::PathBuf> {
+            let folder = env
+                .call_method(activity, "getFilesDir", "()Ljava/io/File;", &[])?
+                .l()?;
+            let absolute = env
+                .call_method(&folder, "getAbsolutePath", "()Ljava/lang/String;", &[])?
+                .l()?;
+            let absolute = JString::from(absolute);
+            let absolute: String = env.get_string(&absolute)?.into();
+            Ok(std::path::PathBuf::from(absolute).join("werdy.json"))
+        })();
+        match path {
+            Ok(path) => Some(path),
+            Err(_) => {
+                let _ = env.exception_clear();
+                None
+            }
+        }
+    })
 }
 
 /// Returns local calendar date when no location is saved.
