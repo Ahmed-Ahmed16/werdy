@@ -43,6 +43,7 @@ pub fn SettingsScreen() -> Element {
     let method = i18n.t(match settings.prayer_method {
         PrayerMethod::EgyptianGeneralAuthority => "method-egyptian",
         PrayerMethod::MuslimWorldLeague => "method-mwl",
+        PrayerMethod::UmmAlQura => "method-umm-al-qura",
     });
     let place = i18n.t_with(
         "settings-place",
@@ -56,7 +57,9 @@ pub fn SettingsScreen() -> Element {
         section { class: "settings-screen",
             header { class: "settings-header",
                 h1 { class: "day-title", {i18n.t("nav-settings")} }
-                button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
+                if app.settings_back_to_deeds {
+                    button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
+                }
             }
             div { class: "settings-card",
                 fieldset { class: "settings-row",

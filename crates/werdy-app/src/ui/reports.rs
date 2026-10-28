@@ -6,7 +6,8 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use werdy_core::{
-    Band, DeedDay, DeedId, Fraction, Period, Report, ReportLead, SeriesEntry, WerdyDay, report_lead,
+    Band, Consistency, DEFAULT_CONSISTENCY_WINDOW, DeedDay, DeedId, Fraction, Period, Report,
+    ReportLead, SeriesEntry, WerdyDay, consistency, report_lead,
 };
 use werdy_store::DeedName;
 
@@ -204,7 +205,7 @@ fn TodayLink() -> Element {
 }
 
 #[component]
-fn Series(
+pub(super) fn Series(
     entries: Vec<SeriesEntry>,
     noted_days: BTreeSet<WerdyDay>,
     late_noted_days: BTreeSet<WerdyDay>,
@@ -232,7 +233,8 @@ fn Series(
             }
             if show_today {
                 div { class: "report-day-cell report-today-cell", role: "img", aria_label: today_label,
-                    span { {i18n.t("reports-today")} }
+                    span { class: "report-today-label", {i18n.t("reports-today")} }
+                    span { class: "report-today-compact", {i18n.t("reports-today-short")} }
                     if today_noted { small { aria_label: i18n.t("note-sign"), {i18n.t("reports-note-sign")} } }
                 }
             }
@@ -275,8 +277,8 @@ fn SeriesCell(entry: SeriesEntry, noted: bool, late_note: bool) -> Element {
                     }
                     if noted { small { title: i18n.t("reports-note"), {i18n.t("reports-note-sign")} } }
                     if late_note { small { title: i18n.t("mark-added-later"), {i18n.t("reports-late-sign")} } }
-                    if let Some(percent) = score.percent { small { {percent_text(&i18n, percent)} } }
-                    if score.percent.is_some() { small { {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
+                    if let Some(percent) = score.percent { small { class: "report-score-detail", {percent_text(&i18n, percent)} } }
+                    if score.percent.is_some() { small { class: "report-score-detail", {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
                 }
             }
         }
@@ -423,6 +425,7 @@ fn MissedList(report: Rc<Report>) -> Element {
 fn PerDeed(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let last_day = report.days.last().copied();
     rsx! {
         section { class: "report-card",
             h2 { class: "card-title", {i18n.t("reports-deeds")} }
@@ -433,6 +436,7 @@ fn PerDeed(report: Rc<Report>) -> Element {
                         if let Some(percent) = score.percent { strong { {percent_text(&i18n, percent)} } }
                     }
                     small { class: "report-muted", {i18n.t_with("reports-deed-due", &[("due", FluentValue::from(score.due))])} }
+                    small { class: "report-muted", {i18n.consistency_line(deed_consistency(&state.read(), *id, last_day))} }
                     if let Some(days) = report.per_deed_days.get(id) {
                         div { class: "report-history",
                             for entry in days { HistoryDay { key: "{entry.day:?}", entry: *entry, noted: report.noted_days.contains(&entry.day) } }
@@ -442,6 +446,19 @@ fn PerDeed(report: Rc<Report>) -> Element {
             }
         }
     }
+}
+
+fn deed_consistency(state: &AppState, id: DeedId, last_day: Option<WerdyDay>) -> Consistency {
+    let cutoff = match last_day.and_then(|day| day.next().ok()) {
+        Some(day) => day,
+        None => state.today,
+    };
+    consistency(
+        &state.data.records(),
+        id,
+        cutoff,
+        DEFAULT_CONSISTENCY_WINDOW,
+    )
 }
 
 #[component]

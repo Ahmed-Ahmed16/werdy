@@ -129,12 +129,32 @@ fn weekdays_sentence(texts: &Texts, language: Language, days: &BTreeSet<Weekday>
         .into_iter()
         .filter(|day| days.contains(day))
         .map(|day| texts.get(language, weekday_key(day), &[]))
-        .collect::<Vec<_>>()
-        .join(&texts.get(language, "schedule-list-separator", &[]));
+        .collect::<Vec<_>>();
+    let names = join_weekday_names(texts, language, &names);
     texts.get(
         language,
         "schedule-weekdays-sentence",
         &[("days", FluentValue::from(names))],
+    )
+}
+
+fn join_weekday_names(texts: &Texts, language: Language, names: &[String]) -> String {
+    let Some((last, first)) = names.split_last() else {
+        return String::new();
+    };
+    if first.is_empty() {
+        return last.clone();
+    }
+    let separator = if first.len() == 1 {
+        "schedule-pair-separator"
+    } else {
+        "schedule-final-separator"
+    };
+    format!(
+        "{}{}{}",
+        first.join(&texts.get(language, "schedule-list-separator", &[])),
+        texts.get(language, separator, &[]),
+        last
     )
 }
 
@@ -321,6 +341,16 @@ mod tests {
     }
 
     #[test]
+    fn fluent_copy_has_no_streak_or_badge_terms() {
+        for source in ARABIC.iter().chain(ENGLISH) {
+            let lower = source.to_lowercase();
+            for forbidden in ["streak", "badge", "سلسلة", "شارة"] {
+                assert!(!lower.contains(forbidden), "found {forbidden}");
+            }
+        }
+    }
+
+    #[test]
     fn variables_are_filled_in() {
         let texts = Texts::load();
 
@@ -388,6 +418,155 @@ mod tests {
     }
 
     #[test]
+    fn counted_report_nouns_follow_arabic_and_english_plural_forms() {
+        let texts = Texts::load();
+        let due_deeds_arabic = [
+            "عمل واحد مستحق",
+            "عملين مستحقين",
+            "3 أعمال مستحقة",
+            "11 عملًا مستحقًا",
+            "100 عمل مستحق",
+        ];
+        let due_deeds_english = ["1 due deed", "2 due deeds"];
+        let cases = [
+            (
+                "reports-score-due",
+                "due",
+                due_deeds_arabic,
+                due_deeds_english,
+            ),
+            (
+                "reports-previous-score",
+                "due",
+                due_deeds_arabic,
+                due_deeds_english,
+            ),
+            (
+                "reports-category-due",
+                "due",
+                due_deeds_arabic,
+                due_deeds_english,
+            ),
+            (
+                "reports-day-value",
+                "due",
+                due_deeds_arabic,
+                due_deeds_english,
+            ),
+            (
+                "reports-month-value",
+                "due",
+                due_deeds_arabic,
+                due_deeds_english,
+            ),
+            (
+                "reports-cell-due",
+                "due",
+                [
+                    "عمل واحد مستحق",
+                    "عملان مستحقان",
+                    "3 أعمال مستحقة",
+                    "11 عملًا مستحقًا",
+                    "100 عمل مستحق",
+                ],
+                ["1 due deed", "2 due deeds"],
+            ),
+            (
+                "reports-deed-due",
+                "due",
+                [
+                    "يوم واحد مستحق",
+                    "يومين مستحقين",
+                    "3 أيام مستحقة",
+                    "11 يومًا مستحقًا",
+                    "100 يوم مستحق",
+                ],
+                ["1 due day", "2 due days"],
+            ),
+            (
+                "reports-missed-days",
+                "days",
+                [
+                    "يوم واحد مستحق غير مكتمل",
+                    "يومان مستحقان غير مكتملين",
+                    "3 أيام مستحقة غير مكتملة",
+                    "11 يومًا مستحقًا غير مكتمل",
+                    "100 يوم مستحق غير مكتمل",
+                ],
+                ["1 due day not done", "2 due days not done"],
+            ),
+        ];
+        for (key, count_arg, arabic, english) in cases {
+            for (index, count) in [1, 2, 3, 11, 100].into_iter().enumerate() {
+                let args = [
+                    (count_arg, FluentValue::from(count)),
+                    ("day", FluentValue::from(7)),
+                    ("month", FluentValue::from("October")),
+                    ("year", FluentValue::from(2026)),
+                    ("percent", FluentValue::from(50)),
+                ];
+                let rendered = texts.get(Language::Arabic, key, &args);
+                let rendered = rendered.replace(['\u{2068}', '\u{2069}'], "");
+                assert!(rendered.contains(arabic[index]), "{key}: {rendered}");
+                if index < 2 {
+                    let rendered = texts.get(Language::English, key, &args);
+                    let rendered = rendered.replace(['\u{2068}', '\u{2069}'], "");
+                    assert!(rendered.contains(english[index]), "{key}: {rendered}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn target_units_follow_count_forms() {
+        let texts = Texts::load();
+        for (unit_key, count, arabic, english) in [
+            ("unit-pages", 1, "الهدف: صفحة", "Target: 1 page"),
+            ("unit-pages", 2, "الهدف: صفحتان", "Target: 2 pages"),
+            ("unit-pages", 3, "الهدف: 3 صفحات", "Target: 3 pages"),
+            ("unit-pages", 11, "الهدف: 11 صفحةً", "Target: 11 pages"),
+            ("unit-pages", 100, "الهدف: 100 صفحة", "Target: 100 pages"),
+            ("unit-rakaat", 1, "الهدف: ركعة", "Target: 1 rakah"),
+            ("unit-rakaat", 2, "الهدف: ركعتان", "Target: 2 rakaat"),
+            ("unit-rakaat", 3, "الهدف: 3 ركعات", "Target: 3 rakaat"),
+            ("unit-rakaat", 11, "الهدف: 11 ركعةً", "Target: 11 rakaat"),
+            ("unit-rakaat", 100, "الهدف: 100 ركعة", "Target: 100 rakaat"),
+            ("unit-times", 1, "الهدف: مرة", "Target: 1 time"),
+            ("unit-times", 2, "الهدف: مرتان", "Target: 2 times"),
+            ("unit-times", 3, "الهدف: 3 مرات", "Target: 3 times"),
+            ("unit-times", 11, "الهدف: 11 مرةً", "Target: 11 times"),
+            ("unit-times", 100, "الهدف: 100 مرة", "Target: 100 times"),
+        ] {
+            for (language, expected) in [(Language::Arabic, arabic), (Language::English, english)] {
+                let unit = texts.get(language, unit_key, &[("count", FluentValue::from(count))]);
+                let rendered = texts.get(
+                    language,
+                    "deeds-target",
+                    &[
+                        ("amount", FluentValue::from(count)),
+                        ("unit", FluentValue::from(unit)),
+                    ],
+                );
+                assert_eq!(rendered.replace(['\u{2068}', '\u{2069}'], ""), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn counted_report_still_uses_arabic_indic_digits() {
+        let rendered = Texts::load().get_with_digits(
+            Language::Arabic,
+            Digits::ArabicIndic,
+            "reports-missed-days",
+            &[("days", FluentValue::from(3))],
+        );
+        assert_eq!(
+            rendered.replace(['\u{2068}', '\u{2069}'], ""),
+            "٣ أيام مستحقة غير مكتملة"
+        );
+    }
+
+    #[test]
     fn schedule_sentences_read_back_daily_weekdays_and_hijri_in_both_languages() {
         use werdy_core::{HijriRange, Schedule, Weekday};
         let texts = Texts::load();
@@ -395,8 +574,22 @@ mod tests {
             (Schedule::EveryDay, "Due every day.", "مستحق كل يوم."),
             (
                 Schedule::Weekdays(BTreeSet::from([Weekday::Monday, Weekday::Thursday])),
-                "Due every Monday, Thursday.",
-                "مستحق كل الاثنين، الخميس.",
+                "Due every Monday and Thursday.",
+                "مستحق كل الاثنين والخميس.",
+            ),
+            (
+                Schedule::Weekdays(BTreeSet::from([Weekday::Saturday])),
+                "Due every Saturday.",
+                "مستحق كل السبت.",
+            ),
+            (
+                Schedule::Weekdays(BTreeSet::from([
+                    Weekday::Saturday,
+                    Weekday::Monday,
+                    Weekday::Thursday,
+                ])),
+                "Due every Saturday, Monday, and Thursday.",
+                "مستحق كل السبت، الاثنين، والخميس.",
             ),
             (
                 Schedule::Hijri(HijriRange::ramadan()),

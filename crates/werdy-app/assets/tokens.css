@@ -28,6 +28,8 @@
   --on-mark-missed: #FFFFFF;
   --mark-open: #8A958E;
   --danger: #A3332C;
+  --overlay: #16201B;
+  --overlay-opacity: 45%;
   color-scheme: light;
 }
 
@@ -51,6 +53,8 @@
   --on-mark-missed: #1C0705;
   --mark-open: #7C8983;
   --danger: #E5736A;
+  --overlay: #000000;
+  --overlay-opacity: 65%;
   color-scheme: dark;
 }
 
@@ -76,6 +80,8 @@
     --on-mark-missed: #1C0705;
     --mark-open: #7C8983;
     --danger: #E5736A;
+    --overlay: #000000;
+    --overlay-opacity: 65%;
     color-scheme: dark;
   }
 }
@@ -97,6 +103,7 @@
 
   /* Size and space */
   --touch-min: 48px;
+  --rail-width: 96px;
   --gap-xs: 4px;
   --gap-s: 8px;
   --gap-m: 12px;
@@ -107,7 +114,6 @@
   --radius-card: 16px;
   --radius-pill: 999px;
   --dialog-max-width: 36rem;
-  --overlay-opacity: 45%;
   --stroke-thin: 1px;
   --stroke-strong: 2px;
 

@@ -1,13 +1,14 @@
 //! App state: the owner's data, the day on screen, and what each tap does.
 //! It calls werdy-core for every number and holds no scoring of its own.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CategoryKey, DailySheet, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit, HijriOffset,
     Mark, MarkEntry, Period, Report, Schedule, Score, ScoreBands, SlotKey, Target, TodaySummary,
     Weekday, WerdyDay, build_report, convert_mark_for_target, daily_sheet, delete_deed,
-    finished_day_summary, score, today_summary,
+    finished_day_summary, kept_days, milestone_to_show, score, today_summary, welcome_after_gap,
 };
 use werdy_store::{
     DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, Store, Theme, merge_records,
@@ -130,6 +131,79 @@ pub enum Screen {
     Settings,
     /// New or existing deed editor.
     Editor(Option<DeedId>),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum LocationRequestState {
+    #[default]
+    Idle,
+    Finding(u64),
+    Failed(&'static str),
+}
+
+/// Keeps a late browser answer from replacing a place chosen by the owner.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LocationRequest {
+    last_id: u64,
+    state: LocationRequestState,
+}
+
+impl LocationRequest {
+    pub fn start(&mut self) -> Option<u64> {
+        if self.is_finding() {
+            return None;
+        }
+        self.last_id = self.last_id.wrapping_add(1);
+        self.state = LocationRequestState::Finding(self.last_id);
+        Some(self.last_id)
+    }
+
+    pub fn is_finding(&self) -> bool {
+        matches!(self.state, LocationRequestState::Finding(_))
+    }
+
+    pub fn is_current(&self, id: u64) -> bool {
+        self.state == LocationRequestState::Finding(id)
+    }
+
+    pub fn succeed(&mut self, id: u64) -> bool {
+        if !self.is_current(id) {
+            return false;
+        }
+        self.state = LocationRequestState::Idle;
+        true
+    }
+
+    pub fn fail(&mut self, id: u64) -> bool {
+        self.fail_with(id, "location-error")
+    }
+
+    pub fn fail_to_save(&mut self, id: u64) -> bool {
+        self.fail_with(id, "location-save-error")
+    }
+
+    fn fail_with(&mut self, id: u64, key: &'static str) -> bool {
+        if !self.is_current(id) {
+            return false;
+        }
+        self.state = LocationRequestState::Failed(key);
+        true
+    }
+
+    pub fn cancel(&mut self) {
+        self.state = LocationRequestState::Idle;
+    }
+
+    pub fn save_error(&mut self) {
+        self.state = LocationRequestState::Failed("location-save-error");
+    }
+
+    pub fn error_key(&self) -> Option<&'static str> {
+        match self.state {
+            LocationRequestState::Failed(key) => Some(key),
+            _ => None,
+        }
+    }
 }
 
 /// Editable fields. A new deed starts daily, at any time, with no target.
@@ -269,10 +343,17 @@ pub struct AppState {
     pub screen: Screen,
     /// Screen to return to after changing location.
     pub location_return: Screen,
+    /// Feedback for one browser location request.
+    pub location_request: LocationRequest,
+    /// Whether Settings was opened from My deeds.
+    pub settings_back_to_deeds: bool,
     /// Selected rolling report period.
     pub report_period: Period,
     /// Number of whole periods before the latest one.
     pub report_steps_back: usize,
+    /// Welcome stays visible for this app opening only.
+    pub welcome_visible: bool,
+    kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
     pending_settings: PendingSettings,
     sets_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
@@ -300,8 +381,12 @@ impl AppState {
             save_status,
             screen,
             location_return: Screen::Deeds,
+            location_request: LocationRequest::default(),
+            settings_back_to_deeds: false,
             report_period: Period::Week,
             report_steps_back: 0,
+            welcome_visible: false,
+            kept_days_cache: RefCell::new(None),
             pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             deed_changes: BTreeMap::new(),
@@ -317,6 +402,64 @@ impl AppState {
             &self.slot_order,
             self.data.settings.calendar.clone(),
         )
+    }
+
+    /// Returns the highest reached private milestone that is still new.
+    pub fn milestone_notice(&self) -> Option<usize> {
+        let data = crate::consistency_data::notices().ok()?;
+        if data
+            .milestones
+            .iter()
+            .all(|level| self.data.dismissed_milestones.contains(level))
+        {
+            return None;
+        }
+        let cached = *self.kept_days_cache.borrow();
+        let kept = if let Some((day, kept)) = cached {
+            if day == self.today {
+                kept
+            } else {
+                self.count_kept_days()
+            }
+        } else {
+            self.count_kept_days()
+        };
+        milestone_to_show(kept, &data.milestones, &self.data.dismissed_milestones)
+    }
+
+    fn count_kept_days(&self) -> usize {
+        let kept = kept_days(&self.data.records(), self.today);
+        self.kept_days_cache.replace(Some((self.today, kept)));
+        kept
+    }
+
+    fn invalidate_kept_days(&self) {
+        self.kept_days_cache.replace(None);
+    }
+
+    pub fn dismiss_milestone(&mut self, level: usize) {
+        self.data.dismissed_milestones.insert(level);
+    }
+
+    /// Records a welcome before the first sheet renders on this opening.
+    pub fn show_welcome_on_open(&mut self, store: &dyn Store) {
+        if !self.data.first_run_complete {
+            return;
+        }
+        let Some(gap) = crate::consistency_data::notices()
+            .ok()
+            .map(|data| data.welcome_gap_days)
+        else {
+            return;
+        };
+        if self.data.last_welcome_day == Some(self.today)
+            || !welcome_after_gap(&self.data.records(), self.today, gap)
+        {
+            return;
+        }
+        self.data.last_welcome_day = Some(self.today);
+        self.save_to(store);
+        self.welcome_visible = true;
     }
 
     /// Returns done, partial and open or missed counts for the day on screen.
@@ -375,6 +518,9 @@ impl AppState {
         let note = DayNote::new(text, credit, self.today)?;
         self.data
             .set_day_note(day, Some(note), crate::platform::change_time());
+        if day < self.today {
+            self.invalidate_kept_days();
+        }
         Ok(())
     }
 
@@ -382,6 +528,9 @@ impl AppState {
     pub fn delete_day_note(&mut self, day: WerdyDay) {
         self.data
             .set_day_note(day, None, crate::platform::change_time());
+        if day < self.today {
+            self.invalidate_kept_days();
+        }
     }
 
     /// Builds the selected report from saved records before it is rendered.
@@ -390,6 +539,17 @@ impl AppState {
             &self.data.records(),
             self.report_period,
             self.report_steps_back,
+            self.today,
+            ScoreBands::default(),
+        )
+    }
+
+    /// Latest finished week for the summary beside the daily sheet.
+    pub fn recent_week(&self) -> Result<Report, Error> {
+        build_report(
+            &self.data.records(),
+            Period::Week,
+            0,
             self.today,
             ScoreBands::default(),
         )
@@ -408,12 +568,27 @@ impl AppState {
 
     /// Opens one screen.
     pub fn show_screen(&mut self, screen: Screen) {
+        if self.screen == Screen::FirstRunLocation && screen != Screen::FirstRunLocation {
+            self.location_request.cancel();
+        }
+        if screen == Screen::Settings
+            && self.screen != Screen::Settings
+            && (self.screen != Screen::FirstRunLocation || self.location_return != Screen::Settings)
+        {
+            self.settings_back_to_deeds = false;
+        }
         if screen == Screen::FirstRunLocation && self.screen == Screen::Settings {
             self.location_return = Screen::Settings;
         } else if screen == Screen::FirstRunLocation {
             self.location_return = Screen::Deeds;
         }
         self.screen = screen;
+    }
+
+    /// Opens Settings with a return path to My deeds.
+    pub fn open_settings_from_deeds(&mut self) {
+        self.show_screen(Screen::Settings);
+        self.settings_back_to_deeds = true;
     }
 
     pub fn set_location(&mut self, location: Location) -> Result<(), EditorError> {
@@ -426,12 +601,22 @@ impl AppState {
         Ok(())
     }
 
+    pub fn accept_location(&mut self, id: u64, location: Location) -> Result<bool, EditorError> {
+        if !self.location_request.is_current(id) {
+            return Ok(false);
+        }
+        self.set_location(location)?;
+        self.location_request.succeed(id);
+        Ok(true)
+    }
+
     pub fn set_prayer_method(&mut self, method: PrayerMethod) {
         self.data.settings.prayer_method = method;
         self.pending_settings.prayer_method = Some(method);
     }
 
     pub fn clear_location(&mut self) {
+        self.location_request.cancel();
         self.data.settings.location = None;
         self.pending_settings.location = Some(None);
     }
@@ -727,6 +912,7 @@ impl AppState {
             Some(DeedChange::Upsert { created: true, .. })
         );
         delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
+        self.invalidate_kept_days();
         self.data.names.remove(&id);
         self.data.starter_keys.remove(&id);
         self.data
@@ -778,6 +964,9 @@ impl AppState {
         let moved = today != self.today;
         self.viewing = viewing_after_today_change(self.today, today, self.viewing);
         self.today = today;
+        if moved {
+            self.invalidate_kept_days();
+        }
         if moved && !self.data.first_run_complete {
             self.redate_setup_deeds();
         }
@@ -868,6 +1057,9 @@ impl AppState {
             mark.map(|mark| MarkEntry::new(mark, self.today)),
             crate::platform::change_time(),
         );
+        if self.viewing < self.today {
+            self.invalidate_kept_days();
+        }
     }
 
     fn record_upsert(&mut self, id: DeedId) {
@@ -911,6 +1103,7 @@ impl AppState {
     }
 
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        self.invalidate_kept_days();
         self.data.last_deed_id = new_id.0;
         if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == old_id) {
             deed.id = new_id;
@@ -1010,6 +1203,12 @@ impl AppState {
         }
         self.save_status = match store.load() {
             Ok(stored) => {
+                if stored
+                    .as_ref()
+                    .is_some_and(|data| self.adopt_demo_reset(data))
+                {
+                    return;
+                }
                 if let Some(ref data) = stored
                     && !self.rebase_new_deeds(data)
                 {
@@ -1034,8 +1233,15 @@ impl AppState {
                 merged
                     .cleared_marks
                     .retain(|(id, _), _| live_ids.contains(id));
+                let history_changed = merged.marks != self.data.marks
+                    || merged.day_notes != self.data.day_notes
+                    || merged.deeds != self.data.deeds
+                    || merged.settings.calendar != self.data.settings.calendar;
                 match store.save(&merged) {
                     Ok(()) => {
+                        if history_changed {
+                            self.invalidate_kept_days();
+                        }
                         self.data = merged;
                         self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
@@ -1056,6 +1262,9 @@ impl AppState {
         }
         match store.load() {
             Ok(Some(stored)) => {
+                if self.adopt_demo_reset(&stored) {
+                    return;
+                }
                 if !self.rebase_new_deeds(&stored) {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
@@ -1069,18 +1278,37 @@ impl AppState {
                 self.apply_deed_changes(&mut merged);
                 if merged == stored {
                     self.data = stored;
+                    self.invalidate_kept_days();
                     self.save_status = SaveStatus::Saved;
                     self.deed_changes.clear();
                     self.pending_settings = PendingSettings::default();
                     self.sets_dirty = false;
                 } else {
                     self.data = merged;
+                    self.invalidate_kept_days();
                     self.save_to(store);
                 }
             }
             Ok(None) => {}
             Err(_) => self.save_status = SaveStatus::LoadFailed,
         }
+    }
+
+    fn adopt_demo_reset(&mut self, stored: &OwnerData) -> bool {
+        if stored.demo_generation.is_none() || stored.demo_generation == self.data.demo_generation {
+            return false;
+        }
+        self.data = stored.clone();
+        self.viewing = self.today;
+        self.screen = Screen::Sheet;
+        self.report_steps_back = 0;
+        self.welcome_visible = false;
+        self.pending_settings = PendingSettings::default();
+        self.sets_dirty = false;
+        self.deed_changes.clear();
+        self.invalidate_kept_days();
+        self.save_status = SaveStatus::Saved;
+        true
     }
 }
 
@@ -1093,11 +1321,61 @@ mod tests {
     };
 
     use super::{
-        AppState, EditorDraft, EditorError, SaveStatus, Screen, Step, Tap, is_on, stepped, tapped,
+        AppState, EditorDraft, EditorError, LocationRequest, SaveStatus, Screen, Step, Tap, is_on,
+        stepped, tapped,
     };
     use crate::starter::{five_prayers, slot_order};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn place_request_finds_then_accepts_location() -> TestResult {
+        let mut request = LocationRequest::default();
+        let id = request.start().ok_or("location request did not start")?;
+        assert!(request.is_finding());
+        assert!(request.start().is_none());
+        assert!(request.succeed(id));
+        assert!(!request.is_finding());
+        assert_eq!(request.error_key(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn place_request_error_shows_alert_and_retry_clears_it() -> TestResult {
+        let mut request = LocationRequest::default();
+        let id = request.start().ok_or("location request did not start")?;
+        assert!(request.fail(id));
+        assert!(!request.is_finding());
+        assert_eq!(request.error_key(), Some("location-error"));
+        assert!(request.start().is_some());
+        assert!(request.is_finding());
+        assert_eq!(request.error_key(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn chosen_city_ignores_late_place_answer() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let id = state
+            .location_request
+            .start()
+            .ok_or("request did not start")?;
+        let city = Location::new(
+            Some("cairo".to_owned()),
+            Some("EG".to_owned()),
+            30.04,
+            31.24,
+        )
+        .ok_or("bad city")?;
+        state.location_request.cancel();
+        state.set_location(city.clone())?;
+        let gps = Location::new(None, None, 31.0, 32.0).ok_or("bad GPS place")?;
+        assert!(!state.accept_location(id, gps)?);
+        assert!(!state.location_request.fail(id));
+        assert_eq!(state.data.settings.location, Some(city));
+        assert_eq!(state.location_request.error_key(), None);
+        Ok(())
+    }
 
     /// Store whose load and save always fail, like blocked browser storage.
     struct BrokenStore;
@@ -1123,6 +1401,113 @@ mod tests {
             let _ = store.save(&data);
         }
         Ok(AppState::start(store, today()?, slot_order()))
+    }
+
+    #[test]
+    fn welcome_is_saved_once_per_day_after_gap() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        data.set_mark(
+            DeedId(1),
+            first,
+            Some(werdy_core::MarkEntry::new(Mark::Missed, first)),
+            1,
+        );
+        store.save(&data)?;
+        let mut first_open = started(&store)?;
+        first_open.show_welcome_on_open(&store);
+        assert!(first_open.welcome_visible);
+        let mut second_open = started(&store)?;
+        second_open.show_welcome_on_open(&store);
+        assert!(!second_open.welcome_visible);
+        assert_eq!(second_open.data.last_welcome_day, Some(today()?));
+        Ok(())
+    }
+
+    #[test]
+    fn kept_day_milestone_can_be_dismissed_across_openings() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        for number in 20..=26 {
+            let day = WerdyDay::new(2026, 10, number)?;
+            for deed in &data.deeds {
+                data.marks.insert(
+                    (deed.id, day),
+                    werdy_core::MarkEntry::new(Mark::Missed, day),
+                );
+            }
+        }
+        store.save(&data)?;
+        let mut app = started(&store)?;
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.dismiss_milestone(7);
+        app.save_to(&store);
+        assert_eq!(started(&store)?.milestone_notice(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn milestone_count_reuses_today_cache_and_rechecks_changed_history() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = five_prayers(today()?)?;
+        let first = WerdyDay::new(2026, 10, 20)?;
+        for deed in &mut data.deeds {
+            if let Some(rule) = deed.rule_on(today()?).cloned() {
+                *deed = werdy_core::Deed::new(deed.id, first, rule);
+            }
+        }
+        for number in 20..=26 {
+            let day = WerdyDay::new(2026, 10, number)?;
+            for deed in &data.deeds {
+                if number != 26 || deed.id != DeedId(1) {
+                    data.marks.insert(
+                        (deed.id, day),
+                        werdy_core::MarkEntry::new(Mark::Missed, day),
+                    );
+                }
+            }
+        }
+        store.save(&data)?;
+        let mut app = started(&store)?;
+        assert_eq!(app.milestone_notice(), None);
+        assert_eq!(*app.kept_days_cache.borrow(), Some((today()?, 6)));
+        app.tap(DeedId(1), Tap::Done);
+        assert_eq!(*app.kept_days_cache.borrow(), Some((today()?, 6)));
+        app.show_previous_day();
+        app.tap(DeedId(1), Tap::Missed);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.save_day_note(app.viewing, "Rested", ExcuseCredit::None)?;
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.delete_day_note(app.viewing);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        assert_eq!(app.milestone_notice(), Some(7));
+        app.update_today(app.today.next()?);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn dismissed_milestones_skip_kept_day_count() -> TestResult {
+        let store = MemoryStore::default();
+        let mut app = started(&store)?;
+        app.data.dismissed_milestones.extend([7, 30, 100]);
+        assert_eq!(app.milestone_notice(), None);
+        assert_eq!(*app.kept_days_cache.borrow(), None);
+        Ok(())
     }
 
     #[test]
@@ -2109,6 +2494,46 @@ mod tests {
         state.show_screen(Screen::Deeds);
         state.show_screen(Screen::FirstRunLocation);
         assert_eq!(state.location_return, Screen::Deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn settings_back_only_follows_my_deeds_entry() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Settings);
+        assert!(!state.settings_back_to_deeds);
+        state.show_screen(Screen::Deeds);
+        state.open_settings_from_deeds();
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::Reports);
+        state.show_screen(Screen::Settings);
+        assert!(!state.settings_back_to_deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn settings_entry_from_my_deeds_survives_location_round_trip() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.show_screen(Screen::Deeds);
+        state.open_settings_from_deeds();
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::FirstRunLocation);
+        state.show_screen(state.location_return);
+        assert_eq!(state.screen, Screen::Settings);
+        assert!(state.settings_back_to_deeds);
+        state.show_screen(Screen::Deeds);
+        assert_eq!(state.screen, Screen::Deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn daily_week_strip_stays_on_latest_week_when_report_period_changes() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let latest = state.recent_week()?.days;
+        assert_eq!(latest.len(), 7);
+        state.select_report_period(Period::Month);
+        state.show_previous_period();
+        assert_eq!(state.recent_week()?.days, latest);
         Ok(())
     }
 

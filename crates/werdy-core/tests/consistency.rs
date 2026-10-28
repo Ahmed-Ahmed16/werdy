@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use werdy_core::{
     CalendarSettings, CategoryKey, Consistency, DEFAULT_CONSISTENCY_WINDOW, DayNote, Deed, DeedId,
     DeedRule, Error, ExcuseCredit, Mark, MarkEntry, OwnerRecords, Schedule, SlotKey, Target,
-    Weekday, WerdyDay, consistency, kept_days,
+    Weekday, WerdyDay, consistency, kept_days, milestone_to_show, welcome_after_gap,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -227,5 +227,47 @@ fn days_with_nothing_due_do_not_count_as_kept() -> Result<(), Error> {
     )]);
 
     assert_eq!(kept_days(&records(&deeds, &marks, &notes), day(10, 26)?), 1);
+    Ok(())
+}
+
+#[test]
+fn milestone_uses_highest_reached_threshold_until_dismissed() {
+    let levels = [7, 30, 100];
+    assert_eq!(milestone_to_show(6, &levels, &BTreeSet::new()), None);
+    assert_eq!(milestone_to_show(30, &levels, &BTreeSet::new()), Some(30));
+    assert_eq!(milestone_to_show(31, &levels, &BTreeSet::from([30])), None);
+    assert_eq!(
+        milestone_to_show(100, &levels, &BTreeSet::from([30])),
+        Some(100)
+    );
+}
+
+#[test]
+fn welcome_needs_prior_mark_and_three_empty_finished_days() -> Result<(), Error> {
+    let today = day(10, 27)?;
+    let deeds = [deed(1, day(10, 20)?, Schedule::EveryDay)];
+    let mut marks = Marks::new();
+    assert!(!welcome_after_gap(
+        &records(&deeds, &marks, &BTreeMap::new()),
+        today,
+        3
+    ));
+    marked(&mut marks, 1, day(10, 23)?, Mark::Missed);
+    assert!(welcome_after_gap(
+        &records(&deeds, &marks, &BTreeMap::new()),
+        today,
+        3
+    ));
+    marked(&mut marks, 1, day(10, 24)?, Mark::Done);
+    assert!(!welcome_after_gap(
+        &records(&deeds, &marks, &BTreeMap::new()),
+        today,
+        3
+    ));
+    assert!(!welcome_after_gap(
+        &records(&deeds, &marks, &BTreeMap::new()),
+        today,
+        0
+    ));
     Ok(())
 }

@@ -3,8 +3,9 @@
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 
-use super::context::use_i18n;
-use crate::state::{AppState, SaveStatus};
+use super::context::{use_actions, use_i18n};
+use super::reports::Series;
+use crate::state::{AppState, SaveStatus, Screen};
 
 /// Done, partial and open or missed counts for the day on screen.
 #[component]
@@ -54,6 +55,38 @@ pub fn TodayCard() -> Element {
             }
             if is_today {
                 p { class: "card-note", {i18n.t("summary-in-progress")} }
+            }
+        }
+    }
+}
+
+/// Finished days from the latest week, using the same scored cells as reports.
+#[component]
+pub fn WeekCard() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let report = state.read().recent_week();
+
+    rsx! {
+        section { class: "week-card report-card",
+            h2 { class: "card-title", {i18n.t("summary-last-week")} }
+            match report {
+                Ok(report) => rsx! {
+                    if let Some(percent) = report.overall.percent {
+                        p { class: "card-note", {i18n.t_with("reports-percent", &[("percent", FluentValue::from(percent))])} }
+                    }
+                    Series {
+                        entries: report.series,
+                        noted_days: report.noted_days,
+                        late_noted_days: report.late_noted_days,
+                        show_today: true,
+                    }
+                },
+                Err(_) => rsx! { p { class: "editor-error", role: "alert", {i18n.t("reports-error")} } },
+            }
+            button { class: "report-link", onclick: move |_| actions.view(|state| state.show_screen(Screen::Reports)),
+                {i18n.t("summary-open-reports")}
             }
         }
     }

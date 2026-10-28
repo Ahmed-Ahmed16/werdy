@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+mod consistency_data;
+mod demo;
 mod editor_data;
 mod i18n;
 mod location;

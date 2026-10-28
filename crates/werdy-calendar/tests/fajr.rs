@@ -1,7 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
 use werdy_calendar::{
-    Date, Error, LocalTime, Method, Moment, Place, default_method_for_country, fajr, werdy_day_for,
+    Date, Error, IshaRule, LocalTime, Method, Moment, Place, default_method_for_country, fajr,
+    werdy_day_for,
 };
 
 fn place(latitude: f64, longitude: f64, utc_offset_minutes: i32) -> Place {
@@ -72,6 +73,46 @@ fn fajr_in_alexandria_matches_reference_within_two_minutes() {
         .unwrap(),
         4,
         12,
+    );
+}
+
+#[test]
+fn fajr_in_saudi_cities_matches_umm_al_qura_within_two_minutes() {
+    // AlAdhan API, method 4, read 2026-10-28. Asia/Riyadh uses UTC+3 without daylight saving.
+    // https://api.aladhan.com/v1/timings/01-01-2026?latitude=21.42&longitude=39.83&method=4&timezonestring=Asia%2FRiyadh
+    // https://api.aladhan.com/v1/timings/21-06-2026?latitude=24.71&longitude=46.67&method=4&timezonestring=Asia%2FRiyadh
+    // https://api.aladhan.com/v1/timings/27-10-2026?latitude=21.54&longitude=39.17&method=4&timezonestring=Asia%2FRiyadh
+    for (city, latitude, longitude, expected) in [
+        ("Makkah", 21.42, 39.83, [(5u8, 37u8), (4, 11), (5, 4)]),
+        ("Riyadh", 24.71, 46.67, [(5, 14), (3, 33), (4, 38)]),
+        ("Jeddah", 21.54, 39.17, [(5, 40), (4, 14), (5, 7)]),
+    ] {
+        for ((month, day), (hour, minute)) in [(1, 1), (6, 21), (10, 27)].into_iter().zip(expected)
+        {
+            let actual = fajr(
+                date(month, day),
+                place(latitude, longitude, 180),
+                Method::UmmAlQura,
+            )
+            .unwrap();
+            let target = u16::from(hour) * 60 + u16::from(minute);
+            assert!(
+                actual.minutes_since_midnight().abs_diff(target) <= 2,
+                "{city} {month:02}-{day:02}: actual {actual:?}, expected {hour:02}:{minute:02}"
+            );
+        }
+    }
+}
+
+#[test]
+fn umm_al_qura_uses_fajr_angle_and_ramadan_isha_minutes() {
+    assert_eq!(Method::UmmAlQura.fajr_angle(), 18.5);
+    assert_eq!(
+        Method::UmmAlQura.isha_rule(),
+        IshaRule::MinutesAfterMaghrib {
+            usual: 90,
+            ramadan: 120
+        }
     );
 }
 
@@ -201,6 +242,7 @@ fn egypt_defaults_to_egyptian_method() {
         Method::EgyptianGeneralAuthority
     );
     assert_eq!(default_method_for_country("US"), Method::MuslimWorldLeague);
+    assert_eq!(default_method_for_country("SA"), Method::UmmAlQura);
 }
 
 #[test]

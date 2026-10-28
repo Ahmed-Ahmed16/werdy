@@ -40,7 +40,14 @@ schedule-hijri-sentence = مستحق خلال { $range }.
 schedule-hijri-unavailable = الجدول الهجري غير متاح.
 schedule-no-weekdays = اختر يومًا واحدًا على الأقل.
 schedule-list-separator = { "، " }
-deeds-target = الهدف: { $amount } { $unit }
+schedule-pair-separator = { " و" }
+schedule-final-separator = { "، و" }
+deeds-target =
+    { $amount ->
+        [one] الهدف: { $unit }
+        [two] الهدف: { $unit }
+       *[other] الهدف: { $amount } { $unit }
+    }
 category-prayer = صلاة
 category-quran = قرآن
 category-adhkar = أذكار

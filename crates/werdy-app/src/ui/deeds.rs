@@ -2,7 +2,10 @@
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_core::{Deed, DeedId, Schedule, active_deed_count, archived_deed_count};
+use werdy_core::{
+    DEFAULT_CONSISTENCY_WINDOW, Deed, DeedId, Schedule, active_deed_count, archived_deed_count,
+    consistency,
+};
 use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
@@ -83,7 +86,7 @@ pub fn MyDeeds() -> Element {
                 span { {i18n.t("location-open-from-deeds")} }
                 span { class: "deeds-meta", {i18n.t("location-open-detail")} }
             }
-            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.show_screen(Screen::Settings)),
+            button { class: "ready-set-entry", onclick: move |_| actions.view(|state| state.open_settings_from_deeds()),
                 span { {i18n.t("nav-settings")} }
             }
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
@@ -120,8 +123,18 @@ fn DeedListRow(deed: Deed) -> Element {
     let name = deed_name(&app, deed.id, &i18n);
     let category = i18n.t(&format!("category-{}", rule.category.0));
     let schedule = i18n.schedule_sentence(&rule.schedule);
+    let recent = consistency(
+        &app.data.records(),
+        deed.id,
+        app.today,
+        DEFAULT_CONSISTENCY_WINDOW,
+    );
+    let recent_line = i18n.consistency_line(recent);
     let target = rule.target.as_ref().map(|target| {
-        let unit = i18n.t(&format!("editor-unit-{}", target.unit()));
+        let unit = i18n.t_with(
+            &format!("unit-{}", target.unit()),
+            &[("count", FluentValue::from(target.amount() as i64))],
+        );
         i18n.t_with(
             "deeds-target",
             &[
@@ -138,6 +151,7 @@ fn DeedListRow(deed: Deed) -> Element {
             button { class: "deeds-row-main", onclick: move |_| actions.view(|state| state.show_screen(Screen::Editor(Some(id)))),
                 span { class: "deed-name", "{name}" }
                 span { class: "deeds-meta", "{category} · {schedule}" }
+                span { class: "deeds-meta", "{recent_line}" }
                 if let Some(target) = target { span { class: "deeds-meta", "{target}" } }
             }
             if not_due { span { class: "not-due-tag", {i18n.t("deeds-not-due")} } }

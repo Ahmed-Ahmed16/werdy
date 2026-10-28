@@ -8,15 +8,78 @@ use werdy_core::{Error, WerdyDay};
 use werdy_store::Store;
 use werdy_store::{Location, PrayerMethod, Settings};
 
-/// Opens the store for this platform: browser localStorage on the web, and an
-/// in memory store elsewhere until a file or SQLite store exists.
-pub fn open_store() -> Rc<dyn Store> {
+#[cfg(any(test, target_arch = "wasm32"))]
+const RECORDS_KEY: &str = "werdy.records";
+#[cfg(any(test, target_arch = "wasm32"))]
+const DEMO_RECORDS_KEY: &str = "werdy.demo.records";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataMode {
+    Normal,
+    Demo,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+impl DataMode {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Normal => RECORDS_KEY,
+            Self::Demo => DEMO_RECORDS_KEY,
+        }
+    }
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn mode_from_query(query: &str) -> DataMode {
+    if query
+        .trim_start_matches('?')
+        .split('&')
+        .any(|part| part.split('=').next() == Some("demo"))
+    {
+        DataMode::Demo
+    } else {
+        DataMode::Normal
+    }
+}
+
+/// Reads the query once when the root component starts.
+pub fn data_mode() -> DataMode {
     #[cfg(target_arch = "wasm32")]
     {
-        Rc::new(web::LocalStore)
+        web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .map_or(DataMode::Normal, |query| mode_from_query(&query))
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
+        DataMode::Normal
+    }
+}
+
+/// Current app path without the demo query.
+pub fn app_address() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|window| window.location().pathname().ok())
+            .unwrap_or_else(|| "/".to_owned())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        "/".to_owned()
+    }
+}
+
+/// Opens the store for this platform: browser localStorage on the web, and an
+/// in memory store elsewhere until a file or SQLite store exists.
+pub fn open_store(mode: DataMode) -> Rc<dyn Store> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Rc::new(web::LocalStore { key: mode.key() })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = mode;
         Rc::new(werdy_store::MemoryStore::default())
     }
 }
@@ -47,6 +110,7 @@ fn method(method: PrayerMethod) -> Method {
     match method {
         PrayerMethod::EgyptianGeneralAuthority => Method::EgyptianGeneralAuthority,
         PrayerMethod::MuslimWorldLeague => Method::MuslimWorldLeague,
+        PrayerMethod::UmmAlQura => Method::UmmAlQura,
     }
 }
 
@@ -183,6 +247,9 @@ pub fn fajr_today(settings: &Settings) -> Result<Option<u16>, Error> {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+const LOCATION_TIMEOUT_MS: u32 = 15_000;
+
 /// Browser GPS is requested only after a tap.
 pub fn request_location(
     on_success: impl FnOnce(Location) + 'static,
@@ -200,12 +267,35 @@ pub fn request_location(
             return;
         };
         let error_callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_error)));
+        // Browser timeout excludes the permission prompt, so bound the full wait too.
+        let timer_error = error_callback.clone();
+        let timer = wasm_bindgen::closure::Closure::once(move || {
+            if let Some(callback) = timer_error.borrow_mut().take() {
+                callback();
+            }
+        });
+        if window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                timer.as_ref().unchecked_ref(),
+                LOCATION_TIMEOUT_MS as i32,
+            )
+            .is_err()
+            && let Some(callback) = error_callback.borrow_mut().take()
+        {
+            callback();
+            return;
+        }
+        timer.forget();
         let invalid_coordinates = error_callback.clone();
+        let completed_error = error_callback.clone();
         let success =
             wasm_bindgen::closure::Closure::once_into_js(move |position: web_sys::Position| {
                 let coordinates = position.coords();
                 match Location::new(None, None, coordinates.latitude(), coordinates.longitude()) {
-                    Some(location) => on_success(location),
+                    Some(location) => {
+                        let _ = completed_error.borrow_mut().take();
+                        on_success(location);
+                    }
                     None => {
                         if let Some(callback) = invalid_coordinates.borrow_mut().take() {
                             callback();
@@ -220,10 +310,13 @@ pub fn request_location(
                     callback();
                 }
             });
+        let options = web_sys::PositionOptions::new();
+        options.set_timeout(LOCATION_TIMEOUT_MS);
         if geo
-            .get_current_position_with_error_callback(
+            .get_current_position_with_error_callback_and_options(
                 success.unchecked_ref(),
                 Some(failure.unchecked_ref()),
+                &options,
             )
             .is_err()
             && let Some(callback) = error_callback.borrow_mut().take()
@@ -254,6 +347,21 @@ pub fn change_time() -> u64 {
     }
 }
 
+/// Distinguishes a reset from stale browser tabs that still hold old demo marks.
+pub fn demo_generation() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        format!("{}-{}", change_time(), js_sys::Math::random())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        format!("{}-{}", change_time(), NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 /// Local hour and minute for the temporary time slot boundaries.
 pub fn local_time() -> (u8, u8) {
     #[cfg(target_arch = "wasm32")]
@@ -278,6 +386,25 @@ pub fn scroll_slot(slot: &str) {
     }
     #[cfg(not(target_arch = "wasm32"))]
     let _ = slot;
+}
+
+/// Restores the top after a new screen has rendered its content.
+pub fn scroll_to_top() {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(window) = web_sys::window() {
+        use wasm_bindgen::JsCast;
+
+        let scrolling_window = window.clone();
+        let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
+            scrolling_window.scroll_to_with_x_and_y(0.0, 0.0);
+        });
+        if window
+            .request_animation_frame(callback.unchecked_ref())
+            .is_err()
+        {
+            window.scroll_to_with_x_and_y(0.0, 0.0);
+        }
+    }
 }
 
 /// Opens the browser's modal dialog and puts focus on its note field.
@@ -338,18 +465,41 @@ pub use web::WatchHandle;
 #[cfg(not(target_arch = "wasm32"))]
 pub struct WatchHandle;
 
-/// Watches for a new day and for changes saved by another browser tab.
-pub fn watch_changes(
-    on_clock: impl FnMut() + 'static,
-    on_storage: impl FnMut() + 'static,
-) -> WatchHandle {
+/// Matches the width where the week card becomes visible.
+#[cfg(any(target_arch = "wasm32", test))]
+fn week_card_visible_at(width: f64) -> bool {
+    width >= 840.0
+}
+
+/// Reads current width for the week card.
+pub fn wide_layout() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        web::watch_changes(on_clock, on_storage)
+        web_sys::window()
+            .and_then(|window| window.inner_width().ok())
+            .and_then(|width| width.as_f64())
+            .is_some_and(week_card_visible_at)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (on_clock, on_storage);
+        false
+    }
+}
+
+/// Watches for a new day, saved changes, and viewport resize.
+pub fn watch_changes(
+    mode: DataMode,
+    on_clock: impl FnMut() + 'static,
+    on_storage: impl FnMut() + 'static,
+    on_resize: impl FnMut() + 'static,
+) -> WatchHandle {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web::watch_changes(mode.key(), on_clock, on_storage, on_resize)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (mode, on_clock, on_storage, on_resize);
         WatchHandle
     }
 }
@@ -359,6 +509,49 @@ mod tests {
     use werdy_calendar::{Date, Method, Place, fajr};
     use werdy_core::WerdyDay;
     use werdy_store::{Location, PrayerMethod, Settings};
+
+    #[test]
+    fn demo_query_selects_only_demo_records_key() {
+        assert_eq!(super::mode_from_query("?demo").key(), "werdy.demo.records");
+        assert_eq!(
+            super::mode_from_query("?demo=1").key(),
+            "werdy.demo.records"
+        );
+        assert_eq!(
+            super::mode_from_query("?other=1&demo=").key(),
+            "werdy.demo.records"
+        );
+        assert_eq!(
+            super::mode_from_query("?demography=1").key(),
+            "werdy.records"
+        );
+        assert_eq!(super::mode_from_query("").key(), "werdy.records");
+    }
+
+    #[test]
+    fn week_card_starts_at_expanded_breakpoint() {
+        assert!(!super::week_card_visible_at(839.0));
+        assert!(super::week_card_visible_at(840.0));
+    }
+
+    #[test]
+    fn saudi_setting_uses_umm_al_qura_fajr() -> Result<(), Box<dyn std::error::Error>> {
+        let settings = Settings {
+            location: Location::new(
+                Some("riyadh".to_owned()),
+                Some("SA".to_owned()),
+                24.71,
+                46.67,
+            ),
+            prayer_method: PrayerMethod::UmmAlQura,
+            ..Settings::default()
+        };
+        let time =
+            super::fajr_with_offset_lookup(WerdyDay::new(2026, 1, 1)?, &settings, 180, |_| 180)?
+                .ok_or("no Fajr")?;
+        assert!(time.abs_diff(5 * 60 + 14) <= 2);
+        Ok(())
+    }
 
     #[test]
     fn spring_forward_uses_offset_at_fajr() -> Result<(), Box<dyn std::error::Error>> {
@@ -479,14 +672,12 @@ mod web {
     use wasm_bindgen::{JsCast, closure::Closure};
     use werdy_store::{OwnerData, Store, StoreError, from_json, to_json};
 
-    /// Key under which the records live in localStorage.
-    const KEY: &str = "werdy.records";
-
     pub struct WatchHandle {
         window: Option<web_sys::Window>,
         document: Option<web_sys::Document>,
         clock: Closure<dyn FnMut(web_sys::Event)>,
         storage: Closure<dyn FnMut(web_sys::StorageEvent)>,
+        resize: Closure<dyn FnMut(web_sys::Event)>,
         _timer: Closure<dyn FnMut()>,
         interval: Option<i32>,
     }
@@ -502,6 +693,10 @@ mod web {
                     "storage",
                     self.storage.as_ref().unchecked_ref(),
                 );
+                let _ = window.remove_event_listener_with_callback(
+                    "resize",
+                    self.resize.as_ref().unchecked_ref(),
+                );
                 if let Some(interval) = self.interval {
                     window.clear_interval_with_handle(interval);
                 }
@@ -516,8 +711,10 @@ mod web {
     }
 
     pub fn watch_changes(
+        key: &'static str,
         on_clock: impl FnMut() + 'static,
         mut on_storage: impl FnMut() + 'static,
+        mut on_resize: impl FnMut() + 'static,
     ) -> WatchHandle {
         let on_clock = Rc::new(RefCell::new(on_clock));
         let clock_event = on_clock.clone();
@@ -525,10 +722,12 @@ mod web {
             Box::new(move |_: web_sys::Event| (clock_event.borrow_mut())()) as Box<dyn FnMut(_)>,
         );
         let storage = Closure::wrap(Box::new(move |event: web_sys::StorageEvent| {
-            if event.key().as_deref() == Some(KEY) {
+            if event.key().as_deref() == Some(key) {
                 on_storage();
             }
         }) as Box<dyn FnMut(_)>);
+        let resize =
+            Closure::wrap(Box::new(move |_: web_sys::Event| on_resize()) as Box<dyn FnMut(_)>);
         let timer = Closure::wrap(Box::new(move || (on_clock.borrow_mut())()) as Box<dyn FnMut()>);
         let window = web_sys::window();
         let document = window.as_ref().and_then(web_sys::Window::document);
@@ -537,6 +736,8 @@ mod web {
                 window.add_event_listener_with_callback("focus", clock.as_ref().unchecked_ref());
             let _ = window
                 .add_event_listener_with_callback("storage", storage.as_ref().unchecked_ref());
+            let _ =
+                window.add_event_listener_with_callback("resize", resize.as_ref().unchecked_ref());
             window
                 .set_interval_with_callback_and_timeout_and_arguments_0(
                     timer.as_ref().unchecked_ref(),
@@ -555,13 +756,16 @@ mod web {
             document,
             clock,
             storage,
+            resize,
             _timer: timer,
             interval,
         }
     }
 
     /// Store backed by the browser's localStorage.
-    pub struct LocalStore;
+    pub struct LocalStore {
+        pub key: &'static str,
+    }
 
     fn storage() -> Result<web_sys::Storage, StoreError> {
         web_sys::window()
@@ -574,14 +778,14 @@ mod web {
     impl Store for LocalStore {
         fn load(&self) -> Result<Option<OwnerData>, StoreError> {
             let text = storage()?
-                .get_item(KEY)
+                .get_item(self.key)
                 .map_err(|error| StoreError::Backend(format!("{error:?}")))?;
             text.as_deref().map(from_json).transpose()
         }
 
         fn save(&self, data: &OwnerData) -> Result<(), StoreError> {
             storage()?
-                .set_item(KEY, &to_json(data)?)
+                .set_item(self.key, &to_json(data)?)
                 .map_err(|error| StoreError::Backend(format!("{error:?}")))
         }
     }

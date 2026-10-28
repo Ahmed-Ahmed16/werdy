@@ -5,7 +5,7 @@ use fluent_bundle::FluentValue;
 use werdy_core::{SheetRow, SheetSlot};
 use werdy_store::DeedName;
 
-use super::context::use_i18n;
+use super::context::{use_actions, use_i18n};
 use super::icons::CheckIcon;
 use super::marks::{CountStepper, MarkButton};
 use crate::state::{AppState, Tap};
@@ -16,7 +16,23 @@ use crate::{platform, state};
 pub fn Sheet() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let actions = use_actions();
     let sheet = state.read().sheet();
+    let (welcome, milestone) = {
+        let app = state.read();
+        if app.is_today() {
+            (app.welcome_visible, app.milestone_notice())
+        } else {
+            (false, None)
+        }
+    };
+    let saying = if welcome {
+        crate::consistency_data::notices()
+            .ok()
+            .and_then(|data| data.sayings.into_iter().find(|entry| entry.is_verified()))
+    } else {
+        None
+    };
     let viewed_day = sheet.day;
     let mut last_scroll_day = use_signal(|| None::<(werdy_core::WerdyDay, werdy_core::WerdyDay)>);
     use_effect(move || {
@@ -25,34 +41,62 @@ pub fn Sheet() -> Element {
         if last_scroll_day() == Some(day) {
             return;
         }
+        if !app.is_today() {
+            last_scroll_day.set(Some(day));
+            return;
+        }
+        if !should_scroll_to_slot(app.is_today(), welcome, milestone.is_some()) {
+            return;
+        }
         last_scroll_day.set(Some(day));
-        if app.is_today() {
-            let (hour, minute) = platform::local_time();
-            let wanted = state::current_slot(hour, minute);
-            let slots = app.sheet().slots;
-            let order = &app.slot_order;
-            let target = slots
-                .iter()
-                .find(|slot| slot.slot.0 == wanted)
-                .or_else(|| {
-                    let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
-                    slots.iter().find(|slot| {
-                        order
-                            .iter()
-                            .position(|key| key == &slot.slot)
-                            .unwrap_or(order.len())
-                            >= wanted_index
-                    })
+        let (hour, minute) = platform::local_time();
+        let wanted = state::current_slot(hour, minute);
+        let slots = app.sheet().slots;
+        let order = &app.slot_order;
+        let target = slots
+            .iter()
+            .find(|slot| slot.slot.0 == wanted)
+            .or_else(|| {
+                let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
+                slots.iter().find(|slot| {
+                    order
+                        .iter()
+                        .position(|key| key == &slot.slot)
+                        .unwrap_or(order.len())
+                        >= wanted_index
                 })
-                .or_else(|| slots.last());
-            if let Some(slot) = target {
-                platform::scroll_slot(&slot.slot.0);
-            }
+            })
+            .or_else(|| slots.last());
+        if let Some(slot) = target {
+            platform::scroll_slot(&slot.slot.0);
         }
     });
 
     rsx! {
         section { class: "sheet",
+            if welcome {
+                div { class: "sheet-notice",
+                    p { {i18n.t("sheet-welcome-back")} }
+                    if let Some(saying) = saying {
+                        p { class: "sheet-saying",
+                            {i18n.t_with("sheet-saying", &[("text", FluentValue::from(match i18n.language {
+                                crate::i18n::Language::Arabic => saying.text_ar,
+                                crate::i18n::Language::English => saying.text_en,
+                            }))])}
+                        }
+                        small { {i18n.t_with("sheet-saying-source", &[("source", FluentValue::from(saying.source))])} }
+                    }
+                }
+            }
+            if let Some(level) = milestone {
+                div { class: "sheet-notice sheet-milestone",
+                    p { {i18n.t_with("sheet-milestone", &[("days", FluentValue::from(level))])} }
+                    button { class: "notice-dismiss", aria_label: i18n.t("sheet-dismiss-milestone"),
+                        onclick: move |_| actions.change(|app| app.dismiss_milestone(level)),
+                        {i18n.t("sheet-dismiss-milestone")}
+                    }
+                }
+            }
             if sheet.slots.is_empty() {
                 p { class: "sheet-empty", {i18n.t("sheet-empty")} }
             }
@@ -61,6 +105,10 @@ pub fn Sheet() -> Element {
             }
         }
     }
+}
+
+fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool {
+    is_today && !welcome && !milestone
 }
 
 /// One time slot. A fully done slot folds into one line until it is opened.
@@ -141,5 +189,19 @@ fn DeedRow(row: SheetRow) -> Element {
                 MarkButton { deed_id, tap: Tap::Missed, mark }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_scroll_to_slot;
+
+    #[test]
+    fn notices_keep_sheet_at_the_top_until_they_are_gone() {
+        assert!(!should_scroll_to_slot(true, true, false));
+        assert!(!should_scroll_to_slot(true, false, true));
+        assert!(!should_scroll_to_slot(true, true, true));
+        assert!(!should_scroll_to_slot(false, false, false));
+        assert!(should_scroll_to_slot(true, false, false));
     }
 }

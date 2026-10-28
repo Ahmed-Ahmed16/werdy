@@ -140,32 +140,59 @@ pub enum Method {
     EgyptianGeneralAuthority,
     /// Muslim World League.
     MuslimWorldLeague,
+    /// Umm al Qura.
+    UmmAlQura,
+}
+
+/// Rule for Isha in a prayer calculation method.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum IshaRule {
+    /// Angle below the horizon, in degrees.
+    Angle(f64),
+    /// Minutes after Maghrib, outside and during Ramadan.
+    MinutesAfterMaghrib { usual: u16, ramadan: u16 },
 }
 
 struct MethodParameters {
     fajr_angle: f64,
-    isha_angle: f64,
+    isha: IshaRule,
 }
 
-const METHOD_PARAMETERS: [MethodParameters; 2] = [
+const METHOD_PARAMETERS: [MethodParameters; 3] = [
     MethodParameters {
         fajr_angle: 19.5,
-        isha_angle: 17.5,
+        isha: IshaRule::Angle(17.5),
     },
     MethodParameters {
         fajr_angle: 18.0,
-        isha_angle: 17.0,
+        isha: IshaRule::Angle(17.0),
+    },
+    MethodParameters {
+        fajr_angle: 18.5,
+        isha: IshaRule::MinutesAfterMaghrib {
+            usual: 90,
+            ramadan: 120,
+        },
     },
 ];
 
 impl Method {
-    /// Returns Fajr and Isha angles below the horizon, in degrees.
-    pub fn angles(self) -> (f64, f64) {
-        let parameters = match self {
+    fn parameters(self) -> &'static MethodParameters {
+        match self {
             Self::EgyptianGeneralAuthority => &METHOD_PARAMETERS[0],
             Self::MuslimWorldLeague => &METHOD_PARAMETERS[1],
-        };
-        (parameters.fajr_angle, parameters.isha_angle)
+            Self::UmmAlQura => &METHOD_PARAMETERS[2],
+        }
+    }
+
+    /// Returns Fajr angle below the horizon, in degrees.
+    pub fn fajr_angle(self) -> f64 {
+        self.parameters().fajr_angle
+    }
+
+    /// Returns the method's Isha rule.
+    pub fn isha_rule(self) -> IshaRule {
+        self.parameters().isha
     }
 }
 
@@ -238,7 +265,7 @@ pub enum Error {
 /// Computes Fajr for a Gregorian date and a known local UTC offset.
 pub fn fajr(date: Date, place: Place, method: Method) -> Result<LocalTime, Error> {
     let latitude = place.latitude * PI / 180.0;
-    let fajr_altitude = -method.angles().0 * PI / 180.0;
+    let fajr_altitude = -method.fajr_angle() * PI / 180.0;
     // Cases: prior, same, and next solar date can map to the requested local date.
     for day_offset in -1..=1 {
         let (equation_of_time, declination) = solar_position(date, day_offset);
@@ -300,6 +327,8 @@ pub fn werdy_day_for(moment: Moment, place: Place, method: Method) -> Result<Dat
 pub fn default_method_for_country(iso_code: &str) -> Method {
     if iso_code.eq_ignore_ascii_case("EG") {
         Method::EgyptianGeneralAuthority
+    } else if iso_code.eq_ignore_ascii_case("SA") {
+        Method::UmmAlQura
     } else {
         Method::MuslimWorldLeague
     }

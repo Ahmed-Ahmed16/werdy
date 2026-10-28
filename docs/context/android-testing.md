@@ -4,7 +4,7 @@ Checked on 2026-10-27 on the owner's PC, read only (nothing was installed). Feed
 
 ## Update 2026-10-28: set up for the sign in spike (#13)
 
-Installed and working for the Dioxus track (ADR 0032):
+Installed and working for the Dioxus track (ADR 0035):
 
 * Rust's Android targets. Builds use the MSVC host toolchain; the GNU one fails on `windows-sys` with a `dlltool` error.
 * Android cmdline tools and NDK 28.2.13676358 (r28c). The new sdkmanager wants slash paths: `sdkmanager "ndk/28.2.13676358"`.
