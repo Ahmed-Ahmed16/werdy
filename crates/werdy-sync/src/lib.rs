@@ -139,7 +139,7 @@ pub struct Sync {
     bindings: Vec<Binding>,
     observed: Vec<Change>,
     outbox: Vec<Pending>,
-    // Legacy rows refused by server limits stay local until corrected.
+    // Rows refused by server limits stay local until corrected.
     #[serde(default)]
     local_only: Vec<Change>,
     accepted: Vec<Accepted>,
@@ -169,7 +169,7 @@ impl Sync {
         &self.outbox
     }
 
-    /// Reasons legacy rows remain local. Caller logs these without row contents.
+    /// Reasons oversized rows remain local. Caller logs these without row contents.
     pub fn local_only_errors(&self) -> Vec<SyncError> {
         self.local_only
             .iter()
@@ -253,8 +253,8 @@ impl Sync {
     /// Remote deeds retain their wire ids through saved bindings. Existing local
     /// numeric ids need no migration and two offline counters cannot collide.
     /// Untouched default settings do not replace account preferences on import.
-    /// New text and key limit violations return an error before queueing.
-    /// Legacy oversized operations stay local until corrected. Inspect
+    /// Oversized rows and their related deed rows stay local until corrected,
+    /// including on first capture. Other rows can still queue and sync. Inspect
     /// `local_only_errors` to log the reasons without exposing row contents.
     /// No state changes on invalid local input or counter exhaustion.
     pub fn capture(&mut self, records: &OwnerData) -> Result<(), SyncError> {
@@ -287,11 +287,6 @@ impl Sync {
             }
         }
         let snapshot = rows::snapshot(&mut staged, records)?;
-        for change in &snapshot {
-            if !staged.observed.contains(change) {
-                rows::validate_limits(change)?;
-            }
-        }
         let blocked: std::collections::BTreeSet<_> = snapshot
             .iter()
             .filter(|row| rows::validate_limits(row).is_err())
@@ -303,6 +298,7 @@ impl Sync {
                 continue;
             }
             if rows::validate_limits(change).is_err() {
+                staged.keep_local(change.clone());
                 continue;
             }
             if !staged.observed.contains(change)
@@ -345,7 +341,7 @@ impl Sync {
     /// Captures edits, measures the clock, pushes then pulls from the last read
     /// cursor. The push cursor must not skip changes made by another phone.
     /// Failed pushes, pulls, validation and cancelled futures keep valid outbox rows.
-    /// Legacy oversized rows are retained separately as local only data.
+    /// Oversized rows are retained separately as local only data.
     /// Backend retries keep original server stamps, even if a reply was lost.
     /// Only a fully validated exchange replaces records and clears the queue.
     pub async fn sync<B: Backend>(

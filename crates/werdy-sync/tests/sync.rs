@@ -672,7 +672,7 @@ fn a_deed_with_more_than_32_rules_is_sent_as_one_atomic_group() {
 }
 
 #[test]
-fn oversized_text_and_keys_are_rejected_before_entering_outbox() {
+fn oversized_text_and_keys_stay_local_without_blocking_capture() {
     let mut cases = Vec::new();
     let mut note = history("valid");
     note.set_day_note(
@@ -726,12 +726,14 @@ fn oversized_text_and_keys_are_rejected_before_entering_outbox() {
         records.deeds[0] = Deed::new(DeedId(1), day(), changed);
         cases.push((records, reason));
     }
-    for (records, reason) in cases {
+    for (mut records, reason) in cases {
         let mut engine = Sync::new("limits").unwrap();
+        engine.capture(&records).unwrap();
         assert_eq!(
-            engine.capture(&records),
-            Err(SyncError::Invalid(reason.into()))
+            engine.local_only_errors(),
+            vec![SyncError::Invalid(reason.into())]
         );
+        sync(&mut engine, &mut FakeBackend::new(1000), &mut records);
         assert!(engine.outbox().is_empty());
     }
     let mut boundary = history(&"ن".repeat(512));
@@ -746,6 +748,83 @@ fn oversized_text_and_keys_are_rejected_before_entering_outbox() {
     let mut engine = Sync::new("boundary").unwrap();
     engine.capture(&boundary).unwrap();
     sync(&mut engine, &mut FakeBackend::new(1000), &mut boundary);
+}
+
+#[test]
+fn first_capture_keeps_oversized_note_local_and_later_shortening_syncs_it() {
+    let huge = "ن".repeat(4097);
+    let mut records = history("valid deed");
+    records.set_day_note(
+        day(),
+        Some(DayNote::new(&huge, ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    let mut engine = Sync::new("import").unwrap();
+    engine.capture(&records).unwrap();
+    assert_eq!(
+        engine.local_only_errors(),
+        vec![SyncError::Invalid("note text exceeds 8192 bytes".into())]
+    );
+    assert!(!engine.outbox().is_empty());
+    assert!(
+        engine
+            .outbox()
+            .iter()
+            .all(|row| !matches!(row.change, Change::Note { .. }))
+    );
+    let mut backend = FakeBackend::new(1000);
+    sync(&mut engine, &mut backend, &mut records);
+    assert_eq!(records.day_notes[&day()].text(), huge);
+    let mut other = OwnerData::default();
+    let mut reader = Sync::new("reader").unwrap();
+    sync(&mut reader, &mut backend, &mut other);
+    assert_eq!(other.deeds.len(), 1);
+    assert_eq!(other.marks.len(), 1);
+    assert!(other.day_notes.is_empty());
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("short", ExcuseCredit::None, day()).unwrap()),
+        2,
+    );
+    engine.capture(&records).unwrap();
+    assert!(engine.local_only_errors().is_empty());
+    assert!(engine.outbox().iter().any(
+        |row| matches!(&row.change, Change::Note { note: Some(note), .. } if note.text() == "short")
+    ));
+    sync(&mut engine, &mut backend, &mut records);
+    sync(&mut reader, &mut backend, &mut other);
+    assert_eq!(other.day_notes[&day()].text(), "short");
+}
+
+#[test]
+fn later_oversized_note_edit_stays_local_while_other_edits_sync() {
+    let mut records = history("valid deed");
+    let mut engine = Sync::new("later").unwrap();
+    let mut backend = FakeBackend::new(1000);
+    sync(&mut engine, &mut backend, &mut records);
+    let huge = "ن".repeat(4097);
+    records.set_day_note(
+        day(),
+        Some(DayNote::new(&huge, ExcuseCredit::None, day()).unwrap()),
+        2,
+    );
+    records.set_mark(
+        DeedId(1),
+        day(),
+        Some(MarkEntry::new(Mark::Missed, day())),
+        2,
+    );
+    engine.capture(&records).unwrap();
+    assert_eq!(
+        engine.local_only_errors(),
+        vec![SyncError::Invalid("note text exceeds 8192 bytes".into())]
+    );
+    sync(&mut engine, &mut backend, &mut records);
+    assert_eq!(records.day_notes[&day()].text(), huge);
+    let mut other = OwnerData::default();
+    sync(&mut Sync::new("reader").unwrap(), &mut backend, &mut other);
+    assert!(other.day_notes.is_empty());
+    assert_eq!(other.marks.values().next().unwrap().mark, Mark::Missed);
 }
 
 #[test]

@@ -61,8 +61,8 @@ does not inspect their meaning.
   and response bodies. Native HTTP redirects are disabled. Browser fetch uses
   its own redirect behavior; pass the trusted project origin directly.
 
-Capture refuses new notes, names and keys outside their byte limits. Legacy
-oversized outbox rows stay local, with logged reasons, until corrected. Related
+Capture keeps notes, names and keys outside their byte limits local, including
+on first capture, with logged reasons until corrected. Related
 deed rows stay local together so they cannot create incomplete server deeds.
 Other server limit failures still return errors and keep the outbox.
 

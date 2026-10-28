@@ -59,8 +59,8 @@ batches remain safe to retry if a later batch fails. Incomplete downloaded deeds
 wait for their rules without blocking the pull cursor or applying their marks.
 
 Editors refuse notes over 8192 UTF8 bytes and names over 1024 UTF8 bytes.
-Capture also checks these limits and keys from 1 to 128 bytes. Old oversized
-outbox rows move to saved local only rows, with related deed operations kept
+Capture checks these limits and keys from 1 to 128 bytes. Oversized rows,
+including on first capture, stay in saved local only rows, with related deed operations kept
 together. The app logs limit reasons without row contents. Other records keep
 syncing. Local only rows overlay server data until corrected, then queue again.
 
