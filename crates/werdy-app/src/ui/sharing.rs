@@ -132,35 +132,6 @@ fn run(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>, re
     });
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn revoked_access_drops_view_and_list_but_network_failure_allows_retry() -> Result<(), SyncError>
-    {
-        let person = SharePerson {
-            id: "owner".into(),
-            email: Some("owner@example.test".into()),
-            created_at: 1,
-        };
-        let mut sharing = Sharing {
-            watched: vec![person.clone()],
-            selected: Some(person),
-            view: Some(WatchView::new()?),
-            busy: true,
-            ..Sharing::default()
-        };
-        let request = Request::Read("owner".into(), Box::new(WatchView::new()?));
-        assert!(!sharing.receive(&request, Err(SyncError::Backend("offline".into()))));
-        assert!(sharing.view.is_some() && sharing.selected.is_some());
-        assert!(!sharing.busy);
-        assert!(!sharing.receive(&request, Err(SyncError::Http(403))));
-        assert!(sharing.view.is_none() && sharing.selected.is_none() && sharing.watched.is_empty());
-        assert_eq!(sharing.error, Some("sharing-revoked"));
-        Ok(())
-    }
-}
-
 fn refresh_view(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>) {
     let data = sharing.peek().clone();
     let Some(person) = data.selected else {
@@ -336,5 +307,34 @@ fn WatchedContent(view: WatchView, language: String, today: werdy_core::WerdyDay
                 super::sheet::Sheet {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn revoked_access_drops_view_and_list_but_network_failure_allows_retry() -> Result<(), SyncError>
+    {
+        let person = SharePerson {
+            id: "owner".into(),
+            email: Some("owner@example.test".into()),
+            created_at: 1,
+        };
+        let mut sharing = Sharing {
+            watched: vec![person.clone()],
+            selected: Some(person),
+            view: Some(WatchView::new()?),
+            busy: true,
+            ..Sharing::default()
+        };
+        let request = Request::Read("owner".into(), Box::new(WatchView::new()?));
+        assert!(!sharing.receive(&request, Err(SyncError::Backend("offline".into()))));
+        assert!(sharing.view.is_some() && sharing.selected.is_some());
+        assert!(!sharing.busy);
+        assert!(!sharing.receive(&request, Err(SyncError::Http(403))));
+        assert!(sharing.view.is_none() && sharing.selected.is_none() && sharing.watched.is_empty());
+        assert_eq!(sharing.error, Some("sharing-revoked"));
+        Ok(())
     }
 }
