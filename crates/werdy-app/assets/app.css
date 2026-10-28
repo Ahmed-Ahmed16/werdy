@@ -1400,6 +1400,67 @@ textarea:focus-visible {
   font-size: var(--size-caption);
 }
 
+.reminder-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  cursor: pointer;
+}
+
+.reminder-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.reminder-switch span {
+  padding-inline-start: calc(var(--touch-min) + var(--gap-s));
+  pointer-events: none;
+}
+
+.reminder-switch span::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: var(--gap-m);
+  width: var(--touch-min);
+  height: calc(var(--gap-l) + 2 * var(--gap-xs));
+  border: var(--stroke-thin) solid var(--text-muted);
+  border-radius: var(--radius-pill);
+  background: var(--track);
+}
+
+.reminder-switch span::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: var(--gap-xs);
+  inset-block-start: var(--gap-l);
+  width: var(--gap-l);
+  height: var(--gap-l);
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+
+.reminder-switch input:checked + span::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.reminder-switch input:checked + span::after {
+  inset-inline-start: calc(var(--touch-min) - var(--gap-l) - var(--gap-xs));
+  background: var(--on-primary);
+}
+
+.reminder-switch input:focus-visible + span::before {
+  outline: var(--stroke-strong) solid var(--primary);
+  outline-offset: var(--stroke-strong);
+}
+
 .settings-location {
   display: flex;
   align-items: center;

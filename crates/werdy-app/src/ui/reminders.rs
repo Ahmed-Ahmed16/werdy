@@ -82,7 +82,7 @@ fn SlotReminderRow(slot: &'static str) -> Element {
     rsx! {
         fieldset { class: "settings-row",
             legend { {i18n.t(&format!("slot-{slot}"))} }
-            label { class: "settings-choice",
+            label { class: "reminder-switch",
                 input { r#type: "checkbox", checked: rule.is_some(), onchange: move |event| {
                     let reminder = if !event.checked() { None }
                         else if prayer { Some(SlotReminder::Prayer { offset_minutes: PrayerDelay::try_from(delay).unwrap_or_default() }) }
