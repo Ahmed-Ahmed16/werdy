@@ -1,5 +1,7 @@
 # werdy app
 
+The `android` CI job checks Android code with clippy and uploads a debug APK for ARM64 phones.
+
 ## App name and icons
 
 From the repo root on Windows, run:
