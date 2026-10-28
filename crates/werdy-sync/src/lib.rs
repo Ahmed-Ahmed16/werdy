@@ -8,13 +8,15 @@
 //! The optional `supabase` feature provides a network adapter. No executor or
 //! blocking storage is hidden here.
 //!
-//! Share code redemption belongs at this backend seam in issue #24. It is not
-//! part of the owner change stream yet.
+//! Share codes and watched streams use separate Supabase adapter RPCs.
+//! [`WatchView`] projects watched records without capturing or pushing them.
 
 #![forbid(unsafe_code)]
 
 mod fake;
 mod rows;
+mod watch;
+pub use watch::WatchView;
 #[cfg(feature = "supabase")]
 mod supabase;
 
@@ -24,6 +26,8 @@ pub use rows::{Change, DeedKey, DeedRow, MAX_NAME_BYTES, MAX_NOTE_BYTES, Setting
 pub use supabase::SupabaseBackend;
 #[cfg(feature = "supabase")]
 pub use supabase::auth::{Session, SupabaseAuth};
+#[cfg(feature = "supabase")]
+pub use supabase::sharing::{ShareCode, SharePerson, WatchPage};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;

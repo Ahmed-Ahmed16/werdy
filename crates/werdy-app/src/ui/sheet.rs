@@ -20,7 +20,7 @@ pub fn Sheet() -> Element {
     let sheet = state.read().sheet();
     let (welcome, milestone) = {
         let app = state.read();
-        if app.is_today() {
+        if app.is_today() && !super::sharing::read_only() {
             (app.welcome_visible, app.milestone_notice())
         } else {
             (false, None)

@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod runtime;
+pub mod sharing;
 pub mod signin;
 pub mod storage;
 
@@ -33,6 +34,9 @@ pub struct Schedule {
 }
 
 impl Schedule {
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
     pub fn saved(&mut self, now: u64) {
         self.due = Some(now.saturating_add(3_000));
         self.dirty = true;
@@ -60,6 +64,7 @@ impl Schedule {
 
 #[derive(Default)]
 pub struct Account {
+    pub sharing_busy: bool,
     pub session: Option<Session>,
     pub checkpoint: Option<Checkpoint>,
     pub schedule: Schedule,

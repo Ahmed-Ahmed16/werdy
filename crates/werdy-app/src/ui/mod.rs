@@ -14,6 +14,7 @@ mod rail;
 mod reminders;
 mod reports;
 mod settings;
+mod sharing;
 mod sheet;
 mod summary;
 
@@ -229,10 +230,14 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
     });
     use_context_provider(|| context::Actions::new(state, store));
     use_context_provider(|| state);
+    let sharing = sharing::use_sharing();
 
     let settings = &state.read().data.settings;
     let language = Language::from_code(&settings.language);
     let texts = use_context::<Rc<Texts>>();
+    if sharing.read().selected.is_some() {
+        return rsx! { sharing::WatchedScreen {} };
+    }
     let demo_banner = texts.get(language, "demo-banner", &[]);
     let demo_reset = texts.get(language, "demo-reset", &[]);
     let demo_leave = texts.get(language, "demo-leave", &[]);

@@ -14,6 +14,7 @@ pub fn AccountSection() -> Element {
     let status = use_context::<Signal<AccountView>>();
     let state = use_context::<Signal<AppState>>();
     let mut local_error = use_signal(|| false);
+    let sharing = try_use_context::<Signal<super::sharing::Sharing>>();
     if !handle.0.enabled {
         return rsx! {};
     }
@@ -38,8 +39,13 @@ pub fn AccountSection() -> Element {
                 } else { p { role: "status", {i18n.t("account-waiting")} } }
                 button { class: "secondary-button", onclick: move |_| {
                     let records = state.read().data.clone();
-                    local_error.set(signout_store.sign_out(&records).is_err());
-                }, {i18n.t("account-signout")} }
+                    let signed_out = signout_store.sign_out(&records).is_ok();
+                    local_error.set(!signed_out);
+                    // Drop the old account's codes and watchers now, not at the next poll.
+                    if let (true, Some(mut sharing)) = (signed_out, sharing) {
+                        sharing.set(super::sharing::Sharing::default());
+                    }
+                },{i18n.t("account-signout")} }
             } else {
                 p { {i18n.t("account-purpose")} }
                 SignInButton {}

@@ -8,6 +8,7 @@ key and the owner's access token. Each RPC sends `apikey` and
 and refreshes sessions. The app refreshes two minutes early, or once after a 401.
 Native requests need the caller's Tokio runtime. The dev dependency on Tokio
 runs the ignored native HTTP test. Browser requests use fetch.
+Watcher sharing uses separate RPCs and an isolated projection. See `sharing.md`.
 
 ## Database
 

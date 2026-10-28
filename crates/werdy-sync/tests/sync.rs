@@ -901,3 +901,74 @@ fn legacy_oversized_outbox_keeps_local_rows_and_does_not_block_valid_changes() {
     assert_eq!(fresh.deeds.len(), 1);
     assert_eq!(fresh.day_notes[&day()].text(), "fixed");
 }
+
+#[test]
+fn watched_pages_preserve_late_and_excuse_signs_without_touching_owner_state() {
+    let mut records = history("shared");
+    records.settings.location = werdy_store::Location::new(None, None, 30.04, 31.24);
+    let late = day().next().unwrap().next().unwrap().next().unwrap();
+    records.set_mark(
+        DeedId(1),
+        day(),
+        Some(MarkEntry::new(Mark::Missed, late)),
+        1,
+    );
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("ill", ExcuseCredit::Half, late).unwrap()),
+        1,
+    );
+    let mut backend = FakeBackend::new(1000);
+    let mut owner = Sync::new("owner").unwrap();
+    sync(&mut owner, &mut backend, &mut records);
+    let before = serde_json::to_string(&owner).unwrap();
+    let stream = run(backend.pull(0)).unwrap();
+    let mut watched = werdy_sync::WatchView::new().unwrap();
+    for accepted in stream.changes {
+        let cursor = accepted.stamp.sequence;
+        watched
+            .apply(Batch {
+                changes: vec![accepted],
+                cursor,
+            })
+            .unwrap();
+    }
+    assert_eq!(watched.records().day_notes[&day()].text(), "ill");
+    assert!(watched.records().day_notes[&day()].is_late_for(day()));
+    assert_eq!(
+        watched.records().day_notes[&day()].credit(),
+        ExcuseCredit::Half
+    );
+    let local = watched.records().deeds[0].id;
+    assert!(
+        werdy_core::daily_sheet(
+            &watched.records().deeds,
+            &watched.records().marks,
+            day(),
+            &[],
+            watched.records().settings.calendar.clone()
+        )
+        .slots
+        .iter()
+        .flat_map(|slot| &slot.rows)
+        .any(|row| row.deed_id == local && row.added_later)
+    );
+    assert_eq!(serde_json::to_string(&owner).unwrap(), before);
+    assert!(watched.records().settings.location.is_none());
+    assert_eq!(
+        werdy_core::score(&watched.records().records(), &[day()], late).unwrap(),
+        werdy_core::score(&records.records(), &[day()], late).unwrap()
+    );
+    let cursor = watched.cursor();
+    let before = watched.records().clone();
+    assert!(
+        watched
+            .apply(Batch {
+                changes: vec![],
+                cursor: cursor + 1
+            })
+            .is_err()
+    );
+    assert_eq!(watched.records(), &before);
+    assert_eq!(watched.cursor(), cursor);
+}
