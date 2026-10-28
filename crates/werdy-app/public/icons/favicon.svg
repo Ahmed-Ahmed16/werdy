@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <rect width="108" height="108" fill="#0F5C45"/>
+  <g fill="#FFFFFF">
+    <circle cx="54" cy="32" r="4"/>
+    <circle cx="67" cy="36" r="4"/>
+    <circle cx="75" cy="47" r="4"/>
+    <circle cx="75" cy="61" r="4"/>
+    <circle cx="67" cy="72" r="4"/>
+    <circle cx="54" cy="76" r="4"/>
+    <circle cx="41" cy="72" r="4"/>
+    <circle cx="33" cy="61" r="4"/>
+    <circle cx="33" cy="47" r="4"/>
+    <circle cx="41" cy="36" r="4"/>
+  </g>
+  <polyline points="45,54 52,61 64,47" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
