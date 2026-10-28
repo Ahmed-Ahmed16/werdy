@@ -104,11 +104,11 @@ fn browser_storage() -> Result<web_sys::Storage, StoreError> {
         .ok_or_else(failure)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(test, not(any(target_arch = "wasm32", target_os = "android"))))]
 #[derive(Default)]
 pub struct MemoryVault(std::cell::RefCell<std::collections::BTreeMap<File, String>>);
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(test, not(any(target_arch = "wasm32", target_os = "android"))))]
 impl Vault for MemoryVault {
     fn read(&self, file: File) -> Result<Option<String>, StoreError> {
         Ok(self.0.borrow().get(&file).cloned())
