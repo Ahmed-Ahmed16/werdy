@@ -32,6 +32,54 @@ jobs:
           test -n "$CHROMEDRIVER"
           cargo test --locked -p werdy-app --bin werdy-app --target wasm32-unknown-unknown
 
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK 35 and NDK r27d LTS
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;$NDK_VERSION"
+      - name: Select pinned NDK tools
+        run: |
+          ndk="$ANDROID_HOME/ndk/$NDK_VERSION"
+          tools="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "CC_x86_64_linux_android=$tools/x86_64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "AR_x86_64_linux_android=$tools/llvm-ar" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-ndk-${{ env.NDK_VERSION }}-dx-0.7.10
+      - name: Install Dioxus CLI
+        run: |
+          if ! command -v dx >/dev/null || [[ "$(dx --version)" != "dioxus 0.7.10 ("* ]]; then
+            cargo install dioxus-cli --version 0.7.10 --locked --force
+          fi
+      - name: Check Android code
+        run: cargo clippy -p werdy-app --target x86_64-linux-android --no-default-features --features mobile -- -D warnings
+      # ARM64 covers current phones. No device or emulator is needed to build.
+      - name: Build debug APK for ARM64 phones
+        run: dx build --android --no-default-features --features mobile --target aarch64-linux-android
+        working-directory: crates/werdy-app
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: werdy-android-debug-arm64
+          path: target/dx/werdy-app/debug/android/app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
   pages:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check

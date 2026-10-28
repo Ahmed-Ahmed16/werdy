@@ -1,5 +1,7 @@
 # werdy app
 
+The `android` CI job checks Android code with clippy and uploads a debug APK for ARM64 phones.
+
 ## Browser tests
 
 From the repo root, install the runner version matching `wasm-bindgen` in
