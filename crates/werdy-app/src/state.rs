@@ -11,7 +11,8 @@ use werdy_core::{
     finished_day_summary, kept_days, milestone_to_show, score, today_summary, welcome_after_gap,
 };
 use werdy_store::{
-    DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, Store, Theme, merge_records,
+    ClockTime, DeedName, Digits, Location, OwnerData, PrayerMethod, Settings, SlotReminder, Store,
+    Theme, merge_records,
 };
 
 /// Keeps the owner's past day in view, or follows today when today moves.
@@ -218,6 +219,7 @@ pub struct EditorDraft {
     pub target_enabled: bool,
     pub target_amount: u32,
     pub target_unit: String,
+    pub reminder: Option<ClockTime>,
 }
 
 impl Default for EditorDraft {
@@ -231,6 +233,7 @@ impl Default for EditorDraft {
             target_enabled: false,
             target_amount: 1,
             target_unit: "times".to_owned(),
+            reminder: None,
         }
     }
 }
@@ -303,6 +306,8 @@ struct PendingSettings {
     location: Option<Option<Location>>,
     prayer_method: Option<PrayerMethod>,
     offsets: BTreeMap<WerdyDay, HijriOffset>,
+    slot_reminders: BTreeMap<SlotKey, Option<SlotReminder>>,
+    deed_reminders: BTreeMap<DeedId, Option<ClockTime>>,
 }
 
 impl PendingSettings {
@@ -323,6 +328,29 @@ impl PendingSettings {
             settings.prayer_method = method;
         }
         settings.calendar.merge_changes(&self.offsets);
+        for (slot, reminder) in &self.slot_reminders {
+            match reminder {
+                Some(reminder) => {
+                    settings
+                        .reminders
+                        .slots
+                        .insert(slot.clone(), reminder.clone());
+                }
+                None => {
+                    settings.reminders.slots.remove(slot);
+                }
+            }
+        }
+        for (id, reminder) in &self.deed_reminders {
+            match reminder {
+                Some(time) => {
+                    settings.reminders.deeds.insert(*id, *time);
+                }
+                None => {
+                    settings.reminders.deeds.remove(id);
+                }
+            }
+        }
     }
 }
 
@@ -782,6 +810,7 @@ impl AppState {
         Some(EditorDraft {
             name,
             original_name: None,
+            reminder: self.data.settings.reminders.deeds.get(&id).copied(),
             category: rule.category.clone(),
             slot: rule.slot.clone(),
             schedule: rule.schedule.clone(),
@@ -852,6 +881,7 @@ impl AppState {
             _ => DeedName::Text(name.to_owned()),
         };
         self.data.names.insert(id, name.clone());
+        self.set_deed_reminder(id, draft.reminder);
         if let Some(deed) = self.data.deeds.iter().find(|deed| deed.id == id) {
             let created = created
                 || matches!(
@@ -912,6 +942,7 @@ impl AppState {
             Some(DeedChange::Upsert { created: true, .. })
         );
         delete_deed(&mut self.data.deeds, &mut self.data.marks, id);
+        self.set_deed_reminder(id, None);
         self.invalidate_kept_days();
         self.data.names.remove(&id);
         self.data.starter_keys.remove(&id);
@@ -1040,6 +1071,35 @@ impl AppState {
         self.pending_settings.theme = Some(theme);
     }
 
+    #[cfg(any(test, target_os = "android"))]
+    pub fn set_slot_reminder(&mut self, slot: SlotKey, reminder: Option<SlotReminder>) {
+        match &reminder {
+            Some(reminder) => {
+                self.data
+                    .settings
+                    .reminders
+                    .slots
+                    .insert(slot.clone(), reminder.clone());
+            }
+            None => {
+                self.data.settings.reminders.slots.remove(&slot);
+            }
+        }
+        self.pending_settings.slot_reminders.insert(slot, reminder);
+    }
+
+    fn set_deed_reminder(&mut self, id: DeedId, reminder: Option<ClockTime>) {
+        match reminder {
+            Some(time) => {
+                self.data.settings.reminders.deeds.insert(id, time);
+            }
+            None => {
+                self.data.settings.reminders.deeds.remove(&id);
+            }
+        }
+        self.pending_settings.deed_reminders.insert(id, reminder);
+    }
+
     pub fn set_hijri_offset(&mut self, offset: HijriOffset) -> Result<(), Error> {
         self.data
             .settings
@@ -1105,6 +1165,9 @@ impl AppState {
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
         self.invalidate_kept_days();
         self.data.last_deed_id = new_id.0;
+        let reminder = self.data.settings.reminders.deeds.remove(&old_id);
+        self.pending_settings.deed_reminders.remove(&old_id);
+        self.set_deed_reminder(new_id, reminder);
         if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == old_id) {
             deed.id = new_id;
         }
@@ -1246,6 +1309,7 @@ impl AppState {
                         self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
                         self.deed_changes.clear();
+                        crate::platform::reschedule_reminders(&self.data);
                         SaveStatus::Saved
                     }
                     Err(_) => SaveStatus::SaveFailed,
@@ -2690,6 +2754,105 @@ mod tests {
         let saved = started(&store)?.data.settings;
         assert_eq!(saved.calendar.offset_on(today()?).days(), -1);
         assert_eq!(saved.calendar.offset_on(next_day).days(), 0);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reminder_tests {
+    use super::*;
+    use werdy_store::{MemoryStore, PrayerDelay};
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn start(store: &dyn Store) -> Result<AppState, Error> {
+        Ok(AppState::start(
+            store,
+            WerdyDay::new(2026, 10, 28)?,
+            crate::starter::slot_order(),
+        ))
+    }
+
+    #[test]
+    fn reminder_changes_survive_save_reload_and_deed_deletion() -> TestResult {
+        let store = MemoryStore::default();
+        let mut app = start(&store)?;
+        let time = ClockTime::new(8, 30)?;
+        let id = app.save_deed(
+            None,
+            &EditorDraft {
+                name: "Read".into(),
+                reminder: Some(time),
+                ..Default::default()
+            },
+        )?;
+        app.set_slot_reminder(
+            SlotKey::new("asr"),
+            Some(SlotReminder::Prayer {
+                offset_minutes: PrayerDelay::try_from(10)?,
+            }),
+        );
+        app.save_to(&store);
+        let mut loaded = start(&store)?;
+        assert_eq!(
+            loaded.draft_for(id).ok_or("missing draft")?.reminder,
+            Some(time)
+        );
+        assert_eq!(
+            loaded.data.settings.reminders.slots,
+            app.data.settings.reminders.slots
+        );
+        loaded.delete_deed_confirmed(id, true)?;
+        loaded.set_slot_reminder(SlotKey::new("asr"), None);
+        loaded.save_to(&store);
+        let saved = start(&store)?;
+        assert!(saved.data.settings.reminders.slots.is_empty());
+        assert!(!saved.data.settings.reminders.deeds.contains_key(&id));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_save_keeps_other_reminders_and_remaps_new_deed_reminder_on_id_collision() -> TestResult
+    {
+        let store = MemoryStore::default();
+        let mut first = start(&store)?;
+        let mut stale = start(&store)?;
+        let slot = SlotKey::new("night");
+        first.set_slot_reminder(
+            slot.clone(),
+            Some(SlotReminder::Clock(ClockTime::new(21, 0)?)),
+        );
+        let first_id = first.save_deed(
+            None,
+            &EditorDraft {
+                name: "First".into(),
+                ..Default::default()
+            },
+        )?;
+        first.save_to(&store);
+        let time = ClockTime::new(9, 0)?;
+        stale.save_deed(
+            None,
+            &EditorDraft {
+                name: "Second".into(),
+                reminder: Some(time),
+                ..Default::default()
+            },
+        )?;
+        stale.save_to(&store);
+        let loaded = start(&store)?;
+        let second_id = loaded
+            .data
+            .names
+            .iter()
+            .find_map(|(id, name)| (*name == DeedName::Text("Second".into())).then_some(*id))
+            .ok_or("missing second deed")?;
+        assert_ne!(first_id, second_id);
+        assert_eq!(
+            loaded.data.settings.reminders.deeds.get(&second_id),
+            Some(&time)
+        );
+        assert!(!loaded.data.settings.reminders.deeds.contains_key(&first_id));
+        assert!(loaded.data.settings.reminders.slots.contains_key(&slot));
         Ok(())
     }
 }

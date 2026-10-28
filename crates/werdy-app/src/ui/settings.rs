@@ -53,6 +53,11 @@ pub fn SettingsScreen() -> Element {
         ],
     );
 
+    #[cfg(target_os = "android")]
+    let reminders = rsx! { super::reminders::ReminderSettings {} };
+    #[cfg(not(target_os = "android"))]
+    let reminders = rsx! {};
+
     rsx! {
         section { class: "settings-screen",
             header { class: "settings-header",
@@ -61,6 +66,7 @@ pub fn SettingsScreen() -> Element {
                     button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
                 }
             }
+            {reminders}
             div { class: "settings-card",
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-language")} }

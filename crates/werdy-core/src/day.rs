@@ -94,7 +94,8 @@ impl WerdyDay {
         HijriDate::from_day(self, offset)
     }
 
-    pub(crate) fn days_since_unix_epoch(self) -> i64 {
+    /// Returns the civil day count since 1970-01-01.
+    pub fn days_since_unix_epoch(self) -> i64 {
         i64::from(self.0)
     }
 

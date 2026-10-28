@@ -10,6 +10,8 @@ mod location;
 mod platform;
 #[cfg(test)]
 mod pwa_check;
+#[cfg(any(test, target_os = "android"))]
+mod reminders;
 mod starter;
 mod state;
 mod ui;

@@ -6,3 +6,6 @@ title = "werdy"
 
 [bundle]
 identifier = "com.ahmedhossam.werdy"
+
+[android]
+compile_sdk = 35

@@ -11,6 +11,9 @@ mod file_store;
 #[cfg(not(target_arch = "wasm32"))]
 pub use file_store::FileStore;
 
+mod reminders;
+pub use reminders::{ClockTime, PrayerDelay, ReminderSettings, SlotReminder};
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -149,6 +152,8 @@ pub struct Settings {
     pub location: Option<Location>,
     #[serde(default)]
     pub prayer_method: PrayerMethod,
+    #[serde(default)]
+    pub reminders: ReminderSettings,
 }
 
 fn default_calendar() -> CalendarSettings {
@@ -164,6 +169,7 @@ impl Default for Settings {
             calendar: default_calendar(),
             location: None,
             prayer_method: PrayerMethod::default(),
+            reminders: ReminderSettings::default(),
         }
     }
 }
@@ -455,6 +461,7 @@ impl From<LegacySettings> for Settings {
             calendar: CalendarSettings::new(old.hijri_offset),
             location: None,
             prayer_method: PrayerMethod::default(),
+            reminders: ReminderSettings::default(),
         }
     }
 }

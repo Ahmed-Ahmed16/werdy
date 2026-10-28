@@ -5965,6 +5965,7 @@ dependencies = [
  "werdy-calendar",
  "werdy-core",
  "werdy-data",
+ "werdy-reminders",
  "werdy-store",
 ]
 
@@ -5987,6 +5988,15 @@ dependencies = [
  "fluent-syntax",
  "serde",
  "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
+name = "werdy-reminders"
+version = "0.1.0"
+dependencies = [
+ "werdy-calendar",
+ "werdy-core",
+ "werdy-store",
 ]
 
 [[package]]

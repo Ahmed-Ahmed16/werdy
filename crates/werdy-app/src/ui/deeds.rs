@@ -193,6 +193,10 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
         }
         draft
     });
+    #[cfg(target_os = "android")]
+    let reminder = rsx! { super::reminders::DeedReminder { draft } };
+    #[cfg(not(target_os = "android"))]
+    let reminder = rsx! {};
     let mut error = use_signal(|| None::<EditorError>);
     let mut confirm_delete = use_signal(|| false);
     let (Ok(catalog), Ok(ranges)) = (editor_data::catalog(), editor_data::ranges()) else {
@@ -285,6 +289,7 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                     }
                 }
             }
+            {reminder}
             p { class: "deeds-meta", {i18n.t("editor-from-today")} }
             if let Some(id) = id {
                 if !archived { button { class: "secondary-button", onclick: move |_| { if actions.change_deed(|state| state.archive_deed(id)).is_ok() { actions.view(|state| state.show_screen(Screen::Deeds)); } else { error.set(Some(EditorError::RuleChange)); } }, {i18n.t("editor-archive")} } }
