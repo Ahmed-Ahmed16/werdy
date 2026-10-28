@@ -10,6 +10,28 @@ use werdy_store::{Location, PrayerMethod, Settings};
 
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(target_os = "android")]
+mod android_reminders;
+
+/// Queues Android delivery after a successful save. Other platforms keep settings only.
+pub fn reschedule_reminders(owner: &werdy_store::OwnerData) {
+    #[cfg(target_os = "android")]
+    android_reminders::enqueue(owner);
+    #[cfg(not(target_os = "android"))]
+    let _ = owner;
+}
+
+#[cfg(target_os = "android")]
+pub fn reminder_permission() -> Result<bool, String> {
+    android_reminders::permission()
+}
+
+#[cfg(target_os = "android")]
+pub fn request_reminder_permission() {
+    if let Err(error) = android_reminders::request_permission() {
+        dioxus::prelude::warn!("Reminder permission failed: {error}");
+    }
+}
 
 #[cfg(any(test, target_os = "android"))]
 fn local_clock_at(seconds: i64, offset: i32) -> Result<(WerdyDay, u8, u8), Error> {

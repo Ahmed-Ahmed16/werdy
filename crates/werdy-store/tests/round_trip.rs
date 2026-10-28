@@ -77,6 +77,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
                 31.24,
             ),
             prayer_method: werdy_store::PrayerMethod::EgyptianGeneralAuthority,
+            reminders: Default::default(),
         },
     })
 }

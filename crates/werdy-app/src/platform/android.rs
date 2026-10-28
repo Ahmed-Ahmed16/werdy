@@ -42,7 +42,7 @@ pub(super) fn clock() -> Result<Clock, Error> {
 }
 
 /// Falls back to UTC if the VM or timezone lookup fails.
-fn offset_at(seconds: i64) -> i32 {
+pub(super) fn offset_at(seconds: i64) -> i32 {
     let Some(millis) = seconds.checked_mul(1_000) else {
         return 0;
     };

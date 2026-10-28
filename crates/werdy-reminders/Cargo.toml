@@ -1,0 +1,16 @@
+[package]
+name = "werdy-reminders"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+werdy-core = { path = "../werdy-core" }
+werdy-store = { path = "../werdy-store" }
+werdy-calendar = { path = "../werdy-calendar" }
+
+[lints]
+workspace = true
