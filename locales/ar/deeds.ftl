@@ -29,6 +29,7 @@ editor-delete = حذف العمل مع كل علاماته
 editor-confirm-delete = هل تحذف هذا العمل وكل علاماته؟ لا يمكن التراجع عن ذلك.
 editor-confirm = حذف نهائي
 editor-error-empty-name = أدخل اسمًا.
+editor-error-name-too-long = الاسم طويل جدًا. اختصره ثم احفظه.
 editor-error-no-weekday = اختر يومًا واحدًا على الأقل.
 editor-error-invalid-target = اختر هدفًا صالحًا.
 editor-error-rule-change = تعذر إجراء هذا التغيير اليوم.

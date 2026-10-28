@@ -23,7 +23,15 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
+
+/// Stable identity for a deed across installs and account sessions. It contains
+/// no account identity, credential, cursor or server revision.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct DeedKey {
+    pub install: String,
+    pub sequence: u64,
+}
 
 /// Device only coordinates, stored as hundredths of a degree.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -177,6 +185,8 @@ impl Default for Settings {
 /// Everything the app keeps for one owner, in the shapes core works with.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OwnerData {
+    /// Lasting deed identities. Kept with records when account state is removed.
+    pub deed_keys: BTreeMap<DeedId, DeedKey>,
     /// Demo seed identity. Normal records leave this empty.
     pub demo_generation: Option<String>,
     /// Setup is complete. Older saved records count as complete.
@@ -290,7 +300,8 @@ impl OwnerData {
 /// For each deed and day, the greater change time wins.
 /// A mark or note clear has a saved tombstone. Equal times keep the stored copy.
 /// Version one marks have time zero, so any new change wins over them.
-pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
+/// Conflicting deed identities return an error without changing either copy.
+pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData, StoreError> {
     let mut merged = stored.clone();
     merged
         .dismissed_milestones
@@ -320,7 +331,37 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     merged
         .cleared_marks
         .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
-    merged
+    merged.merge_deed_keys(local)?;
+    Ok(merged)
+}
+
+impl OwnerData {
+    /// Copies identities only after the caller has chosen the surviving deeds.
+    /// Conflicting identities need caller intervention, never silent reassignment.
+    pub fn merge_deed_keys(&mut self, local: &Self) -> Result<(), StoreError> {
+        let ids: BTreeSet<_> = self
+            .deeds
+            .iter()
+            .map(|deed| deed.id)
+            .chain(self.deleted_deeds.iter().copied())
+            .collect();
+        let mut keys = self.deed_keys.clone();
+        keys.retain(|id, _| ids.contains(id));
+        for (id, key) in &local.deed_keys {
+            if ids.contains(id) {
+                if keys.get(id).is_some_and(|stored| stored != key) {
+                    return Err(StoreError::Corrupt("conflicting deed identity".into()));
+                }
+                keys.insert(*id, key.clone());
+            }
+        }
+        let unique: BTreeSet<_> = keys.values().collect();
+        if unique.len() != keys.len() {
+            return Err(StoreError::Corrupt("duplicate deed identity".into()));
+        }
+        self.deed_keys = keys;
+        Ok(())
+    }
 }
 
 fn note_change_time(data: &OwnerData, day: WerdyDay) -> u64 {
@@ -401,6 +442,8 @@ fn change_time(data: &OwnerData, key: &(DeedId, WerdyDay)) -> u64 {
 #[derive(Serialize, Deserialize)]
 struct DataFile<S = Settings> {
     schema_version: u32,
+    #[serde(default)]
+    deed_keys: Vec<DeedKeyEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     demo_generation: Option<String>,
     #[serde(default = "legacy_complete")]
@@ -448,6 +491,12 @@ struct StarterKeyEntry {
     key: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct DeedKeyEntry {
+    deed_id: DeedId,
+    key: DeedKey,
+}
+
 fn default_hijri_offset() -> HijriOffset {
     HijriOffset::PLUS_ONE
 }
@@ -470,6 +519,7 @@ impl<S> DataFile<S> {
     fn map_settings<T>(self, convert: impl FnOnce(S) -> T) -> DataFile<T> {
         DataFile {
             schema_version: self.schema_version,
+            deed_keys: self.deed_keys,
             demo_generation: self.demo_generation,
             first_run_complete: self.first_run_complete,
             chosen_sets: self.chosen_sets,
@@ -535,6 +585,14 @@ struct VersionProbe {
 pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
     let file = DataFile {
         schema_version: SCHEMA_VERSION,
+        deed_keys: data
+            .deed_keys
+            .iter()
+            .map(|(deed_id, key)| DeedKeyEntry {
+                deed_id: *deed_id,
+                key: key.clone(),
+            })
+            .collect(),
         demo_generation: data.demo_generation.clone(),
         first_run_complete: data.first_run_complete,
         chosen_sets: data.chosen_sets.iter().cloned().collect(),
@@ -711,7 +769,29 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
     if dismissed_milestones.len() != file.dismissed_milestones.len() {
         return Err(StoreError::DuplicateEntry);
     }
+    let mut deed_keys = BTreeMap::new();
+    let mut wire_ids = BTreeSet::new();
+    for entry in file.deed_keys {
+        if (!deed_ids.contains(&entry.deed_id) && !deleted_deeds.contains(&entry.deed_id))
+            || entry.key.sequence == 0
+            || entry.key.install.is_empty()
+            || entry.key.install.len() > 128
+            || !entry
+                .key
+                .install
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        {
+            return Err(StoreError::Corrupt("invalid deed identity".into()));
+        }
+        if !wire_ids.insert(entry.key.clone())
+            || deed_keys.insert(entry.deed_id, entry.key).is_some()
+        {
+            return Err(StoreError::DuplicateEntry);
+        }
+    }
     Ok(OwnerData {
+        deed_keys,
         demo_generation: file.demo_generation,
         first_run_complete: file.first_run_complete,
         chosen_sets,

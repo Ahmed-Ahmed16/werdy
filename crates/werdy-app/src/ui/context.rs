@@ -7,8 +7,8 @@ use fluent_bundle::FluentValue;
 use werdy_store::{Digits, Store};
 
 use crate::i18n::{Language, Texts};
-use crate::state::AppState;
 use crate::state::EditorError;
+use crate::state::{AppState, NoteError};
 use werdy_core::{Consistency, Error, ExcuseCredit, Schedule, WerdyDay};
 
 /// Text lookup in the current language.
@@ -121,8 +121,8 @@ impl Actions {
     fn change_note(
         self,
         day: WerdyDay,
-        change: impl FnOnce(&mut AppState) -> Result<(), Error>,
-    ) -> Result<(), Error> {
+        change: impl FnOnce(&mut AppState) -> Result<(), NoteError>,
+    ) -> Result<(), NoteError> {
         let store = self.store.read().clone();
         let mut state = self.state;
         let mut state = state.write();
@@ -131,7 +131,7 @@ impl Actions {
         })?;
         state.update_today(today);
         if day > today {
-            return Err(Error::InvalidDate);
+            return Err(Error::InvalidDate.into());
         }
         change(&mut state)?;
         state.save_to(store.as_ref());
@@ -139,12 +139,17 @@ impl Actions {
     }
 
     /// Validates and saves a note for the chosen day.
-    pub fn save_note(self, day: WerdyDay, text: &str, credit: ExcuseCredit) -> Result<(), Error> {
+    pub fn save_note(
+        self,
+        day: WerdyDay,
+        text: &str,
+        credit: ExcuseCredit,
+    ) -> Result<(), NoteError> {
         self.change_note(day, |state| state.save_day_note(day, text, credit))
     }
 
     /// Deletes a note for the chosen day.
-    pub fn delete_note(self, day: WerdyDay) -> Result<(), Error> {
+    pub fn delete_note(self, day: WerdyDay) -> Result<(), NoteError> {
         self.change_note(day, |state| {
             state.delete_day_note(day);
             Ok(())

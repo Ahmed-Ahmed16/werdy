@@ -6,7 +6,10 @@ use werdy_core::{Error, ExcuseCredit, WerdyDay};
 use super::context::{use_actions, use_i18n};
 use super::header::date_text;
 use super::icons::CrossIcon;
-use crate::{platform, state::AppState};
+use crate::{
+    platform,
+    state::{AppState, NoteError},
+};
 
 #[component]
 pub fn NoteDialog(day: WerdyDay, on_close: EventHandler<()>) -> Element {
@@ -33,6 +36,7 @@ pub fn NoteDialog(day: WerdyDay, on_close: EventHandler<()>) -> Element {
         ExcuseCredit::Full => "note-credit-full-explain",
     };
     let empty_error = i18n.t("note-empty-error");
+    let length_error = i18n.t("note-length-error");
     let date_error = i18n.t("note-date-error");
     let save_error = i18n.t("note-save-error");
     let delete_date_error = date_error.clone();
@@ -69,8 +73,9 @@ pub fn NoteDialog(day: WerdyDay, on_close: EventHandler<()>) -> Element {
                     button { class: "primary-button", onclick: move |_| {
                         match actions.save_note(day, &text(), credit()) {
                             Ok(()) => on_close.call(()),
-                            Err(Error::EmptyDayNote) => error.set(Some(empty_error.clone())),
-                            Err(Error::InvalidDate) => error.set(Some(date_error.clone())),
+                            Err(NoteError::TooLong) => error.set(Some(length_error.clone())),
+                            Err(NoteError::Invalid(Error::EmptyDayNote)) => error.set(Some(empty_error.clone())),
+                            Err(NoteError::Invalid(Error::InvalidDate)) => error.set(Some(date_error.clone())),
                             Err(_) => error.set(Some(save_error.clone())),
                         }
                     }, {i18n.t("note-save")} }
@@ -79,7 +84,7 @@ pub fn NoteDialog(day: WerdyDay, on_close: EventHandler<()>) -> Element {
                         button { class: "danger-button", onclick: move |_| {
                             match actions.delete_note(day) {
                                 Ok(()) => on_close.call(()),
-                                Err(Error::InvalidDate) => error.set(Some(delete_date_error.clone())),
+                                Err(NoteError::Invalid(Error::InvalidDate)) => error.set(Some(delete_date_error.clone())),
                                 Err(_) => error.set(Some(delete_save_error.clone())),
                             }
                         }, {i18n.t("note-delete")} }

@@ -63,6 +63,7 @@ note-credit-none-explain = The score stays as marked. This note helps you rememb
 note-credit-half-explain = Each due deed counts for at least half.
 note-credit-full-explain = Each due deed counts in full.
 note-empty-error = Write a note or choose a credit.
+note-length-error = Note is too long. Shorten it before saving.
 note-save-error = Could not save note.
 note-date-error = Cannot change a note for this day.
 note-save = Save

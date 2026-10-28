@@ -272,6 +272,7 @@ impl EditorDraft {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EditorError {
     EmptyName,
+    NameTooLong,
     NoWeekday,
     InvalidTarget,
     MissingDeed,
@@ -286,6 +287,29 @@ impl std::fmt::Display for EditorError {
 }
 
 impl std::error::Error for EditorError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NoteError {
+    Invalid(Error),
+    TooLong,
+}
+
+impl From<Error> for NoteError {
+    fn from(error: Error) -> Self {
+        Self::Invalid(error)
+    }
+}
+
+impl std::fmt::Display for NoteError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid(error) => error.fmt(formatter),
+            Self::TooLong => formatter.write_str("note text exceeds 8192 bytes"),
+        }
+    }
+}
+
+impl std::error::Error for NoteError {}
 
 /// One pending change to a deed until storage accepts it.
 #[derive(Clone, Debug, PartialEq)]
@@ -388,6 +412,18 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The account coordinator already preserved edits made during the request.
+    /// Do not merge server revisions against phone times here.
+    pub fn accept_sync(&mut self, records: OwnerData) {
+        self.data = records;
+        self.pending_settings = PendingSettings::default();
+        self.sets_dirty = false;
+        self.deed_changes.clear();
+        self.invalidate_kept_days();
+        self.save_status = SaveStatus::Saved;
+        crate::platform::reschedule_reminders(&self.data);
+    }
+
     /// Loads saved data. Empty storage opens setup. Unreadable data is never overwritten.
     pub fn start(store: &dyn Store, today: WerdyDay, slot_order: Vec<SlotKey>) -> Self {
         let (mut data, save_status) = match store.load() {
@@ -534,7 +570,10 @@ impl AppState {
         day: WerdyDay,
         text: &str,
         credit: ExcuseCredit,
-    ) -> Result<(), Error> {
+    ) -> Result<(), NoteError> {
+        if text.len() > werdy_sync::MAX_NOTE_BYTES {
+            return Err(NoteError::TooLong);
+        }
         if self
             .data
             .day_notes
@@ -831,6 +870,9 @@ impl AppState {
         let name = draft.name.trim();
         if name.is_empty() {
             return Err(EditorError::EmptyName);
+        }
+        if name.len() > werdy_sync::MAX_NAME_BYTES {
+            return Err(EditorError::NameTooLong);
         }
         let rule = draft.rule()?;
         let created = id.is_none();
@@ -1163,6 +1205,9 @@ impl AppState {
     }
 
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        if let Some(key) = self.data.deed_keys.remove(&old_id) {
+            self.data.deed_keys.insert(new_id, key);
+        }
         self.invalidate_kept_days();
         self.data.last_deed_id = new_id.0;
         let reminder = self.data.settings.reminders.deeds.remove(&old_id);
@@ -1219,7 +1264,7 @@ impl AppState {
         }
     }
 
-    fn apply_deed_changes(&self, merged: &mut OwnerData) {
+    fn apply_deed_changes(&self, merged: &mut OwnerData) -> Result<(), werdy_store::StoreError> {
         for (id, change) in &self.deed_changes {
             match change {
                 DeedChange::Upsert { deed, name, .. } if !merged.deleted_deeds.contains(id) => {
@@ -1257,6 +1302,7 @@ impl AppState {
         merged.last_deed_id = merged.last_deed_id.max(self.data.last_deed_id);
         let live_ids: BTreeSet<_> = merged.deeds.iter().map(|deed| deed.id).collect();
         merged.starter_keys.retain(|id, _| live_ids.contains(id));
+        merged.merge_deed_keys(&self.data)
     }
 
     /// Saves the data, unless saved data could not be read at start.
@@ -1278,16 +1324,23 @@ impl AppState {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
                 }
-                let mut merged = stored.map_or_else(
-                    || self.data.clone(),
+                let merged = stored.map_or_else(
+                    || Ok(self.data.clone()),
                     |data| merge_records(&data, &self.data),
                 );
+                let Ok(mut merged) = merged else {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                };
                 self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
                 }
-                self.apply_deed_changes(&mut merged);
+                if self.apply_deed_changes(&mut merged).is_err() {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                }
                 let live_ids: BTreeSet<_> = merged.deeds.iter().map(|deed| deed.id).collect();
                 merged.marks.retain(|(id, _), _| live_ids.contains(id));
                 merged
@@ -1333,13 +1386,19 @@ impl AppState {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
                 }
-                let mut merged = merge_records(&stored, &self.data);
+                let Ok(mut merged) = merge_records(&stored, &self.data) else {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                };
                 self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
                 }
-                self.apply_deed_changes(&mut merged);
+                if self.apply_deed_changes(&mut merged).is_err() {
+                    self.save_status = SaveStatus::SaveFailed;
+                    return;
+                }
                 if merged == stored {
                     self.data = stored;
                     self.invalidate_kept_days();
@@ -2447,9 +2506,73 @@ mod tests {
         let mut state = started(&MemoryStore::default())?;
         assert_eq!(
             state.save_day_note(state.viewing, "", ExcuseCredit::None),
-            Err(Error::EmptyDayNote)
+            Err(super::NoteError::Invalid(Error::EmptyDayNote))
         );
         assert!(state.viewing_note().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_note_and_deed_name_leave_records_unchanged() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let before = state.data.clone();
+        assert_eq!(
+            state.save_day_note(state.today, &"ن".repeat(4097), ExcuseCredit::None),
+            Err(super::NoteError::TooLong)
+        );
+        assert_eq!(state.data, before);
+        let draft = EditorDraft {
+            name: "ن".repeat(513),
+            ..EditorDraft::default()
+        };
+        assert_eq!(state.save_deed(None, &draft), Err(EditorError::NameTooLong));
+        assert_eq!(state.data, before);
+        state.save_day_note(state.today, &"ن".repeat(4096), ExcuseCredit::None)?;
+        state.save_deed(
+            None,
+            &EditorDraft {
+                name: "ن".repeat(512),
+                ..EditorDraft::default()
+            },
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn applying_new_deed_restores_its_identity_and_duplicate_identity_refuses_save() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let id = state.save_deed(
+            None,
+            &EditorDraft {
+                name: "New".into(),
+                ..EditorDraft::default()
+            },
+        )?;
+        let key = werdy_store::DeedKey {
+            install: "phone".into(),
+            sequence: 1,
+        };
+        state.data.deed_keys.insert(id, key.clone());
+        state.save_to(&store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
+        let saved = store.load()?.ok_or("missing records")?;
+        assert_eq!(saved.deed_keys.get(&id), Some(&key));
+        assert_eq!(
+            werdy_store::from_json(&werdy_store::to_json(&saved)?)?,
+            saved
+        );
+        let other = state.save_deed(
+            None,
+            &EditorDraft {
+                name: "Other".into(),
+                ..EditorDraft::default()
+            },
+        )?;
+        state.data.deed_keys.insert(other, key);
+        state.save_to(&store);
+        assert_eq!(state.save_status, SaveStatus::SaveFailed);
+        assert_eq!(store.load()?.ok_or("missing records")?, saved);
         Ok(())
     }
 

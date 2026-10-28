@@ -1,3 +1,4 @@
 -keep class com.ahmedhossam.werdy.reminders.Reminders { *; }
+-keep class com.ahmedhossam.werdy.signin.GoogleSignin { *; }
 -keep class com.ahmedhossam.werdy.reminders.ReminderReceiver { *; }
 -keep class com.ahmedhossam.werdy.reminders.BootReceiver { *; }

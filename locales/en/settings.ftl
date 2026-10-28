@@ -20,3 +20,16 @@ settings-city-method = City and Fajr method
 settings-location-unset = City not chosen
 settings-location-unavailable = City unavailable
 settings-place = { $city } · { $method }
+
+account-title = Account
+account-purpose = Sign in to back up your records across phones. Sharing comes later.
+account-signin = Sign in with Google
+account-signout = Sign out
+account-email-unknown = Email unavailable
+account-signing-in = Choose your Google account. Signing in may take a moment.
+account-waiting = Waiting to sync. Your records stay available offline.
+account-last-sync = Last sync: { $time }
+account-sync-error = Could not sync. Your records are safe here. We will try again.
+account-session-error = Your session could not be renewed. Sign out and sign in again. Your records stay here.
+account-signin-error = Could not sign in. Try again when you are online.
+account-storage-error = Could not save account details. Check device storage and try again.

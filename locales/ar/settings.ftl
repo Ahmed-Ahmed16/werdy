@@ -20,3 +20,16 @@ settings-city-method = المدينة وطريقة حساب الفجر
 settings-location-unset = لم تختر مدينة
 settings-location-unavailable = المدينة غير متاحة
 settings-place = { $city } · { $method }
+
+account-title = الحساب
+account-purpose = سجّل الدخول لحفظ سجلك ومزامنته بين أجهزتك. المشاركة ستأتي لاحقًا.
+account-signin = تسجيل الدخول باستخدام Google
+account-signout = تسجيل الخروج
+account-email-unknown = البريد الإلكتروني غير متاح
+account-signing-in = اختر حساب Google. قد يستغرق تسجيل الدخول قليلًا.
+account-waiting = في انتظار المزامنة. يظل سجلك متاحًا دون اتصال.
+account-last-sync = آخر مزامنة: { $time }
+account-sync-error = تعذرت المزامنة. سجلك محفوظ هنا. سنحاول مرة أخرى.
+account-session-error = تعذر تجديد الجلسة. سجّل الخروج ثم الدخول مجددًا. سيبقى سجلك هنا.
+account-signin-error = تعذر تسجيل الدخول. حاول مجددًا عند الاتصال بالإنترنت.
+account-storage-error = تعذر حفظ بيانات الحساب. تحقق من مساحة الجهاز وحاول مجددًا.

@@ -1,24 +1,10 @@
 //! JNI alarm delivery runs on one worker, so rapid saves cannot overtake each other.
 use crate::{i18n::Texts, reminders};
-use manganis::jni::{
-    JNIEnv,
-    objects::{GlobalRef, JClass, JObject, JValue},
-};
 use std::sync::{OnceLock, mpsc};
 use werdy_core::WerdyDay;
 use werdy_store::OwnerData;
 
-// The exported method name must match Kotlin's requestPermission signature.
-#[allow(non_snake_case)]
-mod bridge {
-    #[manganis::ffi("src/android")]
-    unsafe extern "Kotlin" {
-        pub type Reminders;
-        pub fn schedule(this: &Reminders, json: String) -> String;
-        pub fn permission(this: &Reminders) -> String;
-        pub fn requestPermission(this: &Reminders) -> String;
-    }
-}
+use super::android_bridge as bridge;
 
 pub(super) fn enqueue(owner: &OwnerData) {
     static WORKER: OnceLock<Option<mpsc::Sender<OwnerData>>> = OnceLock::new();
@@ -98,42 +84,7 @@ fn jni_reply(reply: Result<String, String>) -> Result<String, String> {
     })
 }
 
-// Dioxus #5629: native threads must use the activity's class loader, not FindClass.
 fn new_plugin() -> Result<bridge::Reminders, String> {
-    manganis::android::with_activity(|env, activity| {
-        let built = env.with_local_frame(8, |env| construct(env, activity));
-        if built.is_err() {
-            let _ = env.exception_clear();
-        }
-        Some(
-            built
-                .map(bridge::Reminders::from_global_ref)
-                .map_err(|error| format!("Could not create reminders bridge: {error}")),
-        )
-    })
-    .unwrap_or_else(|| Err("No Android activity available".into()))
-}
-
-fn construct(
-    env: &mut JNIEnv<'_>,
-    activity: &JObject<'_>,
-) -> manganis::jni::errors::Result<GlobalRef> {
-    let loader = env
-        .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
-        .l()?;
-    let name = env.new_string("com.ahmedhossam.werdy.reminders.Reminders")?;
-    let class = env
-        .call_method(
-            &loader,
-            "loadClass",
-            "(Ljava/lang/String;)Ljava/lang/Class;",
-            &[JValue::Object(&name)],
-        )?
-        .l()?;
-    let instance = env.new_object(
-        JClass::from(class),
-        "(Landroid/app/Activity;)V",
-        &[JValue::Object(activity)],
-    )?;
-    env.new_global_ref(instance)
+    bridge::new_plugin("com.ahmedhossam.werdy.reminders.Reminders")
+        .map(bridge::Reminders::from_global_ref)
 }
