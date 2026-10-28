@@ -14,6 +14,7 @@ pub fn AccountSection() -> Element {
     let status = use_context::<Signal<AccountView>>();
     let state = use_context::<Signal<AppState>>();
     let mut local_error = use_signal(|| false);
+    let mut confirm_delete = use_signal(|| false);
     let sharing = try_use_context::<Signal<super::sharing::Sharing>>();
     if !handle.0.enabled {
         return rsx! {};
@@ -27,6 +28,10 @@ pub fn AccountSection() -> Element {
         .clone()
         .unwrap_or_else(|| i18n.t("account-email-unknown"));
     let signout_store = handle.0.clone();
+    let delete_store = handle.0.clone();
+    let (deleting, delete_error) = sharing
+        .map(|sharing| (sharing.read().deleting, sharing.read().delete_error))
+        .unwrap_or_default();
     rsx! {
         section { class: "settings-card", aria_label: i18n.t("account-title"),
             h2 { {i18n.t("account-title")} }
@@ -46,6 +51,22 @@ pub fn AccountSection() -> Element {
                         sharing.set(super::sharing::Sharing::default());
                     }
                 },{i18n.t("account-signout")} }
+                if let Some(sharing) = sharing {
+                    if confirm_delete() {
+                        div { class: "confirm-box", role: "alertdialog", aria_label: i18n.t("account-delete-confirm"),
+                            p { {i18n.t("account-delete-confirm")} }
+                            button { class: "danger-button", disabled: deleting, onclick: move |_| {
+                                confirm_delete.set(false);
+                                super::sharing::delete_account(sharing, state, delete_store.clone());
+                            }, {i18n.t("account-delete-yes")} }
+                            button { class: "secondary-button", onclick: move |_| confirm_delete.set(false), {i18n.t("editor-cancel")} }
+                        }
+                    } else {
+                        button { class: "danger-button", disabled: deleting, onclick: move |_| confirm_delete.set(true), {i18n.t("account-delete")} }
+                    }
+                    if deleting { p { role: "status", {i18n.t("account-deleting")} } }
+                    if let Some(error) = delete_error { p { role: "alert", {i18n.t(error)} } }
+                }
             } else {
                 p { {i18n.t("account-purpose")} }
                 SignInButton {}

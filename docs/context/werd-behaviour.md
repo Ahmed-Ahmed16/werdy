@@ -39,3 +39,5 @@ Counting only due days gives about 375 of 565, **66%**. For the month (1 to 27 O
 3. Each mark is Done, Partial (a fraction) or Missed; the score sums the fractions.
 4. A deed added mid period only counts from the day it was added.
 5. Percentages round, never truncate.
+
+Counter rule, decided by the owner on 2026-10-28: zero is a miss (red). A positive count below the target is partial (yellow), worth count divided by target. Reaching or exceeding the target is full (green), capped at one. Typing a count stores the same raw count as tapping plus. Typing zero records a miss; minus from one still clears the mark. Direct entry accepts whole numbers from 0 to 4294967295, the same limit as plus, including Arabic Indic digits. Enter or blur saves; Escape cancels. Invalid input keeps the previous mark and shows a message.
