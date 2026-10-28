@@ -1,0 +1,9 @@
+[application]
+name = "werdy"
+
+[bundle]
+identifier = "com.ahmedhossam.werdy"
+publisher = "werdy"
+
+[android]
+compile_sdk = 35
