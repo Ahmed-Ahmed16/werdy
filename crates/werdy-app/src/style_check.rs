@@ -273,6 +273,64 @@ fn interactive_controls_keep_touch_size_and_visible_focus() {
 }
 
 #[test]
+fn slot_reminder_switch_keeps_native_checkbox_and_visible_states() {
+    let reminders = include_str!("ui/reminders.rs");
+    assert!(reminders.contains("label { class: \"reminder-switch\","));
+    assert!(reminders.contains("r#type: \"checkbox\", checked: rule.is_some()"));
+    assert!(reminders.contains("event.checked()"));
+    assert!(reminders.contains("span { {i18n.t(&format!(\"slot-{slot}\"))} }"));
+    assert!(touch_sized(APP_CSS, ".reminder-switch"));
+    for (selector, property, value) in [
+        (
+            ".reminder-switch span::before",
+            "background",
+            "var(--track)",
+        ),
+        (
+            ".reminder-switch input:checked + span::before",
+            "background",
+            "var(--primary)",
+        ),
+        (
+            ".reminder-switch span::after",
+            "background",
+            "var(--text-muted)",
+        ),
+        (
+            ".reminder-switch input:checked + span::after",
+            "background",
+            "var(--on-primary)",
+        ),
+        (
+            ".reminder-switch input:focus-visible + span::before",
+            "outline",
+            "var(--stroke-strong) solid var(--primary)",
+        ),
+    ] {
+        assert!(
+            rule_body(APP_CSS, selector).is_some_and(|body| has_declaration(body, property, value)),
+            "missing switch state: {selector}"
+        );
+    }
+}
+
+#[test]
+fn reminder_switch_thumb_moves_from_inline_start_in_both_directions() {
+    for (selector, position) in [
+        (".reminder-switch span::after", "var(--gap-xs)"),
+        (
+            ".reminder-switch input:checked + span::after",
+            "calc(var(--touch-min) - var(--gap-l) - var(--gap-xs))",
+        ),
+    ] {
+        let body = rule_body(APP_CSS, selector).expect("switch thumb rule");
+        assert!(has_declaration(body, "inset-inline-start", position));
+        assert!(!body.contains("left:"));
+        assert!(!body.contains("right:"));
+    }
+}
+
+#[test]
 fn compact_week_keeps_note_signs_and_short_today_label() {
     assert!(!APP_CSS.contains(".week-card .report-day-cell small {"));
     for selector in [
