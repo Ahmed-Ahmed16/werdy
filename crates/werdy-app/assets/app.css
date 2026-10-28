@@ -1003,6 +1003,22 @@ textarea:focus-visible {
   .report-layout {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   }
+
+  /* The score card is narrow here. The due count and the long today label
+     stay in each cell's aria label. */
+  .report-layout .report-day-cell {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .report-layout .report-score-detail + .report-score-detail,
+  .report-layout .report-today-label {
+    display: none;
+  }
+
+  .report-layout .report-today-compact {
+    display: inline;
+  }
 }
 
 .page-content {

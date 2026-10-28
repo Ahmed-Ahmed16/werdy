@@ -348,3 +348,28 @@ fn compact_week_keeps_note_signs_and_short_today_label() {
     );
     assert!(include_str!("ui/reports.rs").contains("reports-today-short"));
 }
+
+#[test]
+fn two_column_reports_keep_day_cells_inside_their_boxes() {
+    // From 840px the score card is two fifths wide, so a day cell is about
+    // 53px. The due count and the long today label stay in the aria label.
+    let query = "(min-width: 840px)";
+    for (selector, declaration) in [
+        (".report-layout .report-day-cell", ("min-width", "0")),
+        (".report-layout .report-day-cell", ("overflow", "hidden")),
+        (
+            ".report-layout .report-score-detail + .report-score-detail",
+            ("display", "none"),
+        ),
+        (".report-layout .report-today-label", ("display", "none")),
+        (
+            ".report-layout .report-today-compact",
+            ("display", "inline"),
+        ),
+    ] {
+        assert!(
+            media_rule_has(APP_CSS, query, selector, declaration),
+            "missing {selector} {declaration:?}"
+        );
+    }
+}
