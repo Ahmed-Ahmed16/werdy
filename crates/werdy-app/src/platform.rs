@@ -353,80 +353,89 @@ pub fn request_location(
     on_error: impl FnOnce() + 'static,
 ) {
     #[cfg(target_arch = "wasm32")]
-    {
-        use wasm_bindgen::JsCast;
-        let Some(window) = web_sys::window() else {
-            on_error();
-            return;
-        };
-        let Ok(geo) = window.navigator().geolocation() else {
-            on_error();
-            return;
-        };
-        let error_callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_error)));
-        // Browser timeout excludes the permission prompt, so bound the full wait too.
-        let timer_error = error_callback.clone();
-        let timer = wasm_bindgen::closure::Closure::once(move || {
-            if let Some(callback) = timer_error.borrow_mut().take() {
-                callback();
-            }
-        });
-        if window
-            .set_timeout_with_callback_and_timeout_and_arguments_0(
-                timer.as_ref().unchecked_ref(),
-                LOCATION_TIMEOUT_MS as i32,
-            )
-            .is_err()
-            && let Some(callback) = error_callback.borrow_mut().take()
-        {
-            callback();
-            return;
-        }
-        timer.forget();
-        let invalid_coordinates = error_callback.clone();
-        let completed_error = error_callback.clone();
-        let success =
-            wasm_bindgen::closure::Closure::once_into_js(move |position: web_sys::Position| {
-                let coordinates = position.coords();
-                match Location::new(None, None, coordinates.latitude(), coordinates.longitude()) {
-                    Some(location) => {
-                        let _ = completed_error.borrow_mut().take();
-                        on_success(location);
-                    }
-                    None => {
-                        if let Some(callback) = invalid_coordinates.borrow_mut().take() {
-                            callback();
-                        }
-                    }
-                }
-            });
-        let geolocation_error = error_callback.clone();
-        let failure =
-            wasm_bindgen::closure::Closure::once_into_js(move |_: web_sys::PositionError| {
-                if let Some(callback) = geolocation_error.borrow_mut().take() {
-                    callback();
-                }
-            });
-        let options = web_sys::PositionOptions::new();
-        options.set_timeout(LOCATION_TIMEOUT_MS);
-        if geo
-            .get_current_position_with_error_callback_and_options(
-                success.unchecked_ref(),
-                Some(failure.unchecked_ref()),
-                &options,
-            )
-            .is_err()
-            && let Some(callback) = error_callback.borrow_mut().take()
-        {
-            callback();
-        }
-    }
+    request_location_with_timeout(LOCATION_TIMEOUT_MS, on_success, on_error);
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = on_success;
         on_error();
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+fn request_location_with_timeout(
+    timeout_ms: u32,
+    on_success: impl FnOnce(Location) + 'static,
+    on_error: impl FnOnce() + 'static,
+) {
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else {
+        on_error();
+        return;
+    };
+    let Ok(geo) = window.navigator().geolocation() else {
+        on_error();
+        return;
+    };
+    let error_callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_error)));
+    // Browser timeout excludes the permission prompt, so bound the full wait too.
+    let timer_error = error_callback.clone();
+    let timer = wasm_bindgen::closure::Closure::once(move || {
+        if let Some(callback) = timer_error.borrow_mut().take() {
+            callback();
+        }
+    });
+    if window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            timer.as_ref().unchecked_ref(),
+            timeout_ms as i32,
+        )
+        .is_err()
+        && let Some(callback) = error_callback.borrow_mut().take()
+    {
+        callback();
+        return;
+    }
+    timer.forget();
+    let invalid_coordinates = error_callback.clone();
+    let completed_error = error_callback.clone();
+    let success =
+        wasm_bindgen::closure::Closure::once_into_js(move |position: web_sys::Position| {
+            let coordinates = position.coords();
+            match Location::new(None, None, coordinates.latitude(), coordinates.longitude()) {
+                Some(location) => {
+                    let _ = completed_error.borrow_mut().take();
+                    on_success(location);
+                }
+                None => {
+                    if let Some(callback) = invalid_coordinates.borrow_mut().take() {
+                        callback();
+                    }
+                }
+            }
+        });
+    let geolocation_error = error_callback.clone();
+    let failure = wasm_bindgen::closure::Closure::once_into_js(move |_: web_sys::PositionError| {
+        if let Some(callback) = geolocation_error.borrow_mut().take() {
+            callback();
+        }
+    });
+    let options = web_sys::PositionOptions::new();
+    options.set_timeout(timeout_ms);
+    if geo
+        .get_current_position_with_error_callback_and_options(
+            success.unchecked_ref(),
+            Some(failure.unchecked_ref()),
+            &options,
+        )
+        .is_err()
+        && let Some(callback) = error_callback.borrow_mut().take()
+    {
+        callback();
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod browser_tests;
 
 /// Milliseconds from the local clock, used to order mark changes in browser tabs.
 pub fn change_time() -> u64 {

@@ -36,6 +36,10 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["time", "rt"] }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"
+wasm-bindgen-futures = "=0.4.79"
+
 [target.'cfg(target_os = "android")'.dependencies]
 manganis = "=0.7.10"
 
