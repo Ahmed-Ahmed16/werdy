@@ -1,0 +1,56 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require backup secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        shell: bash
+        run: |
+          if [[ -z "$SUPABASE_DB_URL" || -z "$BACKUP_AGE_RECIPIENT" ]]; then
+            echo 'Both backup secrets are required.' >&2
+            exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.54.11
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes age
+      - name: Check backup safety
+        run: bash scripts/tests/backup.sh
+      - name: Dump and encrypt
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        run: bash scripts/backup.sh "$RUNNER_TEMP/werdy-backup.tar.gz.age"
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: werdy-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/werdy-backup.tar.gz.age
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove encrypted runner copy
+        if: always()
+        run: rm -f "$RUNNER_TEMP/werdy-backup.tar.gz.age"
