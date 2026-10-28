@@ -19,7 +19,7 @@ mod rows;
 mod supabase;
 
 pub use fake::FakeBackend;
-pub use rows::{Change, DeedKey, DeedRow, Setting};
+pub use rows::{Change, DeedKey, DeedRow, MAX_NAME_BYTES, MAX_NOTE_BYTES, Setting};
 #[cfg(feature = "supabase")]
 pub use supabase::SupabaseBackend;
 #[cfg(feature = "supabase")]
@@ -139,6 +139,9 @@ pub struct Sync {
     bindings: Vec<Binding>,
     observed: Vec<Change>,
     outbox: Vec<Pending>,
+    // Legacy rows refused by server limits stay local until corrected.
+    #[serde(default)]
+    local_only: Vec<Change>,
     accepted: Vec<Accepted>,
     cursor: u64,
 }
@@ -156,6 +159,7 @@ impl Sync {
             bindings: Vec::new(),
             observed: rows::settings_snapshot(&werdy_store::Settings::default()),
             outbox: Vec::new(),
+            local_only: Vec::new(),
             accepted: Vec::new(),
             cursor: 0,
         })
@@ -163,6 +167,38 @@ impl Sync {
 
     pub fn outbox(&self) -> &[Pending] {
         &self.outbox
+    }
+
+    /// Reasons legacy rows remain local. Caller logs these without row contents.
+    pub fn local_only_errors(&self) -> Vec<SyncError> {
+        self.local_only
+            .iter()
+            .filter_map(|row| rows::validate_limits(row).err())
+            .collect()
+    }
+
+    fn keep_local(&mut self, change: Change) {
+        self.local_only.retain(|row| row.key() != change.key());
+        self.local_only.push(change);
+    }
+
+    fn quarantine_oversized(&mut self) {
+        let blocked: std::collections::BTreeSet<_> = self
+            .outbox
+            .iter()
+            .filter(|row| rows::validate_limits(&row.change).is_err())
+            .filter_map(|row| row.change.deed_id().cloned())
+            .collect();
+        let pending = std::mem::take(&mut self.outbox);
+        for row in pending {
+            if rows::validate_limits(&row.change).is_err()
+                || row.change.deed_id().is_some_and(|id| blocked.contains(id))
+            {
+                self.keep_local(row.change);
+            } else {
+                self.outbox.push(row);
+            }
+        }
     }
 
     /// Installs a completed background copy while keeping edits captured since
@@ -186,9 +222,24 @@ impl Sync {
             staged.accept(row.clone())?;
         }
         staged.cursor = completed.cursor;
+        for row in &completed.local_only {
+            if !staged
+                .local_only
+                .iter()
+                .any(|current| current.key() == row.key())
+            {
+                staged.local_only.push(row.clone());
+            }
+        }
         staged
             .outbox
             .retain(|pending| pending.operation >= completed.next_operation);
+        staged.local_only.retain(|row| {
+            !staged
+                .outbox
+                .iter()
+                .any(|pending| pending.change.key() == row.key())
+        });
         let mut merged = records.clone();
         rows::project_with_outbox(&mut staged, &mut merged)?;
         staged.observed = rows::snapshot(&mut staged, &merged)?;
@@ -202,9 +253,13 @@ impl Sync {
     /// Remote deeds retain their wire ids through saved bindings. Existing local
     /// numeric ids need no migration and two offline counters cannot collide.
     /// Untouched default settings do not replace account preferences on import.
+    /// New text and key limit violations return an error before queueing.
+    /// Legacy oversized operations stay local until corrected. Inspect
+    /// `local_only_errors` to log the reasons without exposing row contents.
     /// No state changes on invalid local input or counter exhaustion.
     pub fn capture(&mut self, records: &OwnerData) -> Result<(), SyncError> {
         let mut staged = self.clone();
+        staged.quarantine_oversized();
         for (local, remote) in &records.deed_keys {
             rows::validate_install(&remote.install)?;
             if remote.sequence == 0
@@ -234,13 +289,38 @@ impl Sync {
         let snapshot = rows::snapshot(&mut staged, records)?;
         for change in &snapshot {
             if !staged.observed.contains(change) {
+                rows::validate_limits(change)?;
+            }
+        }
+        let blocked: std::collections::BTreeSet<_> = snapshot
+            .iter()
+            .filter(|row| rows::validate_limits(row).is_err())
+            .filter_map(|row| row.deed_id().cloned())
+            .collect();
+        for change in &snapshot {
+            if change.deed_id().is_some_and(|id| blocked.contains(id)) {
+                staged.keep_local(change.clone());
+                continue;
+            }
+            if rows::validate_limits(change).is_err() {
+                continue;
+            }
+            if !staged.observed.contains(change)
+                || staged
+                    .local_only
+                    .iter()
+                    .any(|row| row.key() == change.key())
+            {
                 let operation = staged.next_operation;
                 staged.next_operation = operation.checked_add(1).ok_or(SyncError::Exhausted)?;
-                staged.outbox.push(Pending {
+                let pending = Pending {
                     install: staged.install.clone(),
                     operation,
                     change: change.clone(),
-                });
+                };
+                rows::validate_pending(&pending)?;
+                staged.local_only.retain(|row| row.key() != change.key());
+                staged.outbox.push(pending);
             }
         }
         staged.observed = snapshot;
@@ -264,7 +344,8 @@ impl Sync {
 
     /// Captures edits, measures the clock, pushes then pulls from the last read
     /// cursor. The push cursor must not skip changes made by another phone.
-    /// Failed pushes, pulls, validation and cancelled futures keep the outbox.
+    /// Failed pushes, pulls, validation and cancelled futures keep valid outbox rows.
+    /// Legacy oversized rows are retained separately as local only data.
     /// Backend retries keep original server stamps, even if a reply was lost.
     /// Only a fully validated exchange replaces records and clears the queue.
     pub async fn sync<B: Backend>(
@@ -285,15 +366,14 @@ impl Sync {
             changes: Vec::new(),
             cursor: self.cursor,
         };
-        // Each push is atomic. Small batches also fit the server byte limit
-        // when every operation is at its maximum permitted size.
-        for batch in self.outbox.chunks(32) {
-            let receipt = backend.push(batch).await?;
+        // Keep each deed header and its pending rules in one atomic request.
+        for batch in self.push_batches() {
+            let receipt = backend.push(&batch).await?;
             if receipt.changes.len() != batch.len()
                 || receipt
                     .changes
                     .iter()
-                    .zip(batch)
+                    .zip(&batch)
                     .any(|(row, pending)| &row.pending != pending)
                 || receipt.cursor < pushed.cursor
             {
@@ -330,11 +410,47 @@ impl Sync {
         })
     }
 
+    fn push_batches(&self) -> Vec<Vec<Pending>> {
+        let mut batches: Vec<Vec<Pending>> = vec![Vec::new()];
+        let mut grouped = std::collections::BTreeSet::new();
+        for pending in &self.outbox {
+            let group = match &pending.change {
+                Change::Deed { id, .. } | Change::Rule { id, .. } => {
+                    if !grouped.insert(id.clone()) {
+                        continue;
+                    }
+                    self.outbox
+                        .iter()
+                        .filter(|pending| {
+                            matches!(&pending.change,
+                            Change::Deed { id: other, .. } | Change::Rule { id: other, .. }
+                            if other == id)
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                }
+                _ => vec![pending.clone()],
+            };
+            if let Some(batch) = batches.last_mut() {
+                if !batch.is_empty() && batch.len() + group.len() > 32 {
+                    batches.push(group);
+                } else {
+                    batch.extend(group);
+                }
+            }
+        }
+        batches
+            .into_iter()
+            .filter(|batch| !batch.is_empty())
+            .collect()
+    }
+
     fn validate_push(&self, pushed: &Batch) -> Result<(), SyncError> {
         if pushed.changes.len() != self.outbox.len() || pushed.cursor < self.cursor {
             return Err(invalid("incomplete push acknowledgement"));
         }
-        for (accepted, pending) in pushed.changes.iter().zip(&self.outbox) {
+        let pending: Vec<_> = self.push_batches().into_iter().flatten().collect();
+        for (accepted, pending) in pushed.changes.iter().zip(&pending) {
             validate_accepted(accepted, pushed.cursor)?;
             if &accepted.pending != pending {
                 return Err(invalid("push acknowledged a different operation"));

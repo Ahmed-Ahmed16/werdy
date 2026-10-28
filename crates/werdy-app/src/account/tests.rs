@@ -227,6 +227,91 @@ fn checkpoint_recovers_edits_when_owner_file_write_failed() {
 }
 
 #[test]
+fn legacy_oversized_rows_survive_background_completion_and_restart() {
+    use werdy_core::{DayNote, ExcuseCredit};
+    let store = store();
+    let mut records = records();
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("small", ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    store.sign_in(session(), &records).unwrap();
+    records = store.load().unwrap().unwrap();
+    let huge_note = "ن".repeat(4097);
+    records.set_day_note(
+        day(),
+        Some(DayNote::new(&huge_note, ExcuseCredit::None, day()).unwrap()),
+        2,
+    );
+    records
+        .names
+        .insert(DeedId(1), werdy_store::DeedName::Text("ن".repeat(513)));
+    let mut checkpoint = store.account.borrow().checkpoint.clone().unwrap();
+    let mut engine = serde_json::to_value(&checkpoint.engine).unwrap();
+    // A checkpoint from before validation can contain these rows in both lists.
+    for field in ["outbox", "observed"] {
+        for row in engine[field].as_array_mut().unwrap() {
+            let change = if field == "outbox" {
+                &mut row["change"]
+            } else {
+                row
+            };
+            if change.get("Note").is_some() {
+                change["Note"]["note"]["text"] = huge_note.clone().into();
+            }
+            if change.get("Deed").is_some() {
+                change["Deed"]["row"]["name"] = serde_json::json!({"text":"ن".repeat(513)});
+            }
+        }
+    }
+    checkpoint.engine = serde_json::from_value(engine).unwrap();
+    checkpoint.records = to_json(&records).unwrap();
+    store.write_checkpoint(&checkpoint).unwrap();
+    let restored = AccountStore::open(store.inner.clone(), store.vault.clone(), true);
+    let mut backend = FakeBackend::new(1000);
+    let completed = flight(&restored, &mut backend);
+    let tomorrow = day().next().unwrap();
+    records.set_day_note(
+        tomorrow,
+        Some(DayNote::new("during sync", ExcuseCredit::None, tomorrow).unwrap()),
+        3,
+    );
+    restored.save(&records).unwrap();
+    let generation = restored.account.borrow().generation;
+    restored.complete(&completed, generation, 1000).unwrap();
+    let reopened = AccountStore::open(store.inner.clone(), store.vault.clone(), true);
+    let kept = reopened.load().unwrap().unwrap();
+    assert_eq!(kept.day_notes, records.day_notes);
+    assert_eq!(kept.names, records.names);
+    assert_eq!(kept.deeds, records.deeds);
+    assert_eq!(kept.note_revisions[&day()], records.note_revisions[&day()]);
+    assert_eq!(
+        reopened
+            .account
+            .borrow()
+            .checkpoint
+            .as_ref()
+            .unwrap()
+            .engine
+            .local_only_errors()
+            .len(),
+        2
+    );
+    let completed = flight(&reopened, &mut backend);
+    let generation = reopened.account.borrow().generation;
+    reopened.complete(&completed, generation, 1000).unwrap();
+    let mut fresh = OwnerData::default();
+    run(Sync::new("fresh")
+        .unwrap()
+        .sync(&mut backend, &mut fresh, || 1000))
+    .unwrap();
+    assert!(fresh.deeds.is_empty());
+    assert_eq!(fresh.day_notes[&tomorrow].text(), "during sync");
+    assert!(!fresh.day_notes.contains_key(&day()));
+}
+
+#[test]
 fn nonce_hashes_raw_hex_and_bridge_errors_do_not_expose_messages() {
     use sha2::{Digest, Sha256};
     let nonce = signin::Nonce::generate().unwrap();

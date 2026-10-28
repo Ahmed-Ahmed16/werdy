@@ -33,6 +33,7 @@ editor-delete = Delete deed and all marks
 editor-confirm-delete = Delete this deed and all its marks? This cannot be undone.
 editor-confirm = Delete permanently
 editor-error-empty-name = Enter a name.
+editor-error-name-too-long = Name is too long. Shorten it before saving.
 editor-error-no-weekday = Pick at least one weekday.
 editor-error-invalid-target = Choose a valid target.
 editor-error-rule-change = This change could not be made today.

@@ -168,6 +168,7 @@ fn DeedListRow(deed: Deed) -> Element {
 fn error_key(error: EditorError) -> &'static str {
     match error {
         EditorError::EmptyName => "editor-error-empty-name",
+        EditorError::NameTooLong => "editor-error-name-too-long",
         EditorError::NoWeekday => "editor-error-no-weekday",
         EditorError::InvalidTarget => "editor-error-invalid-target",
         EditorError::MissingDeed => "editor-error-missing-deed",

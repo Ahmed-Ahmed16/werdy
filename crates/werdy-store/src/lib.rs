@@ -300,11 +300,9 @@ impl OwnerData {
 /// For each deed and day, the greater change time wins.
 /// A mark or note clear has a saved tombstone. Equal times keep the stored copy.
 /// Version one marks have time zero, so any new change wins over them.
-pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
+/// Conflicting deed identities return an error without changing either copy.
+pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData, StoreError> {
     let mut merged = stored.clone();
-    for (id, key) in &local.deed_keys {
-        merged.deed_keys.entry(*id).or_insert_with(|| key.clone());
-    }
     merged
         .dismissed_milestones
         .extend(&local.dismissed_milestones);
@@ -333,7 +331,37 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> OwnerData {
     merged
         .cleared_marks
         .retain(|(id, _), _| !merged.deleted_deeds.contains(id));
-    merged
+    merged.merge_deed_keys(local)?;
+    Ok(merged)
+}
+
+impl OwnerData {
+    /// Copies identities only after the caller has chosen the surviving deeds.
+    /// Conflicting identities need caller intervention, never silent reassignment.
+    pub fn merge_deed_keys(&mut self, local: &Self) -> Result<(), StoreError> {
+        let ids: BTreeSet<_> = self
+            .deeds
+            .iter()
+            .map(|deed| deed.id)
+            .chain(self.deleted_deeds.iter().copied())
+            .collect();
+        let mut keys = self.deed_keys.clone();
+        keys.retain(|id, _| ids.contains(id));
+        for (id, key) in &local.deed_keys {
+            if ids.contains(id) {
+                if keys.get(id).is_some_and(|stored| stored != key) {
+                    return Err(StoreError::Corrupt("conflicting deed identity".into()));
+                }
+                keys.insert(*id, key.clone());
+            }
+        }
+        let unique: BTreeSet<_> = keys.values().collect();
+        if unique.len() != keys.len() {
+            return Err(StoreError::Corrupt("duplicate deed identity".into()));
+        }
+        self.deed_keys = keys;
+        Ok(())
+    }
 }
 
 fn note_change_time(data: &OwnerData, day: WerdyDay) -> u64 {

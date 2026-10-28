@@ -53,8 +53,16 @@ network waits. Completion imports server rows into current id bindings, then
 overlays newer queued edits and saves the checkpoint. A new local deed cannot
 alias a deed downloaded during the same wait. Screens accept this result without
 comparing server revisions to phone times, and reminders are rescheduled.
-Each push contains at most 32 operations. Earlier accepted batches remain safe
-to retry if a later batch fails. The outbox stays until the whole exchange passes.
+Push targets 32 operations per request. A deed header and all its pending rules
+stay together, even when that group exceeds 32 operations. Earlier accepted
+batches remain safe to retry if a later batch fails. Incomplete downloaded deeds
+wait for their rules without blocking the pull cursor or applying their marks.
+
+Editors refuse notes over 8192 UTF8 bytes and names over 1024 UTF8 bytes.
+Capture also checks these limits and keys from 1 to 128 bytes. Old oversized
+outbox rows move to saved local only rows, with related deed operations kept
+together. The app logs limit reasons without row contents. Other records keep
+syncing. Local only rows overlay server data until corrected, then queue again.
 
 Sign out saves the current records, removes the session, cancels the active
 sync task and removes sync state. It keeps local history. A generation check

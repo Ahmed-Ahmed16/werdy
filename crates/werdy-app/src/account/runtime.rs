@@ -158,6 +158,9 @@ async fn attempt(
             .await;
     }
     let offset = synced?;
+    for error in checkpoint.engine.local_only_errors() {
+        warn!("Sync keeps a legacy row local: {error}");
+    }
     if offset.milliseconds.abs() > 120_000 {
         warn!("Sync clock offset is {} ms", offset.milliseconds);
     }

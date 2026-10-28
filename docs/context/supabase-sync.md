@@ -61,9 +61,14 @@ does not inspect their meaning.
   and response bodies. Native HTTP redirects are disabled. Browser fetch uses
   its own redirect behavior; pass the trusted project origin directly.
 
-Limit failures return errors and keep the engine's outbox. The engine pushes at
-most 32 operations per request, so a large import fits within the batch byte
-limit if each operation fits its own limit. Each request is atomic. A later
+Capture refuses new notes, names and keys outside their byte limits. Legacy
+oversized outbox rows stay local, with logged reasons, until corrected. Related
+deed rows stay local together so they cannot create incomplete server deeds.
+Other server limit failures still return errors and keep the outbox.
+
+Push targets 32 operations per request, keeping each deed header with all its
+pending rules. A larger deed group travels in one request and remains subject
+to the server operation and byte limits above. Each request is atomic. A later
 failed batch keeps the whole outbox; retries deduplicate the earlier batches.
 
 ## Apply

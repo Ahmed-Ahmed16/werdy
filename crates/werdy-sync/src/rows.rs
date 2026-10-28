@@ -6,6 +6,9 @@ use werdy_store::{DeedName, Digits, OwnerData, Settings, Theme};
 
 use crate::{Pending, Sync, SyncError, invalid};
 
+pub const MAX_NOTE_BYTES: usize = 8192;
+pub const MAX_NAME_BYTES: usize = 1024;
+
 pub use werdy_store::DeedKey;
 
 /// Deed metadata is one row. Rules are separate rows keyed by their start day,
@@ -69,6 +72,12 @@ pub(crate) enum RowKey {
 }
 
 impl Change {
+    pub(crate) fn deed_id(&self) -> Option<&DeedKey> {
+        match self {
+            Self::Deed { id, .. } | Self::Rule { id, .. } | Self::Mark { id, .. } => Some(id),
+            _ => None,
+        }
+    }
     pub(crate) fn key(&self) -> RowKey {
         match self {
             Self::Deed { id, .. } => RowKey::Deed(id.clone()),
@@ -101,6 +110,7 @@ pub(crate) fn validate_install(install: &str) -> Result<(), SyncError> {
 }
 
 pub(crate) fn validate_pending(pending: &Pending) -> Result<(), SyncError> {
+    validate_limits(&pending.change)?;
     validate_install(&pending.install)?;
     if pending.operation == 0 {
         return Err(invalid("operation id is zero"));
@@ -111,6 +121,49 @@ pub(crate) fn validate_pending(pending: &Pending) -> Result<(), SyncError> {
             if id.sequence == 0 {
                 return Err(invalid("deed sequence is zero"));
             }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_key(key: &str, reason: &str) -> Result<(), SyncError> {
+    if key.is_empty() || key.len() > 128 {
+        return Err(invalid(reason));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_limits(change: &Change) -> Result<(), SyncError> {
+    match change {
+        Change::Note {
+            note: Some(note), ..
+        } if note.text().len() > MAX_NOTE_BYTES => {
+            return Err(invalid("note text exceeds 8192 bytes"));
+        }
+        Change::Deed { row: Some(row), .. } => {
+            match &row.name {
+                Some(DeedName::Text(name)) if name.len() > MAX_NAME_BYTES => {
+                    return Err(invalid("deed name exceeds 1024 bytes"));
+                }
+                Some(DeedName::Key(key)) => {
+                    validate_key(key, "deed name key must be 1 to 128 bytes")?
+                }
+                _ => {}
+            }
+            if let Some(key) = &row.starter_key {
+                validate_key(key, "starter key must be 1 to 128 bytes")?;
+            }
+        }
+        Change::Rule { rule, .. } => {
+            validate_key(&rule.category.0, "category key must be 1 to 128 bytes")?;
+            validate_key(&rule.slot.0, "slot key must be 1 to 128 bytes")?;
+            if let Some(target) = &rule.target {
+                validate_key(target.unit(), "target unit key must be 1 to 128 bytes")?;
+            }
+        }
+        Change::ChosenSet { key, .. } => {
+            validate_key(key, "chosen set key must be 1 to 128 bytes")?
         }
         _ => {}
     }
@@ -248,11 +301,12 @@ fn retain_removals(snapshot: &mut Vec<Change>, previous: &[Change]) -> Result<()
 }
 
 pub(crate) fn project(engine: &mut Sync, records: &mut OwnerData) -> Result<(), SyncError> {
-    let changes: Vec<_> = engine
+    let mut changes: Vec<_> = engine
         .accepted
         .iter()
         .map(|row| (row.pending.change.clone(), row.stamp.received_at))
         .collect();
+    overlay(&mut changes, engine, records);
     project_changes(engine, records, &changes)
 }
 
@@ -265,11 +319,41 @@ pub(crate) fn project_with_outbox(
         .iter()
         .map(|row| (row.pending.change.clone(), row.stamp.received_at))
         .collect();
+    overlay(&mut changes, engine, records);
     for pending in &engine.outbox {
         changes.retain(|(row, _)| row.key() != pending.change.key());
         changes.push((pending.change.clone(), 0));
     }
     project_changes(engine, records, &changes)
+}
+
+fn overlay(changes: &mut Vec<(Change, u64)>, engine: &Sync, records: &OwnerData) {
+    for change in &engine.local_only {
+        changes.retain(|(row, _)| row.key() != change.key());
+        let time = match change {
+            Change::Note { day, .. } => records
+                .note_revisions
+                .get(day)
+                .or_else(|| records.cleared_notes.get(day))
+                .copied()
+                .unwrap_or(0),
+            Change::Mark { id, day, .. } => engine
+                .bindings
+                .iter()
+                .find(|binding| &binding.remote == id)
+                .and_then(|binding| {
+                    let key = (binding.local, *day);
+                    records
+                        .mark_revisions
+                        .get(&key)
+                        .or_else(|| records.cleared_marks.get(&key))
+                })
+                .copied()
+                .unwrap_or(0),
+            _ => 0,
+        };
+        changes.push((change.clone(), time));
+    }
 }
 
 fn project_changes(
@@ -278,8 +362,16 @@ fn project_changes(
     changes: &[(Change, u64)],
 ) -> Result<(), SyncError> {
     let mut ids = BTreeMap::new();
+    let mut deferred = BTreeSet::new();
     for (change, _) in changes {
         if let Change::Deed { id, row } = change {
+            let has_rule = changes.iter().any(
+                |(change, _)| matches!(change, Change::Rule { id: rule_id, .. } if rule_id == id),
+            );
+            if row.is_some() && !has_rule {
+                deferred.insert(id.clone());
+                continue;
+            }
             let local = engine.local_id(id, records)?;
             records.deed_keys.insert(local, id.clone());
             ids.insert(id.clone(), (local, row.is_some()));
@@ -291,6 +383,9 @@ fn project_changes(
         }
     }
     for (change, time) in changes {
+        if matches!(change, Change::Mark { id, .. } if deferred.contains(id)) {
+            continue;
+        }
         apply_row(records, change, *time, &ids)?;
     }
     records.deeds.sort_by_key(|deed| deed.id);

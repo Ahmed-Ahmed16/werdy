@@ -512,7 +512,6 @@ impl Backend for FailSecondBatch {
         if self.pushes == 2 {
             return Err(SyncError::Backend("second batch failed".into()));
         }
-        assert!(changes.len() <= 32);
         self.inner.push(changes).await
     }
     async fn pull(&mut self, cursor: u64) -> Result<Batch, SyncError> {
@@ -554,4 +553,272 @@ fn later_batch_failure_keeps_whole_outbox_and_retry_deduplicates_earlier_batches
         pending.len() as u64
     );
     assert!(engine.outbox().is_empty());
+}
+
+#[test]
+fn failed_second_push_never_leaves_a_deed_header_without_its_rules() {
+    let mut records = OwnerData::default();
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("note", ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    let mut engine = Sync::new("grouped").unwrap();
+    engine.capture(&records).unwrap();
+    // The prior note puts a header at operation 32.
+    for id in 1..=15 {
+        records
+            .deeds
+            .push(Deed::new(DeedId(id), day(), rule("fajr")));
+    }
+    records
+        .deeds
+        .push(Deed::new(DeedId(16), day(), rule("night")));
+    let mut backend = FailSecondBatch {
+        inner: FakeBackend::new(1000),
+        pushes: 0,
+    };
+    assert!(run(engine.sync(&mut backend, &mut records, || 1000)).is_err());
+    let partial = run(backend.inner.pull(0)).unwrap();
+    for row in &partial.changes {
+        if let Change::Deed { id, row: Some(_) } = &row.pending.change {
+            assert!(partial.changes.iter().any(|row|
+                matches!(&row.pending.change, Change::Rule { id: rule_id, .. } if rule_id == id)));
+        }
+    }
+    let mut fresh = OwnerData::default();
+    sync(
+        &mut Sync::new("fresh").unwrap(),
+        &mut backend.inner,
+        &mut fresh,
+    );
+    assert!(!fresh.deeds.is_empty());
+}
+
+#[test]
+fn incomplete_header_and_marks_wait_for_later_rule_without_stalling_cursor() {
+    let mut source = Sync::new("source").unwrap();
+    source.capture(&history("shared")).unwrap();
+    let header = source
+        .outbox()
+        .iter()
+        .find(|p| matches!(p.change, Change::Deed { .. }))
+        .unwrap()
+        .clone();
+    let rule = source
+        .outbox()
+        .iter()
+        .find(|p| matches!(p.change, Change::Rule { .. }))
+        .unwrap()
+        .clone();
+    let mark = source
+        .outbox()
+        .iter()
+        .find(|p| matches!(p.change, Change::Mark { .. }))
+        .unwrap()
+        .clone();
+    let mut backend = FakeBackend::new(1000);
+    run(backend.push(&[header, mark])).unwrap();
+    let mut engine = Sync::new("reader").unwrap();
+    let mut records = OwnerData::default();
+    sync(&mut engine, &mut backend, &mut records);
+    assert!(records.deeds.is_empty());
+    assert!(records.deed_keys.is_empty());
+    assert!(records.marks.is_empty());
+    // A restart must preserve the deferred header and its cursor.
+    let mut engine: Sync = serde_json::from_str(&serde_json::to_string(&engine).unwrap()).unwrap();
+    run(backend.push(&[rule])).unwrap();
+    sync(&mut engine, &mut backend, &mut records);
+    assert_eq!(records.deeds.len(), 1);
+    assert_eq!(records.deed_keys.len(), 1);
+    assert_eq!(records.marks.len(), 1);
+}
+
+#[test]
+fn a_deed_with_more_than_32_rules_is_sent_as_one_atomic_group() {
+    let mut records = history("many rules");
+    let mut next = day();
+    for _ in 0..40 {
+        next = next.next().unwrap();
+        records.deeds[0].change_rule(next, rule("night")).unwrap();
+        records.set_day_note(
+            next,
+            Some(DayNote::new("note", ExcuseCredit::None, next).unwrap()),
+            1,
+        );
+    }
+    let mut backend = FailSecondBatch {
+        inner: FakeBackend::new(1000),
+        pushes: 0,
+    };
+    let mut engine = Sync::new("large_deed").unwrap();
+    assert!(run(engine.sync(&mut backend, &mut records, || 1000)).is_err());
+    let partial = run(backend.inner.pull(0)).unwrap();
+    assert_eq!(
+        partial
+            .changes
+            .iter()
+            .filter(|row| matches!(row.pending.change, Change::Rule { .. }))
+            .count(),
+        41
+    );
+    let mut fresh = OwnerData::default();
+    sync(
+        &mut Sync::new("reader").unwrap(),
+        &mut backend.inner,
+        &mut fresh,
+    );
+    assert_eq!(fresh.deeds[0].rule_versions().count(), 41);
+}
+
+#[test]
+fn oversized_text_and_keys_are_rejected_before_entering_outbox() {
+    let mut cases = Vec::new();
+    let mut note = history("valid");
+    note.set_day_note(
+        day(),
+        Some(DayNote::new(&"ن".repeat(4097), ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    cases.push((note, "note text exceeds 8192 bytes"));
+    cases.push((history(&"ن".repeat(513)), "deed name exceeds 1024 bytes"));
+    let mut keyed_name = history("valid");
+    keyed_name
+        .names
+        .insert(DeedId(1), DeedName::Key(String::new()));
+    cases.push((keyed_name, "deed name key must be 1 to 128 bytes"));
+    let mut starter = history("valid");
+    starter.starter_keys.insert(DeedId(1), "ن".repeat(65));
+    cases.push((starter, "starter key must be 1 to 128 bytes"));
+    let mut chosen = history("valid");
+    chosen.chosen_sets.insert(String::new());
+    cases.push((chosen, "chosen set key must be 1 to 128 bytes"));
+    let mut unit = history("valid");
+    let mut changed = rule("fajr");
+    changed.target = Some(werdy_core::Target::new(1, &"ن".repeat(65)).unwrap());
+    unit.deeds[0] = Deed::new(DeedId(1), day(), changed);
+    cases.push((unit, "target unit key must be 1 to 128 bytes"));
+    for (category, slot, reason) in [
+        (
+            "".into(),
+            "fajr".into(),
+            "category key must be 1 to 128 bytes",
+        ),
+        (
+            "ن".repeat(65),
+            "fajr".into(),
+            "category key must be 1 to 128 bytes",
+        ),
+        (
+            "prayer".into(),
+            "".into(),
+            "slot key must be 1 to 128 bytes",
+        ),
+        (
+            "prayer".into(),
+            "ن".repeat(65),
+            "slot key must be 1 to 128 bytes",
+        ),
+    ] {
+        let mut records = history("valid");
+        let mut changed = rule(&slot);
+        changed.category = CategoryKey(category);
+        records.deeds[0] = Deed::new(DeedId(1), day(), changed);
+        cases.push((records, reason));
+    }
+    for (records, reason) in cases {
+        let mut engine = Sync::new("limits").unwrap();
+        assert_eq!(
+            engine.capture(&records),
+            Err(SyncError::Invalid(reason.into()))
+        );
+        assert!(engine.outbox().is_empty());
+    }
+    let mut boundary = history(&"ن".repeat(512));
+    boundary.set_day_note(
+        day(),
+        Some(DayNote::new(&"ن".repeat(4096), ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    let mut changed = rule(&"ن".repeat(64));
+    changed.category = CategoryKey::new("a");
+    boundary.deeds[0] = Deed::new(DeedId(1), day(), changed);
+    let mut engine = Sync::new("boundary").unwrap();
+    engine.capture(&boundary).unwrap();
+    sync(&mut engine, &mut FakeBackend::new(1000), &mut boundary);
+}
+
+#[test]
+fn legacy_oversized_outbox_keeps_local_rows_and_does_not_block_valid_changes() {
+    let mut records = history("valid");
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("small", ExcuseCredit::None, day()).unwrap()),
+        1,
+    );
+    let mut engine = Sync::new("legacy").unwrap();
+    engine.capture(&records).unwrap();
+    let huge_note = "ن".repeat(4097);
+    let huge_name = "ن".repeat(513);
+    records.set_day_note(
+        day(),
+        Some(DayNote::new(&huge_note, ExcuseCredit::None, day()).unwrap()),
+        2,
+    );
+    records
+        .names
+        .insert(DeedId(1), DeedName::Text(huge_name.clone()));
+    // Simulate an engine written before client validation existed.
+    let mut value = serde_json::to_value(&engine).unwrap();
+    for field in ["outbox", "observed"] {
+        for row in value[field].as_array_mut().unwrap() {
+            let change = if field == "outbox" {
+                &mut row["change"]
+            } else {
+                row
+            };
+            if change.get("Note").is_some() {
+                change["Note"]["note"]["text"] = huge_note.clone().into();
+            }
+            if change.get("Deed").is_some() {
+                change["Deed"]["row"]["name"] = serde_json::json!({"text":huge_name});
+            }
+        }
+    }
+    let mut engine: Sync = serde_json::from_value(value).unwrap();
+    let tomorrow = day().next().unwrap();
+    records.set_day_note(
+        tomorrow,
+        Some(DayNote::new("valid new note", ExcuseCredit::None, tomorrow).unwrap()),
+        3,
+    );
+    let mut backend = FakeBackend::new(1000);
+    sync(&mut engine, &mut backend, &mut records);
+    assert!(engine.outbox().is_empty());
+    assert_eq!(records.day_notes[&day()].text(), huge_note);
+    assert_eq!(records.names[&DeedId(1)], DeedName::Text(huge_name));
+    let stream = run(backend.pull(0)).unwrap();
+    assert!(stream.changes.iter().all(|row| !matches!(
+        row.pending.change,
+        Change::Deed { .. } | Change::Rule { .. } | Change::Mark { .. }
+    )));
+    let mut fresh = OwnerData::default();
+    sync(&mut Sync::new("fresh").unwrap(), &mut backend, &mut fresh);
+    assert_eq!(fresh.day_notes[&tomorrow].text(), "valid new note");
+    assert!(!fresh.day_notes.contains_key(&day()));
+    let mut engine: Sync = serde_json::from_str(&serde_json::to_string(&engine).unwrap()).unwrap();
+    sync(&mut engine, &mut backend, &mut records);
+    assert_eq!(records.day_notes[&day()].text(), huge_note);
+    records
+        .names
+        .insert(DeedId(1), DeedName::Text("fixed".into()));
+    records.set_day_note(
+        day(),
+        Some(DayNote::new("fixed", ExcuseCredit::None, day()).unwrap()),
+        4,
+    );
+    sync(&mut engine, &mut backend, &mut records);
+    sync(&mut Sync::new("other").unwrap(), &mut backend, &mut fresh);
+    assert_eq!(fresh.deeds.len(), 1);
+    assert_eq!(fresh.day_notes[&day()].text(), "fixed");
 }

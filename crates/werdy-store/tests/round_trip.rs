@@ -141,7 +141,7 @@ fn notice_history_merges_from_stale_tabs() -> TestResult {
     first.last_welcome_day = Some(WerdyDay::new(2026, 10, 22)?);
     stale.dismissed_milestones.insert(7);
     stale.last_welcome_day = Some(WerdyDay::new(2026, 10, 21)?);
-    let merged = werdy_store::merge_records(&first, &stale);
+    let merged = werdy_store::merge_records(&first, &stale)?;
     assert_eq!(merged.dismissed_milestones, [7, 30, 100].into());
     assert_eq!(merged.last_welcome_day, first.last_welcome_day);
     Ok(())
@@ -170,7 +170,7 @@ fn note_edits_and_clears_merge_across_tabs() -> TestResult {
     first.set_day_note(day, Some(DayNote::new("Ill", ExcuseCredit::Half, day)?), 10);
     store.save(&first)?;
     stale.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 11);
-    store.save(&werdy_store::merge_records(&first, &stale))?;
+    store.save(&werdy_store::merge_records(&first, &stale)?)?;
     let merged = store.load()?.ok_or("missing merged data")?;
     assert_eq!(
         merged.day_notes.get(&day).map(|note| note.credit()),
@@ -178,7 +178,7 @@ fn note_edits_and_clears_merge_across_tabs() -> TestResult {
     );
     let mut deleting = merged.clone();
     deleting.set_day_note(day, None, 12);
-    let restored = werdy_store::merge_records(&deleting, &stale);
+    let restored = werdy_store::merge_records(&deleting, &stale)?;
     assert!(!restored.day_notes.contains_key(&day));
     assert_eq!(from_json(&to_json(&restored)?)?, restored);
     Ok(())
@@ -246,7 +246,7 @@ fn later_note_edit_wins_for_same_day() -> TestResult {
         Some(DayNote::new("Travelled", ExcuseCredit::Full, day)?),
         11,
     );
-    let merged = werdy_store::merge_records(&earlier, &later);
+    let merged = werdy_store::merge_records(&earlier, &later)?;
     assert_eq!(
         merged.day_notes.get(&day).map(|note| note.credit()),
         Some(ExcuseCredit::Full)
@@ -351,7 +351,7 @@ fn merge_keeps_marks_from_both_tabs() -> TestResult {
     left.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
     right.set_mark(DeedId(2), day, Some(MarkEntry::new(Mark::Missed, day)), 11);
 
-    let merged = werdy_store::merge_records(&left, &right);
+    let merged = werdy_store::merge_records(&left, &right)?;
     assert_eq!(merged.marks.len(), 2);
     Ok(())
 }
@@ -364,7 +364,7 @@ fn later_change_wins_for_same_mark() -> TestResult {
     first.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
     later.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Missed, day)), 11);
 
-    let merged = werdy_store::merge_records(&later, &first);
+    let merged = werdy_store::merge_records(&later, &first)?;
     assert_eq!(merged.marks[&(DeedId(1), day)].mark, Mark::Missed);
     Ok(())
 }
@@ -378,7 +378,7 @@ fn clear_survives_round_trip_and_stale_merge() -> TestResult {
     cleared.set_mark(DeedId(1), day, None, 11);
     let loaded = from_json(&to_json(&cleared)?)?;
 
-    let merged = werdy_store::merge_records(&loaded, &stale);
+    let merged = werdy_store::merge_records(&loaded, &stale)?;
     assert!(!merged.marks.contains_key(&(DeedId(1), day)));
     assert_eq!(merged.cleared_marks.get(&(DeedId(1), day)), Some(&11));
     Ok(())
@@ -418,7 +418,7 @@ fn equal_change_times_keep_stored_mark() -> TestResult {
     stored.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Done, day)), 10);
     local.set_mark(DeedId(1), day, Some(MarkEntry::new(Mark::Missed, day)), 10);
 
-    let merged = werdy_store::merge_records(&stored, &local);
+    let merged = werdy_store::merge_records(&stored, &local)?;
     assert_eq!(merged.marks[&(DeedId(1), day)].mark, Mark::Done);
     Ok(())
 }
@@ -465,7 +465,7 @@ fn deleted_highest_id_stays_reserved_after_round_trip_and_merge() -> TestResult 
     data.deeds.retain(|deed| deed.id != DeedId(2));
     let loaded = from_json(&to_json(&data)?)?;
     assert_eq!(loaded.next_deed_id(), DeedId(3));
-    let merged = werdy_store::merge_records(&loaded, &sample()?);
+    let merged = werdy_store::merge_records(&loaded, &sample()?)?;
     assert_eq!(merged.next_deed_id(), DeedId(3));
     assert!(!merged.deeds.iter().any(|deed| deed.id == DeedId(2)));
     Ok(())

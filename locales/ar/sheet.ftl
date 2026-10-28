@@ -63,6 +63,7 @@ note-credit-none-explain = تبقى النتيجة كما هي. الملاحظة
 note-credit-half-explain = يحسب كل عمل مستحق بنصفه على الأقل.
 note-credit-full-explain = يحسب كل عمل مستحق كاملًا.
 note-empty-error = اكتب ملاحظة أو اختر احتسابًا للعذر.
+note-length-error = الملاحظة طويلة جدًا. اختصرها ثم احفظها.
 note-save-error = تعذر حفظ الملاحظة.
 note-date-error = لا يمكن تغيير ملاحظة هذا اليوم.
 note-save = حفظ
