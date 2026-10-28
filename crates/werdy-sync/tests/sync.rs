@@ -220,11 +220,13 @@ fn fresh_phone_keeps_account_preferences_and_device_location() {
     let mut account = history("shared");
     account.settings.language = "en".to_owned();
     account.chosen_sets.insert("prayers".to_owned());
+    account.settings.prayer_method = werdy_store::PrayerMethod::EgyptianGeneralAuthority;
     sync(&mut first, &mut backend, &mut account);
     let mut second = Sync::new("second").unwrap();
     let mut other = OwnerData::default();
     let location = werdy_store::Location::new(None, None, 30.0, 31.0).unwrap();
     other.settings.location = Some(location.clone());
+    other.settings.prayer_method = werdy_store::PrayerMethod::UmmAlQura;
     sync(&mut second, &mut backend, &mut other);
     assert_eq!(other.settings.language, "en");
     assert_eq!(other.settings.location, Some(location));
@@ -240,6 +242,14 @@ fn fresh_phone_keeps_account_preferences_and_device_location() {
     assert_eq!(account.deeds.len(), 2);
     assert!(account.chosen_sets.is_empty());
     assert_eq!(other.deeds.len(), 2);
+    assert_eq!(
+        account.settings.prayer_method,
+        werdy_store::PrayerMethod::EgyptianGeneralAuthority
+    );
+    assert_eq!(
+        other.settings.prayer_method,
+        werdy_store::PrayerMethod::UmmAlQura
+    );
 }
 
 #[test]

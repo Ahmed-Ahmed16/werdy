@@ -4,8 +4,9 @@
 //! engine alongside `OwnerData`, atomically, after capture and after every sync
 //! attempt, including errors. A failed attempt may have captured new edits.
 //! Keep one engine per account and install. Never reuse it for another account.
-//! Stage B supplies a unique, lasting install id and runs sync in the background.
-//! No executor, network client or blocking storage is hidden here.
+//! The caller supplies a unique, lasting install id and runs sync in the background.
+//! The optional `supabase` feature provides a network adapter. No executor or
+//! blocking storage is hidden here.
 //!
 //! Share code redemption belongs at this backend seam in issue #24. It is not
 //! part of the owner change stream yet.
@@ -14,9 +15,13 @@
 
 mod fake;
 mod rows;
+#[cfg(feature = "supabase")]
+mod supabase;
 
 pub use fake::FakeBackend;
 pub use rows::{Change, DeedKey, DeedRow, Setting};
+#[cfg(feature = "supabase")]
+pub use supabase::SupabaseBackend;
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -71,7 +76,8 @@ pub struct Accepted {
 
 /// Push acknowledges every operation in request order, with its original stamp
 /// on retries. Pull returns a complete ordered stream through `cursor`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Batch {
     pub changes: Vec<Accepted>,
     pub cursor: u64,
@@ -84,14 +90,23 @@ pub struct Batch {
 /// Native returned futures avoid an async trait crate and allow a Send executor.
 /// The engine is generic because object dispatch is not needed at this seam.
 pub trait Backend {
-    fn push(
-        &mut self,
-        changes: &[Pending],
-    ) -> impl Future<Output = Result<Batch, SyncError>> + Send;
-    fn pull(&mut self, cursor: u64) -> impl Future<Output = Result<Batch, SyncError>> + Send;
+    fn push(&mut self, changes: &[Pending]) -> impl BackendFuture<Result<Batch, SyncError>>;
+    fn pull(&mut self, cursor: u64) -> impl BackendFuture<Result<Batch, SyncError>>;
     /// Actual server time in Unix milliseconds, sampled on every sync attempt.
-    fn server_time(&mut self) -> impl Future<Output = Result<u64, SyncError>> + Send;
+    fn server_time(&mut self) -> impl BackendFuture<Result<u64, SyncError>>;
 }
+
+/// Native backends can run on a Send executor. Browser fetch futures stay on
+/// the browser thread, so wasm backends do not need Send.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait BackendFuture<T>: Future<Output = T> + Send {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T, F: Future<Output = T> + Send> BackendFuture<T> for F {}
+
+#[cfg(target_arch = "wasm32")]
+pub trait BackendFuture<T>: Future<Output = T> {}
+#[cfg(target_arch = "wasm32")]
+impl<T, F: Future<Output = T>> BackendFuture<T> for F {}
 
 /// Server minus phone time. A positive offset means the phone is behind.
 /// Estimate uses the midpoint of the caller's two clock samples. Network delay

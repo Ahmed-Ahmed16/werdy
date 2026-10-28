@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use werdy_core::{CalendarSettings, DayNote, Deed, DeedId, DeedRule, MarkEntry, WerdyDay};
-use werdy_store::{DeedName, Digits, OwnerData, PrayerMethod, Settings, Theme};
+use werdy_store::{DeedName, Digits, OwnerData, Settings, Theme};
 
 use crate::{Pending, Sync, SyncError, invalid};
 
@@ -24,7 +24,7 @@ pub struct DeedRow {
     pub starter_key: Option<String>,
 }
 
-/// Each setting has its own conflict key. Coordinates stay on this device.
+/// Each setting has its own conflict key. Location and prayer method stay local.
 /// Setup, demo identity, issued local ids and welcome notices also stay local.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Setting {
@@ -32,7 +32,6 @@ pub enum Setting {
     Theme(Theme),
     Digits(Digits),
     Calendar(CalendarSettings),
-    PrayerMethod(PrayerMethod),
 }
 
 /// A whole row replacement. `None` is a lasting tombstone, never an omission.
@@ -87,7 +86,6 @@ impl Change {
                 Setting::Theme(_) => 1,
                 Setting::Digits(_) => 2,
                 Setting::Calendar(_) => 3,
-                Setting::PrayerMethod(_) => 4,
             }),
         }
     }
@@ -191,7 +189,6 @@ pub(crate) fn settings_snapshot(settings: &Settings) -> Vec<Change> {
         Setting::Theme(settings.theme),
         Setting::Digits(settings.digits),
         Setting::Calendar(settings.calendar.clone()),
-        Setting::PrayerMethod(settings.prayer_method),
     ]
     .into_iter()
     .map(Change::Setting)
@@ -399,6 +396,5 @@ fn apply_setting(records: &mut OwnerData, setting: &Setting) {
         Setting::Theme(theme) => records.settings.theme = *theme,
         Setting::Digits(digits) => records.settings.digits = *digits,
         Setting::Calendar(calendar) => records.settings.calendar = calendar.clone(),
-        Setting::PrayerMethod(method) => records.settings.prayer_method = *method,
     }
 }
