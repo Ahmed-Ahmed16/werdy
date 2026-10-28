@@ -10,7 +10,7 @@
 
 ## دون التطبيق
 
-راسلنا من البريد المرتبط بحسابك على ___ واطلب حذف الحساب. نحذفه خلال ___ أيام ونرد عليك بالتأكيد.
+راسلنا من البريد المرتبط بحسابك على ahmadhossam16@gmail.com واطلب حذف الحساب. نحذفه خلال ___ أيام ونرد عليك بالتأكيد.
 
 # Delete your werdy account
 
@@ -24,4 +24,4 @@ Deleted from the server at once: your account, the copy of your records kept for
 
 ## Without the app
 
-Email ___ from the address linked to your account and ask for deletion. We delete it within ___ days and reply to confirm.
+Email ahmadhossam16@gmail.com from the address linked to your account and ask for deletion. We delete it within ___ days and reply to confirm.
