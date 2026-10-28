@@ -5990,6 +5990,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "werdy-reminders"
+version = "0.1.0"
+dependencies = [
+ "werdy-calendar",
+ "werdy-core",
+ "werdy-store",
+]
+
+[[package]]
 name = "werdy-store"
 version = "0.1.0"
 dependencies = [

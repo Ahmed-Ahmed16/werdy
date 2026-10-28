@@ -2,6 +2,15 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0038 (2026-10-28): Reminders: when they fire
+Prayer slot reminders for Fajr, Dhuhr, Asr, Maghrib and Isha fire at that prayer plus 0 to 120 minutes, with zero as the default. Morning, night and any_time slot reminders use a clock time picked by the owner. Deed reminders also use a clock time picked by the owner. One slot notification covers the deeds in that slot that are due and not marked Done. A deed reminder fires only if that deed is due and not Done. Partial still needs a reminder. The dated rule, schedule and marks are checked for the werdy day at the notification time, using the Fajr boundary. A delay that crosses midnight keeps its source prayer date in its stable id.
+
+Prayer slot reminders need a saved location. Without one they are skipped and the scheduler returns a flag so the UI can ask for location. Clock reminders still work, using the civil day without location, as the app does. If Fajr does not occur, the civil day is used. Other solar failures return errors. Ramadan Isha uses `isha_in_ramadan`, selected through the owner's dated Hijri offset. Asr uses the calendar's default Shafi rule.
+
+Settings live in the shared JSON, default to empty maps, and survive a round trip. The scheduler ignores reminder ids for unknown or deleted deeds. Scheduling is pure and returns no text. The app builds text from Fluent keys. A horizon of two days covers today and tomorrow, omitting past minutes and keeping the current minute. Notifications have stable string ids based on source date and slot or deed, so the app can replace them when rescheduling.
+
+Delivery is Android only for now, through offline local notifications with no server. The web cannot schedule these offline without a server. Stage B adds settings and planning only. Stage C adds UI and Android delivery. Why: one pure planner makes timing and dueness testable without a device. Decided by the orchestrator while the owner was out. The owner reviews this decision in the PR. Revisit: owner feedback, web delivery support, or rules for places where a prayer does not occur.
+
 ## 0037 (2026-10-28): All five prayer times, for reminders
 `werdy-calendar` now computes sunrise, Dhuhr, Asr, Maghrib and Isha beside Fajr, using the same NOAA solar equations with no dependencies. This revisits 0030 because slot reminders in #22 need all five prayers and sunrise. Asr defaults to Shafi, with a Hanafi option. Dhuhr is solar noon with no extra minutes. Isha follows the method's angle or interval after Maghrib. The caller selects the Ramadan interval and supplies the UTC offset for each date. Missing times return errors. Tests compare Cairo and Makkah with AlAdhan methods 5 and 4 on four dates across the year within 2 minutes, plus Hanafi Asr and Ramadan Isha. Revisit: if published times differ by more than 2 minutes, or reminders need rules for places where a time does not occur.
 
