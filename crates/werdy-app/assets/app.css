@@ -676,12 +676,48 @@ textarea:focus-visible {
 
 .step-count {
   min-width: 72px;
+  min-height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-control);
+  padding: var(--gap-xs);
   text-align: center;
   font-weight: var(--weight-semibold);
 }
 
-.stepper[data-reached="true"] .step-count {
-  color: var(--mark-done);
+.stepper[data-kind="done"] .step-count {
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.stepper[data-kind="partial"] .step-count {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.stepper[data-kind="missed"] .step-count {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.count-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.count-input {
+  width: 120px;
+  font: inherit;
+}
+
+.count-target {
+  font-size: var(--size-caption);
+}
+
+.count-error {
+  color: var(--danger);
+  font-size: var(--size-caption);
+  max-width: 160px;
 }
 
 .fatal {
