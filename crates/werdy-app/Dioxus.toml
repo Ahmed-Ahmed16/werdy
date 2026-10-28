@@ -1,11 +1,13 @@
 [application]
 name = "werdy"
+android_manifest = "assets/icon/AndroidManifest.xml"
 
 [web.app]
 title = "werdy"
 
 [bundle]
 identifier = "com.ahmedhossam.werdy"
+icon = ["public/icons/icon-512.png"]
 
 [android]
 compile_sdk = 35
