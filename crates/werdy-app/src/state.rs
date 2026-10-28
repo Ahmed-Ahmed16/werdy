@@ -104,6 +104,23 @@ pub fn shown_count(current: Option<Mark>) -> u32 {
     }
 }
 
+/// Accepts ASCII and Arabic Indic digits with optional outer whitespace.
+/// The plus button saturates at the same u32 limit.
+pub fn parse_count(text: &str) -> Option<u32> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    text.chars().try_fold(0_u32, |count, digit| {
+        let digit = match digit {
+            '0'..='9' => u32::from(digit) - u32::from('0'),
+            '٠'..='٩' => u32::from(digit) - u32::from('٠'),
+            _ => return None,
+        };
+        count.checked_mul(10)?.checked_add(digit)
+    })
+}
+
 /// Whether the owner's last change could be made and saved.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SaveStatus {
@@ -1095,6 +1112,15 @@ impl AppState {
         self.set_mark(deed_id, mark);
     }
 
+    /// Invalid text leaves the old mark intact. Zero records an explicit miss.
+    pub fn type_count(&mut self, deed_id: DeedId, text: &str) -> bool {
+        let Some(count) = parse_count(text) else {
+            return false;
+        };
+        self.set_mark(deed_id, Some(Mark::Count(count)));
+        true
+    }
+
     /// Switches the interface language and keeps it in settings.
     pub fn set_language(&mut self, code: &str) {
         if matches!(code, "ar" | "en") {
@@ -1990,6 +2016,85 @@ mod tests {
             Some(Mark::Missed)
         );
         assert_eq!(tapped(Some(Mark::Count(0)), Tap::Missed), None);
+    }
+
+    #[test]
+    fn typed_count_accepts_only_whole_numbers_in_range() {
+        use super::parse_count;
+        // Boundaries: empty, whitespace, zero, max, overflow, signs, decimals, Arabic digits.
+        for (text, expected) in [
+            ("", None),
+            ("   ", None),
+            (" 7 ", Some(7)),
+            ("0", Some(0)),
+            ("٠١٢٣٤٥٦٧٨٩", Some(123456789)),
+            ("١0٢", Some(102)),
+            ("4294967295", Some(u32::MAX)),
+            ("4294967296", None),
+            ("99999999999999999999999999", None),
+            ("-1", None),
+            ("+1", None),
+            ("1.5", None),
+            ("1e2", None),
+            ("1 2", None),
+        ] {
+            assert_eq!(parse_count(text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn typing_count_matches_taps_and_survives_saving() -> TestResult {
+        use werdy_core::{Deed, DeedRule, Target};
+        for count in [0, 1, 7, 99, 100, 101] {
+            let store = MemoryStore::default();
+            let mut typed = started(&store)?;
+            let id = typed.data.deeds[0].id;
+            let rule = DeedRule {
+                target: Some(Target::new(100, "times")?),
+                ..typed.data.deeds[0]
+                    .rule_on(today()?)
+                    .ok_or("missing rule")?
+                    .clone()
+            };
+            typed.data.deeds[0] = Deed::new(id, today()?, rule.clone());
+            let mut tapped = typed.clone();
+            // Zero is an explicit miss. No taps leave that initial mark in place.
+            tapped.set_mark(id, Some(Mark::Count(0)));
+            for _ in 0..count {
+                tapped.step(id, Step::Plus);
+            }
+            assert!(typed.type_count(id, &count.to_string()));
+            assert_eq!(typed.mark(id), tapped.mark(id));
+            assert_eq!(typed.summary(), tapped.summary());
+            assert_eq!(
+                typed.mark(id).map(|m| m.value(&rule)),
+                tapped.mark(id).map(|m| m.value(&rule))
+            );
+            let tomorrow = WerdyDay::new(2026, 10, 28)?;
+            assert_eq!(
+                werdy_core::score(&typed.data.records(), &[today()?], tomorrow)?,
+                werdy_core::score(&tapped.data.records(), &[today()?], tomorrow)?
+            );
+            typed.save_to(&store);
+            let restored = AppState::start(&store, today()?, slot_order());
+            assert_eq!(restored.mark(id), typed.mark(id));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_typed_count_keeps_old_mark_and_plus_saturates() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let id = state.data.deeds[0].id;
+        state.step(id, Step::Plus);
+        for text in ["", "-1", "1.5", "4294967296"] {
+            assert!(!state.type_count(id, text));
+            assert_eq!(state.mark(id), Some(Mark::Count(1)));
+        }
+        assert!(state.type_count(id, "4294967295"));
+        state.step(id, Step::Plus);
+        assert_eq!(state.mark(id), Some(Mark::Count(u32::MAX)));
+        Ok(())
     }
 
     #[test]

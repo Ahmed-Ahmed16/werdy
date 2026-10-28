@@ -676,12 +676,48 @@ textarea:focus-visible {
 
 .step-count {
   min-width: 72px;
+  min-height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-control);
+  padding: var(--gap-xs);
   text-align: center;
   font-weight: var(--weight-semibold);
 }
 
-.stepper[data-reached="true"] .step-count {
-  color: var(--mark-done);
+.stepper[data-kind="done"] .step-count {
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.stepper[data-kind="partial"] .step-count {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.stepper[data-kind="missed"] .step-count {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.count-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.count-input {
+  width: 120px;
+  font: inherit;
+}
+
+.count-target {
+  font-size: var(--size-caption);
+}
+
+.count-error {
+  color: var(--danger);
+  font-size: var(--size-caption);
+  max-width: 160px;
 }
 
 .fatal {
@@ -966,6 +1002,22 @@ textarea:focus-visible {
 @media (min-width: 840px) {
   .report-layout {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+
+  /* The score card is narrow here. The due count and the long today label
+     stay in each cell's aria label. */
+  .report-layout .report-day-cell {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .report-layout .report-score-detail + .report-score-detail,
+  .report-layout .report-today-label {
+    display: none;
+  }
+
+  .report-layout .report-today-compact {
+    display: inline;
   }
 }
 
@@ -1398,6 +1450,67 @@ textarea:focus-visible {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--size-caption);
+}
+
+.reminder-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  cursor: pointer;
+}
+
+.reminder-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.reminder-switch span {
+  padding-inline-start: calc(var(--touch-min) + var(--gap-s));
+  pointer-events: none;
+}
+
+.reminder-switch span::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: var(--gap-m);
+  width: var(--touch-min);
+  height: calc(var(--gap-l) + 2 * var(--gap-xs));
+  border: var(--stroke-thin) solid var(--text-muted);
+  border-radius: var(--radius-pill);
+  background: var(--track);
+}
+
+.reminder-switch span::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: var(--gap-xs);
+  inset-block-start: var(--gap-l);
+  width: var(--gap-l);
+  height: var(--gap-l);
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+
+.reminder-switch input:checked + span::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.reminder-switch input:checked + span::after {
+  inset-inline-start: calc(var(--touch-min) - var(--gap-l) - var(--gap-xs));
+  background: var(--on-primary);
+}
+
+.reminder-switch input:focus-visible + span::before {
+  outline: var(--stroke-strong) solid var(--primary);
+  outline-offset: var(--stroke-strong);
 }
 
 .settings-location {
