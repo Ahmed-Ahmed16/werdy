@@ -32,6 +32,7 @@ wasm-bindgen = "0.2"
 default = ["web"]
 # dx turns on the feature named after the platform it builds for.
 web = ["dioxus/web"]
+mobile = ["dioxus/mobile"]
 
 [lints]
 workspace = true
