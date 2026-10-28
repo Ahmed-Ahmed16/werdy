@@ -92,6 +92,47 @@ fn count_over_three_stays_exact() -> Result<(), Error> {
 }
 
 #[test]
+fn owner_counter_rule_scores_zero_short_target_and_above_target() -> Result<(), Error> {
+    // Ticket #66: pin the owner's counter rule at both target boundaries.
+    let marked_day = day(23)?;
+    let rule = daily(Some(Target::new(100, "times")?));
+    let deed = Deed::new(DeedId(1), marked_day, rule.clone());
+    for (count, fraction, done, partial, missed) in [
+        (0, 0.0, 0, 0, 1),
+        (1, 0.01, 0, 1, 0),
+        (99, 0.99, 0, 1, 0),
+        (100, 1.0, 1, 0, 0),
+        (101, 1.0, 1, 0, 0),
+        (u32::MAX, 1.0, 1, 0, 0),
+    ] {
+        let mark = Mark::Count(count);
+        let marks = BTreeMap::from([((deed.id, marked_day), MarkEntry::new(mark, marked_day))]);
+        assert_eq!(mark.value(&rule), fraction);
+        assert_eq!(
+            score(std::slice::from_ref(&deed), &marks, &[marked_day], day(24)?)
+                .earned
+                .as_f64(),
+            fraction
+        );
+        assert_eq!(
+            today_summary(
+                std::slice::from_ref(&deed),
+                &marks,
+                marked_day,
+                &CalendarSettings::default()
+            ),
+            TodaySummary {
+                done,
+                partial,
+                missed,
+                open: 0
+            }
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn count_at_target_is_done() -> Result<(), Error> {
     let target = Target::new(5, "pages")?;
 

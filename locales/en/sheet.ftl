@@ -48,6 +48,8 @@ mark-added-later = Added later
 count-minus = Take one away
 count-plus = Add one
 count-progress = { $count } of { $target }
+count-edit = Enter count
+count-invalid = Enter a whole number from 0 to { $max }.
 
 note-button = Note
 note-sign = Day note

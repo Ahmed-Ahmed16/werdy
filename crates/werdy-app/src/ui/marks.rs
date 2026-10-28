@@ -51,10 +51,21 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
             ("target", FluentValue::from(target)),
         ],
     );
-    let reached = count >= target;
+    let kind = count_kind(count, target);
+    let mut editing = use_signal(|| false);
+    let mut draft = use_signal(String::new);
+    let mut invalid = use_signal(|| false);
+    let mut save = move || {
+        // Closing first prevents the blur after Enter or Escape from saving twice.
+        if !editing() {
+            return;
+        }
+        editing.set(false);
+        actions.change(|state| invalid.set(!state.type_count(deed_id, &draft())));
+    };
 
     rsx! {
-        div { class: "stepper", "data-reached": if reached { "true" } else { "false" },
+        div { class: "stepper", "data-kind": kind,
             button {
                 class: "step-button",
                 aria_label: i18n.t("count-minus"),
@@ -62,7 +73,44 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
                 onclick: move |_| actions.change(|state| state.step(deed_id, Step::Minus)),
                 MinusIcon {}
             }
-            span { class: "step-count", aria_live: "polite", "{progress}" }
+            div { class: "count-entry",
+                if editing() {
+                    input {
+                        id: "count-input-{deed_id.0}",
+                        class: "step-count count-input",
+                        r#type: "number", inputmode: "numeric", min: "0", max: "{u32::MAX}", step: "1",
+                        aria_label: i18n.t("count-edit"),
+                        aria_describedby: "count-progress-{deed_id.0}",
+                        value: "{draft}",
+                        onmounted: move |_| select_count_input(deed_id),
+                        oninput: move |event| draft.set(event.value()),
+                        onblur: move |_| save(),
+                        onkeydown: move |event| match event.key() {
+                            Key::Enter => { event.prevent_default(); save(); }
+                            Key::Escape => { event.prevent_default(); editing.set(false); invalid.set(false); }
+                            _ => {}
+                        },
+                    }
+                    span { id: "count-progress-{deed_id.0}", class: "count-target", "{progress}" }
+                } else {
+                    button {
+                        class: "step-count", aria_live: "polite",
+                        disabled: super::sharing::read_only(),
+                        aria_label: i18n.t("count-edit"),
+                        onclick: move |_| {
+                            draft.set(count.to_string());
+                            invalid.set(false);
+                            editing.set(true);
+                        },
+                        "{progress}"
+                    }
+                }
+                if invalid() {
+                    span { class: "count-error", role: "alert",
+                        {i18n.t_with("count-invalid", &[("max", FluentValue::from(u32::MAX))])}
+                    }
+                }
+            }
             button {
                 class: "step-button",
                 aria_label: i18n.t("count-plus"),
@@ -70,6 +118,41 @@ pub fn CountStepper(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element
                 onclick: move |_| actions.change(|state| state.step(deed_id, Step::Plus)),
                 PlusIcon {}
             }
+        }
+    }
+}
+
+fn count_kind(count: u32, target: u32) -> &'static str {
+    match count {
+        0 => "missed",
+        _ if count >= target => "done",
+        _ => "partial",
+    }
+}
+
+fn select_count_input(deed_id: DeedId) {
+    let _ = document::eval(&format!(
+        "const inputId = 'count-input-{}';\n{}",
+        deed_id.0,
+        include_str!("counter-input.js")
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::count_kind;
+
+    #[test]
+    fn counter_colors_follow_zero_partial_and_full_values() {
+        for (count, expected) in [
+            (0, "missed"),
+            (1, "partial"),
+            (99, "partial"),
+            (100, "done"),
+            (101, "done"),
+            (u32::MAX, "done"),
+        ] {
+            assert_eq!(count_kind(count, 100), expected);
         }
     }
 }

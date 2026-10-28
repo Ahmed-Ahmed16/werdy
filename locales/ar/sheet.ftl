@@ -48,6 +48,8 @@ mark-added-later = أضيف لاحقًا
 count-minus = أنقص واحدًا
 count-plus = زد واحدًا
 count-progress = { $count } من { $target }
+count-edit = أدخل العدد
+count-invalid = أدخل عددًا صحيحًا من 0 إلى { $max }.
 
 note-button = ملاحظة
 note-sign = توجد ملاحظة لهذا اليوم
