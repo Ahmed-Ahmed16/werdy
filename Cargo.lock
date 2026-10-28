@@ -5954,10 +5954,13 @@ dependencies = [
  "dioxus",
  "fluent-bundle",
  "fluent-syntax",
+ "getrandom 0.2.17",
+ "gloo-timers",
  "js-sys",
  "manganis",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "unic-langid",
  "wasm-bindgen",
@@ -5967,6 +5970,7 @@ dependencies = [
  "werdy-data",
  "werdy-reminders",
  "werdy-store",
+ "werdy-sync",
 ]
 
 [[package]]

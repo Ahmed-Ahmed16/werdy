@@ -15,6 +15,9 @@ werdy-store = { path = "../werdy-store" }
 werdy-data = { path = "../werdy-data" }
 werdy-calendar = { path = "../werdy-calendar" }
 werdy-reminders = { path = "../werdy-reminders" }
+werdy-sync = { path = "../werdy-sync", features = ["supabase"] }
+getrandom = { version = "0.2", features = ["js"] }
+sha2 = "0.10"
 dioxus = "0.7.10"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
@@ -26,12 +29,15 @@ fluent-syntax = "0.12.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["console", "Coordinates", "Document", "Element", "Event", "Geolocation", "HtmlDialogElement", "HtmlElement", "Navigator", "Position", "PositionError", "PositionOptions", "Storage", "StorageEvent", "Window"] }
+web-sys = { version = "0.3", features = ["console", "Performance", "Coordinates", "Document", "Element", "Event", "Geolocation", "HtmlDialogElement", "HtmlElement", "Navigator", "Position", "PositionError", "PositionOptions", "Storage", "StorageEvent", "Window"] }
 wasm-bindgen = "0.2"
+gloo-timers = { version = "0.3", features = ["futures"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["time", "rt"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 manganis = "=0.7.10"
-tokio = { version = "1", features = ["time"] }
 
 [features]
 default = ["web"]

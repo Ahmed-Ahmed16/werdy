@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod account;
 mod consistency_data;
 mod demo;
 mod editor_data;

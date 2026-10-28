@@ -67,6 +67,7 @@ pub fn SettingsScreen() -> Element {
                 }
             }
             {reminders}
+            super::account::AccountSection {}
             div { class: "settings-card",
                 fieldset { class: "settings-row",
                     legend { {i18n.t("settings-language")} }

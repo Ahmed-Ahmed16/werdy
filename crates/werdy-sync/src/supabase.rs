@@ -9,6 +9,8 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{Backend, Batch, Pending, SyncError, invalid, rows};
 
+pub(crate) mod auth;
+
 /// Client for the RPCs in `supabase/migrations/20261028000000_sync.sql`.
 /// Uses only a public publishable key and the owner's current access token.
 /// No Debug or Serialize implementation can expose these credentials.
@@ -161,10 +163,7 @@ fn transport_error() -> SyncError {
 
 fn check_status(status: StatusCode) -> Result<(), SyncError> {
     if !status.is_success() {
-        return Err(SyncError::Backend(format!(
-            "Supabase RPC returned HTTP {}",
-            status.as_u16()
-        )));
+        return Err(SyncError::Http(status.as_u16()));
     }
     Ok(())
 }

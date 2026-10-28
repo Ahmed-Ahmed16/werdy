@@ -1,10 +1,11 @@
 # Supabase sync
 
-Stage B adds the optional `werdy-sync` feature `supabase`. It does not wire sign
-in into the app. The adapter takes a project origin, a public `sb_publishable_`
+The optional `werdy-sync` feature `supabase` provides sync and auth transports.
+Stage C wires sign in and background sync into the app. The adapter takes a project origin, a public `sb_publishable_`
 key and the owner's access token. Each RPC sends `apikey` and
 `Authorization: Bearer <access token>`. Replace a refreshed token with
-`SupabaseBackend::set_access_token`. Refresh itself belongs to stage C.
+`SupabaseBackend::set_access_token`. `SupabaseAuth` exchanges Google credentials
+and refreshes sessions. The app refreshes two minutes early, or once after a 401.
 Native requests need the caller's Tokio runtime. The dev dependency on Tokio
 runs the ignored native HTTP test. Browser requests use fetch.
 
@@ -60,10 +61,10 @@ does not inspect their meaning.
   and response bodies. Native HTTP redirects are disabled. Browser fetch uses
   its own redirect behavior; pass the trusted project origin directly.
 
-Limit failures return errors and keep the engine's outbox. The current engine
-sends the whole outbox in one push. An import beyond these limits needs a later
-bounded push design; it must not discard queued history or split a batch while
-claiming the backend's atomic push contract.
+Limit failures return errors and keep the engine's outbox. The engine pushes at
+most 32 operations per request, so a large import fits within the batch byte
+limit if each operation fits its own limit. Each request is atomic. A later
+failed batch keeps the whole outbox; retries deduplicate the earlier batches.
 
 ## Apply
 

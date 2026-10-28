@@ -6,12 +6,7 @@ use werdy_store::{DeedName, Digits, OwnerData, Settings, Theme};
 
 use crate::{Pending, Sync, SyncError, invalid};
 
-/// Stable across phones. Local numeric ids are only projection keys.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct DeedKey {
-    pub install: String,
-    pub sequence: u64,
-}
+pub use werdy_store::DeedKey;
 
 /// Deed metadata is one row. Rules are separate rows keyed by their start day,
 /// so edits to different dated rules do not discard one another.
@@ -258,19 +253,44 @@ pub(crate) fn project(engine: &mut Sync, records: &mut OwnerData) -> Result<(), 
         .iter()
         .map(|row| (row.pending.change.clone(), row.stamp.received_at))
         .collect();
+    project_changes(engine, records, &changes)
+}
+
+pub(crate) fn project_with_outbox(
+    engine: &mut Sync,
+    records: &mut OwnerData,
+) -> Result<(), SyncError> {
+    let mut changes: Vec<_> = engine
+        .accepted
+        .iter()
+        .map(|row| (row.pending.change.clone(), row.stamp.received_at))
+        .collect();
+    for pending in &engine.outbox {
+        changes.retain(|(row, _)| row.key() != pending.change.key());
+        changes.push((pending.change.clone(), 0));
+    }
+    project_changes(engine, records, &changes)
+}
+
+fn project_changes(
+    engine: &mut Sync,
+    records: &mut OwnerData,
+    changes: &[(Change, u64)],
+) -> Result<(), SyncError> {
     let mut ids = BTreeMap::new();
-    for (change, _) in &changes {
+    for (change, _) in changes {
         if let Change::Deed { id, row } = change {
             let local = engine.local_id(id, records)?;
+            records.deed_keys.insert(local, id.clone());
             ids.insert(id.clone(), (local, row.is_some()));
             let replacement = row
                 .as_ref()
-                .map(|header| build_deed(local, id, header, &changes).map(|deed| (deed, header)))
+                .map(|header| build_deed(local, id, header, changes).map(|deed| (deed, header)))
                 .transpose()?;
             replace_deed(records, local, replacement);
         }
     }
-    for (change, time) in &changes {
+    for (change, time) in changes {
         apply_row(records, change, *time, &ids)?;
     }
     records.deeds.sort_by_key(|deed| deed.id);

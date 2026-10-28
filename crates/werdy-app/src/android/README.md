@@ -1,8 +1,18 @@
-# Android reminders
+# Android reminders and Google sign in
 
-This library uses Android platform APIs only. No AndroidX or coroutine dependency
-is added. It targets compile SDK 35, minimum SDK 24 and Java 17. The Dioxus 0.7.10
+Reminders use Android platform APIs. Sign in adds Credential Manager and Google
+Identity. Versions are pinned to credentials 1.3.0, credentials play services auth
+1.3.0, googleid 1.1.1 and kotlinx coroutines android 1.8.1, to work with Kotlin
+2.0.20. The module targets compile SDK 35, minimum SDK 24 and Java 17. Dioxus 0.7.10
 build supplies its Kotlin compiler, currently 2.0.20.
+
+One Rust FFI block describes both classes for this library path. The generated
+constructor assumes the Gradle namespace, so Rust uses the shared activity class
+loader helper with each class's full package name instead. `GoogleSignin` lives
+in `com.ahmedhossam.werdy.signin`. It starts Credential Manager, returns at once,
+and is polled every 300 ms, for at most 120 seconds. It cancels when its Rust
+request is dropped. Google gets the SHA 256 hex of a random raw nonce. Supabase
+gets the raw nonce. Neither error replies nor logs include credentials.
 
 Rust constructs `Reminders(Activity)` with the activity class loader because of
 Dioxus issue #5629. String methods become `Result<String, String>` in Rust.

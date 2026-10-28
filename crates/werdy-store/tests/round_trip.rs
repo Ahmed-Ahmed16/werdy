@@ -46,6 +46,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
     )]);
 
     Ok(OwnerData {
+        deed_keys: BTreeMap::new(),
         demo_generation: None,
         first_run_complete: true,
         chosen_sets: ["five_prayers".to_owned()].into(),
@@ -94,14 +95,19 @@ fn save_then_load_returns_identical_data() -> TestResult {
 }
 
 #[test]
-fn umm_al_qura_round_trips_in_schema_eleven() -> TestResult {
+fn umm_al_qura_round_trips_and_schema_eleven_still_loads() -> TestResult {
     let mut data = sample()?;
     data.settings.prayer_method = werdy_store::PrayerMethod::UmmAlQura;
     let json = to_json(&data)?;
-    let value: serde_json::Value = serde_json::from_str(&json)?;
-    assert_eq!(value["schema_version"], 11);
+    let mut value: serde_json::Value = serde_json::from_str(&json)?;
+    assert_eq!(value["schema_version"], werdy_store::SCHEMA_VERSION);
     assert_eq!(value["settings"]["prayer_method"], "umm_al_qura");
     assert_eq!(from_json(&json)?, data);
+    value["schema_version"] = 11.into();
+    if let Some(object) = value.as_object_mut() {
+        object.remove("deed_keys");
+    }
+    assert_eq!(from_json(&value.to_string())?, data);
     Ok(())
 }
 

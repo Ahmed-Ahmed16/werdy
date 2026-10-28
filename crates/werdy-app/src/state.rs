@@ -388,6 +388,18 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The account coordinator already preserved edits made during the request.
+    /// Do not merge server revisions against phone times here.
+    pub fn accept_sync(&mut self, records: OwnerData) {
+        self.data = records;
+        self.pending_settings = PendingSettings::default();
+        self.sets_dirty = false;
+        self.deed_changes.clear();
+        self.invalidate_kept_days();
+        self.save_status = SaveStatus::Saved;
+        crate::platform::reschedule_reminders(&self.data);
+    }
+
     /// Loads saved data. Empty storage opens setup. Unreadable data is never overwritten.
     pub fn start(store: &dyn Store, today: WerdyDay, slot_order: Vec<SlotKey>) -> Self {
         let (mut data, save_status) = match store.load() {
@@ -1163,6 +1175,9 @@ impl AppState {
     }
 
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        if let Some(key) = self.data.deed_keys.remove(&old_id) {
+            self.data.deed_keys.insert(new_id, key);
+        }
         self.invalidate_kept_days();
         self.data.last_deed_id = new_id.0;
         let reminder = self.data.settings.reminders.deeds.remove(&old_id);

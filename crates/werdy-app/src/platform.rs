@@ -11,6 +11,9 @@ use werdy_store::{Location, PrayerMethod, Settings};
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
+#[allow(non_snake_case)]
+pub(crate) mod android_bridge;
+#[cfg(target_os = "android")]
 mod android_reminders;
 
 /// Queues Android delivery after a successful save. Other platforms keep settings only.
@@ -128,7 +131,7 @@ pub fn open_store(mode: DataMode) -> Rc<dyn Store> {
 }
 
 #[cfg(target_os = "android")]
-fn android_store_path() -> Option<std::path::PathBuf> {
+pub(crate) fn android_store_path() -> Option<std::path::PathBuf> {
     use manganis::jni::objects::JString;
 
     manganis::android::with_activity(|env, activity| {

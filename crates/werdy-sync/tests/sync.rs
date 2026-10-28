@@ -501,3 +501,57 @@ fn cancelled_suspended_push_keeps_queue_and_retries_without_duplicates() {
     assert_eq!(run(backend.inner.pull(0)).unwrap().cursor, cursor);
     assert!(engine.outbox().is_empty());
 }
+
+struct FailSecondBatch {
+    inner: FakeBackend,
+    pushes: usize,
+}
+impl Backend for FailSecondBatch {
+    async fn push(&mut self, changes: &[Pending]) -> Result<Batch, SyncError> {
+        self.pushes += 1;
+        if self.pushes == 2 {
+            return Err(SyncError::Backend("second batch failed".into()));
+        }
+        assert!(changes.len() <= 32);
+        self.inner.push(changes).await
+    }
+    async fn pull(&mut self, cursor: u64) -> Result<Batch, SyncError> {
+        self.inner.pull(cursor).await
+    }
+    async fn server_time(&mut self) -> Result<u64, SyncError> {
+        self.inner.server_time().await
+    }
+}
+
+#[test]
+fn later_batch_failure_keeps_whole_outbox_and_retry_deduplicates_earlier_batches() {
+    let mut backend = FailSecondBatch {
+        inner: FakeBackend::new(1000),
+        pushes: 0,
+    };
+    let mut engine = Sync::new("batch").unwrap();
+    let mut records = history("large import");
+    let mut marked = day();
+    for _ in 0..80 {
+        records.set_mark(
+            DeedId(1),
+            marked,
+            Some(MarkEntry::new(Mark::Done, marked)),
+            1,
+        );
+        marked = marked.next().unwrap();
+    }
+    engine.capture(&records).unwrap();
+    let pending = engine.outbox().to_vec();
+    let before = records.clone();
+    assert!(run(engine.sync(&mut backend, &mut records, || 1000)).is_err());
+    assert_eq!(engine.outbox(), pending);
+    assert_eq!(records, before);
+    assert_eq!(run(backend.inner.pull(0)).unwrap().cursor, 32);
+    sync(&mut engine, &mut backend, &mut records);
+    assert_eq!(
+        run(backend.inner.pull(0)).unwrap().cursor,
+        pending.len() as u64
+    );
+    assert!(engine.outbox().is_empty());
+}

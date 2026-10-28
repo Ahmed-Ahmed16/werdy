@@ -22,6 +22,8 @@ pub use fake::FakeBackend;
 pub use rows::{Change, DeedKey, DeedRow, Setting};
 #[cfg(feature = "supabase")]
 pub use supabase::SupabaseBackend;
+#[cfg(feature = "supabase")]
+pub use supabase::auth::{Session, SupabaseAuth};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -31,6 +33,7 @@ use werdy_store::OwnerData;
 /// Failures leave local records and queued operations available for retry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SyncError {
+    Http(u16),
     Backend(String),
     Invalid(String),
     Exhausted,
@@ -39,6 +42,7 @@ pub enum SyncError {
 impl std::fmt::Display for SyncError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Http(status) => write!(formatter, "Supabase returned HTTP {status}"),
             Self::Backend(reason) => write!(formatter, "sync backend failed: {reason}"),
             Self::Invalid(reason) => write!(formatter, "invalid sync data: {reason}"),
             Self::Exhausted => formatter.write_str("sync counter exhausted"),
@@ -161,6 +165,38 @@ impl Sync {
         &self.outbox
     }
 
+    /// Installs a completed background copy while keeping edits captured since
+    /// that copy started. Existing local id bindings take priority, so a deed
+    /// created during the request cannot alias a newly downloaded deed.
+    /// The caller must save this engine and the resulting records atomically.
+    pub fn finish_from(
+        &mut self,
+        completed: &Self,
+        records: &mut OwnerData,
+    ) -> Result<(), SyncError> {
+        if self.install != completed.install
+            || self.next_operation < completed.next_operation
+            || self.cursor > completed.cursor
+            || !completed.outbox.is_empty()
+        {
+            return Err(invalid("background sync belongs to another state"));
+        }
+        let mut staged = self.clone();
+        for row in &completed.accepted {
+            staged.accept(row.clone())?;
+        }
+        staged.cursor = completed.cursor;
+        staged
+            .outbox
+            .retain(|pending| pending.operation >= completed.next_operation);
+        let mut merged = records.clone();
+        rows::project_with_outbox(&mut staged, &mut merged)?;
+        staged.observed = rows::snapshot(&mut staged, &merged)?;
+        *self = staged;
+        *records = merged;
+        Ok(())
+    }
+
     /// Captures changed rows, including explicit clears and deed deletion.
     /// First capture imports all local history with fresh namespaced deed ids.
     /// Remote deeds retain their wire ids through saved bindings. Existing local
@@ -169,6 +205,32 @@ impl Sync {
     /// No state changes on invalid local input or counter exhaustion.
     pub fn capture(&mut self, records: &OwnerData) -> Result<(), SyncError> {
         let mut staged = self.clone();
+        for (local, remote) in &records.deed_keys {
+            rows::validate_install(&remote.install)?;
+            if remote.sequence == 0
+                || staged.bindings.iter().any(|binding| {
+                    (binding.local == *local && binding.remote != *remote)
+                        || (binding.remote == *remote && binding.local != *local)
+                })
+            {
+                return Err(invalid("conflicting deed identity"));
+            }
+            if !staged
+                .bindings
+                .iter()
+                .any(|binding| binding.local == *local)
+            {
+                staged.bindings.push(Binding {
+                    local: *local,
+                    remote: remote.clone(),
+                });
+            }
+            if remote.install == staged.install {
+                staged.next_deed = staged
+                    .next_deed
+                    .max(remote.sequence.checked_add(1).ok_or(SyncError::Exhausted)?);
+            }
+        }
         let snapshot = rows::snapshot(&mut staged, records)?;
         for change in &snapshot {
             if !staged.observed.contains(change) {
@@ -184,6 +246,20 @@ impl Sync {
         staged.observed = snapshot;
         *self = staged;
         Ok(())
+    }
+
+    /// After capture, persist these domain identities with the same records.
+    /// They survive deletion of the account session and sync cursor.
+    pub fn remember_deed_keys(&self, records: &mut OwnerData) {
+        for binding in &self.bindings {
+            if records.deeds.iter().any(|deed| deed.id == binding.local)
+                || records.deleted_deeds.contains(&binding.local)
+            {
+                records
+                    .deed_keys
+                    .insert(binding.local, binding.remote.clone());
+            }
+        }
     }
 
     /// Captures edits, measures the clock, pushes then pulls from the last read
@@ -205,7 +281,30 @@ impl Sync {
             .checked_sub(before)
             .ok_or_else(|| invalid("phone clock moved backwards during sample"))?;
         let milliseconds = i128::from(server_time) - (i128::from(before) + i128::from(after)) / 2;
-        let pushed = backend.push(&self.outbox).await?;
+        let mut pushed = Batch {
+            changes: Vec::new(),
+            cursor: self.cursor,
+        };
+        // Each push is atomic. Small batches also fit the server byte limit
+        // when every operation is at its maximum permitted size.
+        for batch in self.outbox.chunks(32) {
+            let receipt = backend.push(batch).await?;
+            if receipt.changes.len() != batch.len()
+                || receipt
+                    .changes
+                    .iter()
+                    .zip(batch)
+                    .any(|(row, pending)| &row.pending != pending)
+                || receipt.cursor < pushed.cursor
+            {
+                return Err(invalid("incomplete push acknowledgement"));
+            }
+            pushed.cursor = receipt.cursor;
+            pushed.changes.extend(receipt.changes);
+        }
+        if self.outbox.is_empty() {
+            pushed = backend.push(&[]).await?;
+        }
         self.validate_push(&pushed)?;
         let pulled = backend.pull(self.cursor).await?;
         self.validate_pull(&pulled, pushed.cursor)?;

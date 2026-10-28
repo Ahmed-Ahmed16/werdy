@@ -1,6 +1,7 @@
 //! Screen components. They show what the app state returns and send taps
 //! back to it; they hold no scoring.
 
+mod account;
 mod context;
 mod deeds;
 mod first_run;
@@ -135,7 +136,18 @@ mod tests {
 pub fn App() -> Element {
     let texts = use_hook(|| Rc::new(Texts::load()));
     let mode = use_hook(platform::data_mode);
-    let store = use_hook(|| platform::open_store(mode));
+    let account_store = use_hook(|| {
+        let raw = platform::open_store(mode);
+        let vault = crate::account::storage::open()
+            .unwrap_or_else(|_| Rc::new(crate::account::storage::UnavailableVault));
+        Rc::new(crate::account::AccountStore::open(
+            raw,
+            vault,
+            mode == platform::DataMode::Normal,
+        ))
+    });
+    use_context_provider(|| crate::account::runtime::AccountHandle(account_store.clone()));
+    let store: Rc<dyn werdy_store::Store> = account_store;
     let initial = use_hook(|| start_app_state(mode, store.as_ref()));
     use_context_provider(|| texts.clone());
 
@@ -172,6 +184,7 @@ impl PartialEq for StoreHandle {
 #[component]
 fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Element {
     let mut state = use_signal(|| initial);
+    crate::account::runtime::use_background(state);
     use_hook(move || {
         let app = state.read();
         if app.save_status != SaveStatus::LoadFailed {
