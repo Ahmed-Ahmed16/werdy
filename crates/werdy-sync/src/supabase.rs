@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderValue};
 use reqwest::{Client, Request, StatusCode, Url};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{Backend, Batch, Pending, SyncError, invalid, rows};
 
@@ -34,6 +34,22 @@ struct PullRequest {
 
 #[derive(Serialize)]
 struct TimeRequest {}
+
+const DELETE_ACCOUNT: &str = "werdy_account_delete";
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Deleted {
+    ok: bool,
+}
+
+fn deleted(reply: Deleted) -> Result<(), SyncError> {
+    if reply.ok {
+        Ok(())
+    } else {
+        Err(invalid("account delete refused"))
+    }
+}
 
 impl SupabaseBackend {
     /// Accepts an HTTPS project origin. HTTP is allowed only for loopback tests.
@@ -80,6 +96,12 @@ impl SupabaseBackend {
     pub fn set_access_token(&mut self, access_token: &str) -> Result<(), SyncError> {
         self.authorization = authorization(access_token)?;
         Ok(())
+    }
+
+    /// Deletes the caller's server copy, shares and account. Records on the
+    /// device are the caller's to keep.
+    pub async fn delete_account(&self) -> Result<(), SyncError> {
+        deleted(self.rpc(DELETE_ACCOUNT, &TimeRequest {}).await?)
     }
 
     fn request(&self, function: &str, arguments: &impl Serialize) -> Result<Request, SyncError> {

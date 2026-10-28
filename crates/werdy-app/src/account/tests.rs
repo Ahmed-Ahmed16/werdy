@@ -344,3 +344,44 @@ fn demo_uses_records_without_opening_or_writing_account_storage() {
     assert_eq!(store.load().unwrap().unwrap(), records);
     assert!(store.account.borrow().session.is_none());
 }
+
+#[test]
+fn confirmed_account_delete_signs_out_and_keeps_records_here() {
+    let store = store();
+    let records = records();
+    store.sign_in(session(), &records).unwrap();
+    let generation = store.account.borrow().generation;
+    assert_eq!(store.settle_delete(Ok(()), &records, generation), Ok(()));
+    assert!(store.account.borrow().session.is_none());
+    assert!(store.vault.read(File::Session).unwrap().is_none());
+    assert!(store.vault.read(File::Sync).unwrap().is_none());
+    assert_eq!(store.load().unwrap().unwrap().deeds, records.deeds);
+}
+
+#[test]
+fn failed_account_delete_keeps_session_sync_state_and_records() {
+    let store = store();
+    let records = records();
+    store.sign_in(session(), &records).unwrap();
+    let generation = store.account.borrow().generation;
+    assert_eq!(
+        store.settle_delete(Err(werdy_sync::SyncError::Http(500)), &records, generation),
+        Err("account-delete-error")
+    );
+    assert!(store.account.borrow().session.is_some());
+    assert!(store.vault.read(File::Session).unwrap().is_some());
+    assert!(store.vault.read(File::Sync).unwrap().is_some());
+    assert_eq!(store.load().unwrap().unwrap().deeds, records.deeds);
+}
+
+#[test]
+fn late_delete_reply_does_not_sign_out_a_newer_session() {
+    let store = store();
+    let records = records();
+    store.sign_in(session(), &records).unwrap();
+    let old = store.account.borrow().generation;
+    store.sign_out(&records).unwrap();
+    store.sign_in(session(), &records).unwrap();
+    assert_eq!(store.settle_delete(Ok(()), &records, old), Ok(()));
+    assert!(store.account.borrow().session.is_some());
+}

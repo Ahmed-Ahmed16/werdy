@@ -69,6 +69,15 @@ sync task and removes sync state. It keeps local history. A generation check
 also prevents a late completion from restoring old account state. Storage
 errors are shown instead of claiming that a failed sign out succeeded.
 
+Delete my account (Settings > Account, after a confirm step) calls
+`werdy_account_delete` under the same guard as sharing requests: it waits for
+owner sync and runs in the root scope. The RPC deletes the caller's sync
+changes, head, shares in both directions, share codes, attempts and the auth
+user. Only a confirmed delete then signs out as above, so local records stay.
+A failed request changes nothing on the device. The migration is
+`supabase/migrations/20261030000000_delete_account.sql`; after applying it, run
+`supabase/tests/delete_account_checks.sql`.
+
 ## Checks for the orchestrator
 
 1. Apply the reviewed SQL migration as owner. Build Android with dx outside this

@@ -25,6 +25,8 @@ pub struct Sharing {
     busy: bool,
     error: Option<&'static str>,
     generation: Option<u64>,
+    pub deleting: bool,
+    pub delete_error: Option<&'static str>,
 }
 
 impl Sharing {
@@ -108,15 +110,8 @@ fn run(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>, re
     // Settings unmounts when the watched screen opens. Keep its request alive
     // in the root scope; account generation still rejects replies after sign out.
     dioxus::dioxus_core::spawn_forever(async move {
-        // Serialize token refresh with owner sync. No borrow crosses an await.
-        loop {
-            if store.account.borrow().generation != generation {
-                return;
-            }
-            if !store.account.borrow().schedule.is_running() {
-                break;
-            }
-            crate::account::runtime::sleep(Duration::from_millis(100)).await;
+        if !wait_for_sync(&store, generation).await {
+            return;
         }
         store.account.borrow_mut().sharing_busy = true;
         let _flight = Flight(store.clone(), generation);
@@ -128,6 +123,56 @@ fn run(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>, re
         if reload {
             drop(_flight);
             run(sharing, store, Request::Lists);
+        }
+    });
+}
+
+/// Serializes token refresh with owner sync. No borrow crosses an await.
+/// Returns false when the account changed while waiting.
+async fn wait_for_sync(store: &crate::account::AccountStore, generation: u64) -> bool {
+    loop {
+        if store.account.borrow().generation != generation {
+            return false;
+        }
+        if !store.account.borrow().schedule.is_running() {
+            return true;
+        }
+        crate::account::runtime::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Deletes the server account under the same guard as sharing requests. The
+/// state lives in the root sharing signal, so leaving Settings cannot drop it.
+pub fn delete_account(
+    mut sharing: Signal<Sharing>,
+    state: Signal<AppState>,
+    store: Rc<crate::account::AccountStore>,
+) {
+    if sharing.peek().busy || sharing.peek().deleting {
+        return;
+    }
+    sharing.write().deleting = true;
+    sharing.write().delete_error = None;
+    let generation = store.account.borrow().generation;
+    dioxus::dioxus_core::spawn_forever(async move {
+        if !wait_for_sync(&store, generation).await {
+            sharing.write().deleting = false;
+            return;
+        }
+        store.account.borrow_mut().sharing_busy = true;
+        let flight = Flight(store.clone(), generation);
+        let result = crate::account::sharing::execute(&store, &Request::DeleteAccount, generation)
+            .await
+            .map(|_| ());
+        drop(flight);
+        let records = state.peek().data.clone();
+        match store.settle_delete(result, &records, generation) {
+            Ok(()) => sharing.set(Sharing::default()),
+            Err(key) => {
+                let mut sharing = sharing.write();
+                sharing.deleting = false;
+                sharing.delete_error = Some(key);
+            }
         }
     });
 }

@@ -184,3 +184,22 @@ fn unsafe_urls_and_invalid_credentials_are_rejected_without_echo() {
     }
     assert!(SupabaseBackend::new("http://127.0.0.1:54321", "sb_publishable_test", "token").is_ok());
 }
+
+#[test]
+fn account_delete_posts_empty_body_and_accepts_only_ok() {
+    let request = backend().request(DELETE_ACCOUNT, &TimeRequest {}).unwrap();
+    assert_eq!(
+        request.url().as_str(),
+        "https://example.invalid/rest/v1/rpc/werdy_account_delete"
+    );
+    let body: serde_json::Value =
+        serde_json::from_slice(request.body().unwrap().as_bytes().unwrap()).unwrap();
+    assert_eq!(body, serde_json::json!({}));
+    assert!(deleted(parse_response(br#"{"ok":true}"#).unwrap()).is_ok());
+    assert!(deleted(parse_response(br#"{"ok":false}"#).unwrap()).is_err());
+    let error = parse_response::<Deleted>(br#"{"ok":true,"token":"JWT"}"#)
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(!error.contains("JWT"));
+}
