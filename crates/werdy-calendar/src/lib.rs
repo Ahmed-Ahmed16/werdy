@@ -1,4 +1,4 @@
-//! Fajr time and werdy day boundaries from local calendar data.
+//! Prayer times and werdy day boundaries from local calendar data.
 
 #![forbid(unsafe_code)]
 
@@ -153,6 +153,30 @@ pub enum IshaRule {
     MinutesAfterMaghrib { usual: u16, ramadan: u16 },
 }
 
+/// The shadow rule for Asr, in addition to the shadow at solar noon.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AsrSchool {
+    /// Shadow factor 1, also used by Maliki and Hanbali.
+    #[default]
+    Shafi,
+    /// Shadow factor 2.
+    Hanafi,
+}
+
+impl AsrSchool {
+    fn altitude(self, latitude: f64, declination: f64) -> Option<f64> {
+        let distance = (latitude - declination).abs();
+        if distance >= PI / 2.0 {
+            return None;
+        }
+        let factor = match self {
+            Self::Shafi => 1.0,
+            Self::Hanafi => 2.0,
+        };
+        Some((1.0 / (factor + distance.tan())).atan())
+    }
+}
+
 struct MethodParameters {
     fajr_angle: f64,
     isha: IshaRule,
@@ -243,7 +267,7 @@ impl Moment {
     }
 }
 
-/// A bad input or a Fajr time that cannot be returned.
+/// A bad input or a solar event that cannot be returned on the local date.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Latitude is outside its range or is not finite.
@@ -260,32 +284,145 @@ pub enum Error {
     DateOutOfRange,
     /// The sun does not cross the Fajr angle that day.
     FajrDoesNotOccur,
+    /// The sun does not rise to altitude minus 0.833 degrees on the local date.
+    SunriseDoesNotOccur,
+    /// Solar noon does not fall on the local date with the supplied offset.
+    DhuhrDoesNotOccur,
+    /// The sun does not reach the afternoon shadow altitude on the local date.
+    AsrDoesNotOccur,
+    /// The sun does not set to altitude minus 0.833 degrees on the local date.
+    MaghribDoesNotOccur,
+    /// The Isha angle or the required time after sunset does not occur on the local date.
+    IshaDoesNotOccur,
 }
 
 /// Computes Fajr for a Gregorian date and a known local UTC offset.
 pub fn fajr(date: Date, place: Place, method: Method) -> Result<LocalTime, Error> {
-    let latitude = place.latitude * PI / 180.0;
-    let fajr_altitude = -method.fajr_angle() * PI / 180.0;
+    solar_time(
+        date,
+        place,
+        SolarEvent::Rising(-method.fajr_angle().to_radians()),
+        Error::FajrDoesNotOccur,
+    )
+}
+
+/// Computes sunrise at altitude minus 0.833 degrees.
+/// Returns `Error::SunriseDoesNotOccur` if it is absent on the local date.
+pub fn sunrise(date: Date, place: Place) -> Result<LocalTime, Error> {
+    solar_time(
+        date,
+        place,
+        SolarEvent::Rising(SUNSET_ALTITUDE),
+        Error::SunriseDoesNotOccur,
+    )
+}
+
+/// Computes solar noon without any added minutes.
+/// Returns `Error::DhuhrDoesNotOccur` if noon is outside the local date.
+pub fn dhuhr(date: Date, place: Place) -> Result<LocalTime, Error> {
+    solar_time(date, place, SolarEvent::Noon, Error::DhuhrDoesNotOccur)
+}
+
+/// Computes afternoon Asr using the chosen shadow factor.
+/// Returns `Error::AsrDoesNotOccur` if the altitude is not reached on the local date.
+pub fn asr(date: Date, place: Place, school: AsrSchool) -> Result<LocalTime, Error> {
+    solar_time(date, place, SolarEvent::Asr(school), Error::AsrDoesNotOccur)
+}
+
+/// Computes Maghrib at sunset, altitude minus 0.833 degrees.
+/// Returns `Error::MaghribDoesNotOccur` if sunset is absent on the local date.
+pub fn maghrib(date: Date, place: Place) -> Result<LocalTime, Error> {
+    solar_time(
+        date,
+        place,
+        SolarEvent::Setting(SUNSET_ALTITUDE, 0),
+        Error::MaghribDoesNotOccur,
+    )
+}
+
+/// Computes Isha outside Ramadan using the method's rule.
+/// The caller chooses `isha_in_ramadan` during Ramadan. No Hijri date is inferred.
+/// Returns `Error::IshaDoesNotOccur` if the required event is absent on the local date.
+pub fn isha(date: Date, place: Place, method: Method) -> Result<LocalTime, Error> {
+    let event = match method.isha_rule() {
+        IshaRule::Angle(angle) => SolarEvent::Setting(-angle.to_radians(), 0),
+        IshaRule::MinutesAfterMaghrib { usual, .. } => SolarEvent::Setting(SUNSET_ALTITUDE, usual),
+    };
+    solar_time(date, place, event, Error::IshaDoesNotOccur)
+}
+
+/// Computes Isha during Ramadan, as selected by the caller.
+/// Angle methods are unchanged. Umm al Qura uses 120 minutes after Maghrib.
+/// Returns `Error::IshaDoesNotOccur` if the required event is absent on the local date.
+pub fn isha_in_ramadan(date: Date, place: Place, method: Method) -> Result<LocalTime, Error> {
+    let event = match method.isha_rule() {
+        IshaRule::Angle(angle) => SolarEvent::Setting(-angle.to_radians(), 0),
+        IshaRule::MinutesAfterMaghrib { ramadan, .. } => {
+            SolarEvent::Setting(SUNSET_ALTITUDE, ramadan)
+        }
+    };
+    solar_time(date, place, event, Error::IshaDoesNotOccur)
+}
+
+const SUNSET_ALTITUDE: f64 = -0.833 * PI / 180.0;
+
+enum SolarEvent {
+    Rising(f64),
+    Noon,
+    Asr(AsrSchool),
+    Setting(f64, u16),
+}
+
+impl SolarEvent {
+    fn minutes_from_noon(&self, latitude: f64, declination: f64) -> Option<f64> {
+        match *self {
+            Self::Noon => Some(0.0),
+            Self::Rising(altitude) => {
+                hour_angle(latitude, declination, altitude).map(|angle| -4.0 * angle)
+            }
+            Self::Setting(altitude, delay) => hour_angle(latitude, declination, altitude)
+                .map(|angle| 4.0 * angle + f64::from(delay)),
+            Self::Asr(school) => school
+                .altitude(latitude, declination)
+                .and_then(|altitude| hour_angle(latitude, declination, altitude))
+                .map(|angle| 4.0 * angle),
+        }
+    }
+}
+
+fn hour_angle(latitude: f64, declination: f64, altitude: f64) -> Option<f64> {
+    let cosine = (altitude.sin() - latitude.sin() * declination.sin())
+        / (latitude.cos() * declination.cos());
+    if !(-1.0..=1.0).contains(&cosine) {
+        return None;
+    }
+    Some(cosine.acos().to_degrees())
+}
+
+fn solar_time(
+    date: Date,
+    place: Place,
+    event: SolarEvent,
+    missing: Error,
+) -> Result<LocalTime, Error> {
+    let latitude = place.latitude.to_radians();
     // Cases: prior, same, and next solar date can map to the requested local date.
     for day_offset in -1..=1 {
         let (equation_of_time, declination) = solar_position(date, day_offset);
-        let cosine_hour_angle = (fajr_altitude.sin() - latitude.sin() * declination.sin())
-            / (latitude.cos() * declination.cos());
-        if !(-1.0..=1.0).contains(&cosine_hour_angle) {
+        let Some(minutes_from_noon) = event.minutes_from_noon(latitude, declination) else {
             continue;
-        }
-        let hour_angle = cosine_hour_angle.acos() * 180.0 / PI;
-        let utc_minutes = 720.0 - 4.0 * (place.longitude + hour_angle) - equation_of_time;
+        };
+        let utc_minutes = 720.0 - 4.0 * place.longitude - equation_of_time + minutes_from_noon;
         let local_minutes =
             f64::from(day_offset) * 1440.0 + utc_minutes + f64::from(place.utc_offset_minutes);
         if (0.0..1440.0).contains(&local_minutes) {
             return Ok(LocalTime {
-                // Cap rounded midnight at 23:59 to keep Fajr on this date.
+                // Cap rounded midnight at 23:59 to keep the event on this date.
                 minutes_since_midnight: local_minutes.round().min(1439.0) as u16,
             });
         }
     }
-    Err(Error::FajrDoesNotOccur)
+    Err(missing)
 }
 
 fn solar_position(date: Date, day_offset: i32) -> (f64, f64) {
