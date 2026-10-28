@@ -74,7 +74,8 @@ impl std::error::Error for Error {}
 /// `offset_at` takes a date and elapsed minutes from that date's local midnight,
 /// like the app's Fajr lookup. It must be deterministic and include daylight saving.
 /// Without location, clock reminders use the civil day, like the app.
-/// Invalid slot rules, invalid dates and failed solar calculations return errors.
+/// A prayer that does not occur skips only that slot reminder on that date.
+/// Invalid slot rules, invalid dates and other calculation failures return errors.
 /// If Fajr does not occur, the civil day is used, like the app.
 pub fn schedule(
     owner: &OwnerData,
@@ -175,7 +176,18 @@ impl<F: Fn(WerdyDay, u16) -> i32> Planner<'_, F> {
                 {
                     return Ok(None);
                 }
-                Ok(Some(self.calendar.prayer(source, &slot.0)? + delay))
+                match self.calendar.prayer(source, &slot.0) {
+                    Ok(minute) => Ok(Some(minute + delay)),
+                    Err(Error::Calendar(
+                        werdy_calendar::Error::FajrDoesNotOccur
+                        | werdy_calendar::Error::SunriseDoesNotOccur
+                        | werdy_calendar::Error::DhuhrDoesNotOccur
+                        | werdy_calendar::Error::AsrDoesNotOccur
+                        | werdy_calendar::Error::MaghribDoesNotOccur
+                        | werdy_calendar::Error::IshaDoesNotOccur,
+                    )) => Ok(None),
+                    Err(error) => Err(error),
+                }
             }
         }
     }

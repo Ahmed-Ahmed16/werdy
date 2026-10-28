@@ -35,8 +35,10 @@ stay private; system broadcasts can reach a receiver with `exported="false"`.
 
 Only the saved two day plan survives while the app is closed. Boot restores that
 plan, not a new Rust plan. Open the app again to extend it. Clock changes and a
-new device time zone need an app restart. A nonexistent clock minute at a DST
-jump returns an error; a repeated minute resolves to one occurrence.
+new device time zone need an app restart. A clock minute skipped by a DST jump
+omits only that notification; a repeated minute resolves to one occurrence.
+If midnight is skipped, the day anchor uses midnight expressed with the offset
+before the gap.
 
 ## Emulator checks for the orchestrator
 
