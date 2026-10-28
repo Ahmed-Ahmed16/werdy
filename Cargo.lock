@@ -5958,6 +5958,7 @@ dependencies = [
  "manganis",
  "serde",
  "serde_json",
+ "tokio",
  "unic-langid",
  "wasm-bindgen",
  "web-sys",

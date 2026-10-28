@@ -8,6 +8,19 @@ use werdy_core::{Error, WerdyDay};
 use werdy_store::Store;
 use werdy_store::{Location, PrayerMethod, Settings};
 
+#[cfg(target_os = "android")]
+mod android;
+
+#[cfg(any(test, target_os = "android"))]
+fn local_clock_at(seconds: i64, offset: i32) -> Result<(WerdyDay, u8, u8), Error> {
+    let local_seconds = seconds
+        .checked_add(i64::from(offset) * 60)
+        .ok_or(Error::InvalidDate)?;
+    let day = WerdyDay::from_unix_days(local_seconds.div_euclid(86_400))?;
+    let minutes = local_seconds.rem_euclid(86_400) / 60;
+    Ok((day, (minutes / 60) as u8, (minutes % 60) as u8))
+}
+
 #[cfg(any(test, target_arch = "wasm32"))]
 const RECORDS_KEY: &str = "werdy.records";
 #[cfg(any(test, target_arch = "wasm32"))]
@@ -128,7 +141,11 @@ pub fn today() -> Result<WerdyDay, Error> {
         let day = u8::try_from(now.get_date()).map_err(|_| Error::InvalidDate)?;
         WerdyDay::new(year, month, day)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        android::clock().map(|clock| clock.day)
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         const SECONDS_PER_DAY: u64 = 86_400;
         let seconds = std::time::SystemTime::now()
@@ -229,7 +246,7 @@ fn day_for_with_offset_lookup(
 }
 
 /// Pure date boundary. Browser supplies local time and offset for this date.
-#[cfg(any(test, not(target_arch = "wasm32")))]
+#[cfg(any(test, not(any(target_arch = "wasm32", target_os = "android"))))]
 pub fn day_for(
     day: WerdyDay,
     hour: u8,
@@ -242,6 +259,7 @@ pub fn day_for(
 
 /// Browser local offset is read for the calendar date, including daylight saving.
 pub fn today_with_settings(settings: &Settings) -> Result<WerdyDay, Error> {
+    #[cfg(not(target_os = "android"))]
     let day = today()?;
     #[cfg(target_arch = "wasm32")]
     {
@@ -257,7 +275,19 @@ pub fn today_with_settings(settings: &Settings) -> Result<WerdyDay, Error> {
             |minutes| browser_offset_at_fajr(&date, minutes),
         )
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        let clock = android::clock()?;
+        day_for_with_offset_lookup(
+            clock.day,
+            clock.hour,
+            clock.minute,
+            clock.midnight_offset(),
+            settings,
+            |minutes| clock.offset_at_fajr(minutes),
+        )
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         day_for(day, 12, 0, 0, settings)
     }
@@ -265,6 +295,7 @@ pub fn today_with_settings(settings: &Settings) -> Result<WerdyDay, Error> {
 
 /// Today's Fajr in local clock minutes, for the selected place.
 pub fn fajr_today(settings: &Settings) -> Result<Option<u16>, Error> {
+    #[cfg(not(target_os = "android"))]
     let day = today()?;
     #[cfg(target_arch = "wasm32")]
     {
@@ -274,7 +305,14 @@ pub fn fajr_today(settings: &Settings) -> Result<Option<u16>, Error> {
             browser_offset_at_fajr(&date, minutes)
         })
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        let clock = android::clock()?;
+        fajr_with_offset_lookup(clock.day, settings, clock.midnight_offset(), |minutes| {
+            clock.offset_at_fajr(minutes)
+        })
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         let offset = 0;
         fajr_with_offset_lookup(day, settings, offset, |_| offset)
@@ -403,7 +441,11 @@ pub fn local_time() -> (u8, u8) {
         let now = js_sys::Date::new_0();
         (now.get_hours() as u8, now.get_minutes() as u8)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        android::clock().map_or((0, 0), |clock| (clock.hour, clock.minute))
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         (0, 0)
     }
@@ -411,6 +453,11 @@ pub fn local_time() -> (u8, u8) {
 
 /// Scrolls a visible time slot into view in the browser.
 pub fn scroll_slot(slot: &str) {
+    #[cfg(target_os = "android")]
+    if let Ok(id) = serde_json::to_string(&format!("slot-{slot}")) {
+        let _ =
+            dioxus::document::eval(&format!("document.getElementById({id})?.scrollIntoView();"));
+    }
     #[cfg(target_arch = "wasm32")]
     if let Some(element) = web_sys::window()
         .and_then(|window| window.document())
@@ -418,12 +465,17 @@ pub fn scroll_slot(slot: &str) {
     {
         element.scroll_into_view();
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _ = slot;
 }
 
 /// Restores the top after a new screen has rendered its content.
 pub fn scroll_to_top() {
+    #[cfg(target_os = "android")]
+    let _ = dioxus::document::eval(
+        "try { requestAnimationFrame(() => window.scrollTo(0, 0)); }
+         catch (_) { window.scrollTo(0, 0); }",
+    );
     #[cfg(target_arch = "wasm32")]
     if let Some(window) = web_sys::window() {
         use wasm_bindgen::JsCast;
@@ -443,6 +495,16 @@ pub fn scroll_to_top() {
 
 /// Opens the browser's modal dialog and puts focus on its note field.
 pub fn open_note_dialog() {
+    #[cfg(target_os = "android")]
+    let _ = dioxus::document::eval(
+        "const dialog = document.getElementById('note-dialog');
+         if (dialog instanceof HTMLDialogElement) {
+             try {
+                 dialog.showModal();
+                 document.getElementById('note-text')?.focus();
+             } catch (error) { console.error(error); }
+         }",
+    );
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(dialog) = note_dialog() {
@@ -456,6 +518,11 @@ pub fn open_note_dialog() {
 
 /// Closes the modal so the Note button can receive focus again.
 pub fn close_note_dialog() {
+    #[cfg(target_os = "android")]
+    let _ = dioxus::document::eval(
+        "const dialog = document.getElementById('note-dialog');
+         if (dialog instanceof HTMLDialogElement) { dialog.close(); }",
+    );
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(dialog) = note_dialog() {
@@ -477,6 +544,10 @@ fn note_dialog() -> Option<web_sys::HtmlDialogElement> {
 
 /// Focuses a page control after modal state changes.
 pub fn focus_element(id: &str) {
+    #[cfg(target_os = "android")]
+    if let Ok(id) = serde_json::to_string(id) {
+        let _ = dioxus::document::eval(&format!("document.getElementById({id})?.focus();"));
+    }
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
@@ -489,24 +560,31 @@ pub fn focus_element(id: &str) {
             let _ = element.focus();
         }
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _ = id;
 }
 
 #[cfg(target_arch = "wasm32")]
 pub use web::WatchHandle;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "android")]
+pub use android::WatchHandle;
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 pub struct WatchHandle;
 
 /// Matches the width where the week card becomes visible.
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(target_arch = "wasm32", target_os = "android", test))]
 fn week_card_visible_at(width: f64) -> bool {
     width >= 840.0
 }
 
 /// Reads current width for the week card.
 pub fn wide_layout() -> bool {
+    #[cfg(target_os = "android")]
+    {
+        android::wide_layout()
+    }
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::window()
@@ -514,7 +592,7 @@ pub fn wide_layout() -> bool {
             .and_then(|width| width.as_f64())
             .is_some_and(week_card_visible_at)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         false
     }
@@ -531,7 +609,12 @@ pub fn watch_changes(
     {
         web::watch_changes(mode.key(), on_clock, on_storage, on_resize)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    {
+        let _ = (mode, on_storage);
+        android::watch_changes(on_clock, on_resize)
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         let _ = (mode, on_clock, on_storage, on_resize);
         WatchHandle
@@ -541,8 +624,34 @@ pub fn watch_changes(
 #[cfg(test)]
 mod tests {
     use werdy_calendar::{Date, Method, Place, fajr};
-    use werdy_core::WerdyDay;
+    use werdy_core::{Error, WerdyDay};
     use werdy_store::{Location, PrayerMethod, Settings};
+
+    #[test]
+    fn phone_offsets_move_local_clock_and_calendar_date() -> Result<(), Error> {
+        // Same day, next day, previous day, and seconds before the epoch.
+        for (seconds, offset, date, hour, minute) in [
+            (43_230, 120, (1970, 1, 1), 14, 0),
+            (43_230, 180, (1970, 1, 1), 15, 0),
+            (43_230, -300, (1970, 1, 1), 7, 0),
+            (82_740, 120, (1970, 1, 2), 0, 59),
+            (3_540, -300, (1969, 12, 31), 19, 59),
+            (-1, 0, (1969, 12, 31), 23, 59),
+        ] {
+            let (day, actual_hour, actual_minute) = super::local_clock_at(seconds, offset)?;
+            assert_eq!(
+                (day.date_parts(), actual_hour, actual_minute),
+                (date, hour, minute)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn out_of_range_phone_clock_returns_error() {
+        assert!(super::local_clock_at(i64::MAX, 180).is_err());
+        assert!(super::local_clock_at(i64::MIN, -300).is_err());
+    }
 
     #[test]
     fn demo_query_selects_only_demo_records_key() {
