@@ -1,4 +1,5 @@
 //! Sharing requests use the account token, but never the owner's sync engine.
+//! Account deletion uses the same authenticated request path.
 use super::{AccountStore, config, runtime};
 use werdy_sync::{ShareCode, SharePerson, SupabaseAuth, SupabaseBackend, SyncError, WatchView};
 
@@ -9,6 +10,7 @@ pub enum Request {
     Revoke(String),
     Leave(String),
     Read(String, Box<WatchView>),
+    DeleteAccount,
 }
 pub enum Reply {
     Lists(Vec<SharePerson>, Vec<SharePerson>),
@@ -87,6 +89,10 @@ async fn perform(backend: &SupabaseBackend, request: &Request) -> Result<Reply, 
                 }
             }
             Ok(Reply::View(view))
+        }
+        Request::DeleteAccount => {
+            backend.delete_account().await?;
+            Ok(Reply::Changed)
         }
     }
 }

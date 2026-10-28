@@ -163,6 +163,22 @@ impl AccountStore {
         removed
     }
 
+    /// Settles an account delete request. Only a confirmed server delete
+    /// forgets the session; the records stay on this device either way.
+    /// A reply for an older session leaves a newer sign in alone.
+    pub fn settle_delete(
+        &self,
+        result: Result<(), werdy_sync::SyncError>,
+        records: &OwnerData,
+        generation: u64,
+    ) -> Result<(), &'static str> {
+        result.map_err(|_| "account-delete-error")?;
+        if self.account.borrow().generation != generation {
+            return Ok(());
+        }
+        self.sign_out(records).map_err(|_| "account-storage-error")
+    }
+
     pub fn write_session(&self, session: &Session) -> Result<(), StoreError> {
         let json = serde_json::to_string(session).map_err(|_| storage_error())?;
         self.vault.write(File::Session, &json)
