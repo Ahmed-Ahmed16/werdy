@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0032 (2026-10-28): Dioxus stays the UI stack on Android, after the sign in spike
+The spike for #13 (`spikes/signin-dioxus`) showed that Dioxus 0.7.10 can do Google sign in on Android the native way: the system Credential Manager sheet appears (not a webview page), the Google ID token reaches Rust, and Rust trades it for a Supabase session with `grant_type=id_token` and a hashed nonce. This confirms 0029, so the Tauri 2 track was not built. The cost is small and known: about 120 lines of Kotlin and Gradle for Credential Manager, called through `manganis::ffi`, and about 30 lines of JavaScript for Google Identity Services on the web. Three workarounds are needed today: the MSVC Rust toolchain on Windows, older Android libraries because dx 0.7.10 generates a Kotlin 2.0.20 compiler, and loading the Kotlin class through the activity's class loader (Dioxus issue #5629). Each is listed in the spike's README. Open: the web sign in giving the same Supabase user id is `___` (the button works; the owner still has to complete the sign in), and release builds and a real phone are untested. Revisit: if the web sign in cannot reach the same user, if a release build hits the dx Windows linker bug, or if a Dioxus update breaks the Kotlin bridge.
+
 ## 0031 (2026-10-27): GitHub Pages hosts the web app
 The web app will be served from this repo at `https://ahmed-ahmed16.github.io/werdy/`. The release build uses `werdy` as its base path, and a service worker keeps the app shell for offline visits. Why: GitHub Pages is free, serves over HTTPS, needs no server, and keeps the site with its source. The app stores marks locally first. Cost: Pages cannot run server code for sign in or sync, and Pages settings must use GitHub Actions as the deployment source. Revisit: when sign in and sync change hosting needs, or when the owner adds a custom domain.
 

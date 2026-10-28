@@ -2,6 +2,19 @@
 
 Checked on 2026-10-27 on the owner's PC, read only (nothing was installed). Feeds the Dioxus versus Tauri 2 spike (ADR 0002). Values marked `___` are not checked yet.
 
+## Update 2026-10-28: set up for the sign in spike (#13)
+
+Installed and working for the Dioxus track (ADR 0032):
+
+* Rust's Android targets. Builds use the MSVC host toolchain; the GNU one fails on `windows-sys` with a `dlltool` error.
+* Android cmdline tools and NDK 28.2.13676358 (r28c). The new sdkmanager wants slash paths: `sdkmanager "ndk/28.2.13676358"`.
+* User environment variables: `JAVA_HOME` (Android Studio's `jbr`), `ANDROID_HOME` (`%LOCALAPPDATA%\Android\Sdk`), `NDK_HOME` (the NDK folder).
+* `dx` 0.7.10. Android build: `dx build --android --target x86_64-linux-android`, then `adb install -r` the debug APK.
+* Emulators: `Pixel_6_API_34` (4 GB RAM, the owner's Google account signed in) and the tablet `Pixel_Tablet_API_34` (2560x1600, Play services). With the laptop's discrete GPU off, start with `-gpu swiftshader_indirect`.
+* Google sign in: a Google Cloud project with an Android OAuth client for the debug SHA-1 and a Web client for Supabase and localhost:8080. Ids are in the spike's `src/config.rs` and the owner's notes. A release SHA-1 client is still to do.
+
+The Tauri items below were not needed.
+
 ## What the PC already has
 
 * Android Studio, with the Android SDK in `%LOCALAPPDATA%\Android\Sdk`: platform android-36, build tools 36.0.0, platform tools (adb), and the emulator.
