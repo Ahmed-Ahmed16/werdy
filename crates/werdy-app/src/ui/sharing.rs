@@ -30,6 +30,12 @@ pub struct Sharing {
 }
 
 impl Sharing {
+    /// A sharing request and account deletion both refresh the session, so
+    /// neither may start while the other runs.
+    fn idle(&self) -> bool {
+        !self.busy && !self.deleting
+    }
+
     fn receive(&mut self, request: &Request, result: Result<Reply, SyncError>) -> bool {
         self.busy = false;
         match result {
@@ -101,7 +107,7 @@ impl Drop for Flight {
 }
 
 fn run(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>, request: Request) {
-    if sharing.peek().busy {
+    if !sharing.peek().idle() {
         return;
     }
     sharing.write().busy = true;
@@ -148,7 +154,7 @@ pub fn delete_account(
     state: Signal<AppState>,
     store: Rc<crate::account::AccountStore>,
 ) {
-    if sharing.peek().busy || sharing.peek().deleting {
+    if !sharing.peek().idle() {
         return;
     }
     sharing.write().deleting = true;
@@ -381,5 +387,20 @@ mod tests {
         assert!(sharing.view.is_none() && sharing.selected.is_none() && sharing.watched.is_empty());
         assert_eq!(sharing.error, Some("sharing-revoked"));
         Ok(())
+    }
+
+    #[test]
+    fn sharing_requests_and_account_deletion_never_overlap() {
+        assert!(Sharing::default().idle());
+        let busy = Sharing {
+            busy: true,
+            ..Sharing::default()
+        };
+        let deleting = Sharing {
+            deleting: true,
+            ..Sharing::default()
+        };
+        assert!(!busy.idle());
+        assert!(!deleting.idle());
     }
 }
