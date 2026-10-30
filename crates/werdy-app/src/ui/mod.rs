@@ -179,6 +179,18 @@ pub fn App() -> Element {
     }
 }
 
+/// The install banner exists only on the web.
+fn install_banner() -> Element {
+    #[cfg(target_arch = "wasm32")]
+    {
+        rsx! { install::InstallBanner {} }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        rsx! {}
+    }
+}
+
 /// Store wrapper so it can be a component prop. Two handles are equal when
 /// they point at the same store.
 #[derive(Clone)]
@@ -287,6 +299,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                     }
                 }
                 summary::StatusBanner {}
+                if state.read().screen == Screen::Sheet { {install_banner()} }
                 match state.read().screen {
                     Screen::FirstRunLocation => rsx! { first_run::LocationStep {} },
                     Screen::SetPicker => rsx! { first_run::SetPicker {} },
