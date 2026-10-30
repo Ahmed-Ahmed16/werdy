@@ -38,3 +38,7 @@ account-delete-confirm = Your account, its copy on the server and all your share
 account-delete-yes = Yes, delete my account
 account-deleting = Deleting your account...
 account-delete-error = Could not delete your account. Nothing changed. Try again when you are online.
+install-title = Install werdy
+install-purpose = Add werdy to your home screen. It opens like an app and works offline.
+install-button = Install
+install-ios-steps = In Safari, tap Share, then Add to Home Screen.
