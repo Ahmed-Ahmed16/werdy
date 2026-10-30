@@ -1,0 +1,77 @@
+name: Android release
+
+# Pushing a tag such as v0.1.2 builds the signed ARM APK and publishes it as a
+# GitHub release (#93). Secrets never reach pull requests from forks.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Tag must match the app version
+        id: version
+        # A bare assignment keeps the checker's exit status; inside echo it was lost.
+        run: |
+          version=$(cargo xtask release check-tag "$GITHUB_REF_NAME")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install SDK 35 and NDK r27d LTS
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;$NDK_VERSION"
+      - name: Select pinned NDK
+        run: |
+          ndk="$ANDROID_HOME/ndk/$NDK_VERSION"
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-ndk-${{ env.NDK_VERSION }}-dx-0.7.10
+      - name: Install Dioxus CLI
+        run: |
+          if ! command -v dx >/dev/null || [[ "$(dx --version)" != "dioxus 0.7.10 ("* ]]; then
+            cargo install dioxus-cli --version 0.7.10 --locked --force
+          fi
+      - name: Build the signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.WERDY_ANDROID_KEYSTORE_BASE64 }}
+          WERDY_ANDROID_STORE_PASSWORD: ${{ secrets.WERDY_ANDROID_STORE_PASSWORD }}
+          WERDY_ANDROID_KEY_PASSWORD: ${{ secrets.WERDY_ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          keystore="$RUNNER_TEMP/werdy-release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          WERDY_ANDROID_KEYSTORE="$keystore" pwsh -NoProfile -File scripts/build-android-release.ps1 -PackageType apk
+      - name: Check the APK
+        run: cargo xtask apk inspect target/android-release/app-release.apk
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          test -n "$VERSION"
+          apk="werdy-$VERSION.apk"
+          cp target/android-release/app-release.apk "$apk"
+          sum=$(sha256sum "$apk" | cut -d' ' -f1)
+          sed -e "s/{version}/$VERSION/g" -e "s/{sha256}/$sum/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" "$apk" --title "werdy $VERSION (Android)" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag

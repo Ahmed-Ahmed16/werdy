@@ -440,9 +440,13 @@ mod tests {
     }
 
     #[test]
-    fn share_qr_is_an_svg_for_the_link() {
+    fn share_qr_takes_its_colours_from_css() {
+        // The CSS frame sets qr-ink and qr-paper; fixed colours here would
+        // break scanning in the dark theme.
         let svg = share_qr(&share_link("ABCDEFGH23")).expect("a short link fits in a QR");
-        assert!(svg.contains("<svg") && svg.contains("</svg>"));
+        assert!(svg.contains("currentColor"));
+        assert!(svg.contains("transparent"));
+        assert!(!svg.contains("#000"));
     }
     #[test]
     fn revoked_access_drops_view_and_list_but_network_failure_allows_retry() -> Result<(), SyncError>
