@@ -15,6 +15,13 @@
   <body>
     <div id="main"></div>
     <script>
+      // Chrome can offer the install prompt before the app loads; Settings uses it later.
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        window.werdyInstall = event;
+        window.dispatchEvent(new Event("werdyinstall"));
+      });
+      window.addEventListener("appinstalled", () => { window.werdyInstall = null; });
       if ("serviceWorker" in navigator &&
           (location.protocol === "https:" || location.hostname === "localhost") &&
           location.pathname.startsWith("/werdy/")) {

@@ -58,6 +58,11 @@ pub fn SettingsScreen() -> Element {
     #[cfg(not(target_os = "android"))]
     let reminders = rsx! {};
 
+    #[cfg(target_arch = "wasm32")]
+    let install = rsx! { super::install::InstallSection {} };
+    #[cfg(not(target_arch = "wasm32"))]
+    let install = rsx! {};
+
     rsx! {
         section { class: "settings-screen",
             header { class: "settings-header",
@@ -66,6 +71,7 @@ pub fn SettingsScreen() -> Element {
                     button { class: "secondary-button settings-back", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("settings-back")} }
                 }
             }
+            {install}
             {reminders}
             super::account::AccountSection {}
             super::sharing::SharingSection {}

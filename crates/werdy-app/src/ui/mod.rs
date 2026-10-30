@@ -7,6 +7,8 @@ mod deeds;
 mod first_run;
 mod header;
 mod icons;
+#[cfg(any(test, target_arch = "wasm32"))]
+mod install;
 mod marks;
 mod note;
 mod rail;
