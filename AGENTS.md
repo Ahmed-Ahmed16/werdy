@@ -38,6 +38,8 @@ The owner is learning Rust and AI assisted engineering through this project.
 
 Align (`grill-with-docs`) → design → spec (`to-spec`) → tickets (`to-tickets`) → implement one ticket (`tdd`) → guards (`clean-code-guard`, `test-guard`, `docs-guard`) → two model PR review (`debate-review`, `babysit-pr`). The owner merges. Automation grows only as trust in the tests grows.
 
+CodeRabbit reviews every PR automatically and reads `.coderabbit.yaml`, which repeats the rules of this file for it. It is an extra reviewer; the debate review is the gate before a merge. When a rule here changes, update `.coderabbit.yaml` too.
+
 ## 6. Tool kit
 
 Agent skills installed on 2026-10-27 with `npx skills@latest add <repo> -a claude-code --copy`, into this project only (`.claude/skills/`, pinned in `skills-lock.json`). They are plain copies: update them by hand with `npx skills@latest update -p`, and review a skill before using it, since it runs with full agent permissions.
