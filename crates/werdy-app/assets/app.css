@@ -71,6 +71,7 @@ textarea:focus-visible {
     "demo"
     "header"
     "status"
+    "install"
     "summary"
     "sheet";
 }
@@ -117,6 +118,42 @@ textarea:focus-visible {
   grid-area: status;
 }
 
+.install-banner {
+  grid-area: install;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap-m);
+  padding: var(--gap-m) var(--gap-l);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--primary-soft);
+}
+
+.install-banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.install-banner-text p {
+  margin: var(--gap-xs) 0 0;
+}
+
+.install-banner-text .secondary-button {
+  margin-top: var(--gap-s);
+}
+
+.install-banner-close {
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--size-screen);
+  cursor: pointer;
+}
+
 .sheet-aside {
   grid-area: summary;
   min-width: 0;
@@ -157,6 +194,7 @@ textarea:focus-visible {
       "demo demo"
       "header header"
       "status status"
+      "install install"
       "sheet summary";
   }
 }
