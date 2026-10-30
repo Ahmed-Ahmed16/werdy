@@ -1,6 +1,6 @@
 [package]
 name = "werdy-app"
-version = "0.1.0"
+version = "0.1.2"
 description = "The werdy app, built with Dioxus. Web first (ADR 0029)."
 edition.workspace = true
 rust-version.workspace = true

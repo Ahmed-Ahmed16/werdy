@@ -23,6 +23,7 @@ function global:dx {
     New-Item -ItemType Directory -Path $generated -Force | Out-Null
     Set-Content (Join-Path $generated 'build.gradle.kts') 'simulated signing secret'
     New-Item -ItemType Directory -Path $env:GRADLE_USER_HOME -Force | Out-Null
+    $global:signingTestState.Gradle = Get-Content (Join-Path $env:GRADLE_USER_HOME 'init.d/werdy-version.gradle') -Raw
     Set-Content (Join-Path $env:GRADLE_USER_HOME 'cache') 'simulated compiled secret'
     if ($global:signingTestState.Fail) { $global:LASTEXITCODE = 7; return }
     # Write a stand in APK whose native code folder names the built CPU.
@@ -41,6 +42,8 @@ try {
     New-Item -ItemType Directory -Path "$fixture/scripts", "$fixture/crates/werdy-app" -Force | Out-Null
     Copy-Item "$PSScriptRoot/build-android-release.ps1" "$fixture/scripts/"
     Copy-Item "$repo/crates/werdy-app/Dioxus.toml" "$fixture/crates/werdy-app/"
+    # dx writes versionCode = 1, so the wrapper derives the real code from this version (#88).
+    Set-Content "$fixture/crates/werdy-app/Cargo.toml" "[package]`nname = `"werdy-app`"`nversion = `"0.1.2`"`n"
     $configPath = Join-Path $fixture 'crates/werdy-app/Dioxus.toml'
     $original = [IO.File]::ReadAllBytes($configPath)
     $env:WERDY_ANDROID_KEYSTORE = Join-Path $fixture 'owner key.jks'
@@ -67,6 +70,7 @@ try {
         Assert-True ($arguments -like 'bundle --platform android --release*') 'Release bundle flags missing'
         Assert-True ($arguments -like '*--package-types apk --package-types aab*') 'APK or AAB missing'
         Assert-True ($arguments -like '*--target aarch64-linux-android*') 'Phone CPU target missing'
+        Assert-True ($global:signingTestState.Gradle -match 'versionCode\.set\(102\)') 'Version code 102 not passed to Gradle'
         $config = $global:signingTestState.Config
         foreach ($field in @{ jks_password = $env:WERDY_ANDROID_STORE_PASSWORD; key_password = $env:WERDY_ANDROID_KEY_PASSWORD }.GetEnumerator()) {
             $match = [regex]::Match($config, "(?m)^$($field.Key) = '([^']*)'")
@@ -87,6 +91,17 @@ try {
     Assert-True (-not (Test-Path "$fixture/.android-signing")) 'Signing files survived CPU check'
     Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($configPath)) -eq [Convert]::ToBase64String($original)) 'Config not restored after CPU check'
     Write-Output 'PASS: an APK without arm64-v8a code fails the build'
+
+    # Each part must stay under 100, or two versions could share one code.
+    Set-Content "$fixture/crates/werdy-app/Cargo.toml" "[package]`nname = `"werdy-app`"`nversion = `"0.1.100`"`n"
+    $global:signingTestState = @{}
+    $failed = $false
+    try { & "$fixture/scripts/build-android-release.ps1" } catch { $failed = $true }
+    Assert-True $failed 'Version 0.1.100 accepted'
+    Assert-True (-not $global:signingTestState.ContainsKey('Arguments')) 'Build ran with a bad version'
+    Assert-True (-not (Test-Path "$fixture/.android-signing")) 'Bad version changed files'
+    Set-Content "$fixture/crates/werdy-app/Cargo.toml" "[package]`nname = `"werdy-app`"`nversion = `"0.1.2`"`n"
+    Write-Output 'PASS: a version part of 100 or more stops before build'
 
     foreach ($name in @('WERDY_ANDROID_KEYSTORE', 'WERDY_ANDROID_STORE_PASSWORD', 'WERDY_ANDROID_KEY_PASSWORD')) {
         $saved = [Environment]::GetEnvironmentVariable($name)

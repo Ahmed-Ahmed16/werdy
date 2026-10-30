@@ -65,6 +65,13 @@ need no runner. See the [runner guide](https://wasm-bindgen.github.io/wasm-bindg
 
 ## Release build
 
+Release checklist:
+
+1. Raise `version` in `crates/werdy-app/Cargo.toml` (for example 0.1.2 to 0.1.3). Android shows it as the version name.
+2. Build with the wrapper below. It turns the version into the Android version code, major × 10000 + minor × 100 + patch (0.1.3 is 103), because dx 0.7.10 always writes `versionCode = 1` and the Play Store refuses an update whose code does not go up (#88). Keep minor and patch under 100.
+3. Run `cargo xtask apk inspect target/android-release/app-release.apk` and check the version, `arm64-v8a` and the release signer.
+4. Publish the APK as a GitHub release named after the version.
+
 Use PowerShell 7, JDK 17 (`keytool` on `PATH`), the Android SDK and NDK,
 and dx 0.7.10. Run the commands below from the repo root.
 
