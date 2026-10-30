@@ -42,3 +42,4 @@ install-title = Install werdy
 install-purpose = Add werdy to your home screen. It opens like an app and works offline.
 install-button = Install
 install-ios-steps = In Safari, tap Share, then Add to Home Screen.
+install-failed = Could not open the install prompt. Use your browser menu: Install app or Add to Home screen.

@@ -46,7 +46,14 @@ return {
 const PROMPT: &str = r#"
 const event = window.werdyInstall;
 window.werdyInstall = null;
-if (event) { await event.prompt(); await event.userChoice; }
+if (!event) return true;
+try { await event.prompt(); await event.userChoice; return true; } catch (_) { return false; }
+"#;
+
+/// Resolves when index.html keeps a prompt that Chrome offered after mount.
+#[cfg(target_arch = "wasm32")]
+const OFFERED: &str = r#"
+await new Promise((done) => window.addEventListener("werdyinstall", done, { once: true }));
 return true;
 "#;
 
@@ -64,7 +71,24 @@ pub fn InstallSection() -> dioxus::prelude::Element {
     use dioxus::prelude::*;
     let i18n = super::context::use_i18n();
     let mut browser = use_signal(BrowserInstall::default);
-    use_future(move || async move { browser.set(check().await) });
+    let mut failed = use_signal(|| false);
+    use_future(move || async move {
+        loop {
+            browser.set(check().await);
+            if dioxus::document::eval(OFFERED).await.is_err() {
+                break;
+            }
+        }
+    });
+    if failed() {
+        // The prompt is spent once it fails, so only the browser menu is left.
+        return rsx! {
+            section { class: "settings-card", aria_label: i18n.t("install-title"),
+                h2 { {i18n.t("install-title")} }
+                p { role: "alert", {i18n.t("install-failed")} }
+            }
+        };
+    }
     match install_hint(browser()) {
         InstallHint::Hidden => rsx! {},
         InstallHint::Prompt => rsx! {
@@ -73,7 +97,8 @@ pub fn InstallSection() -> dioxus::prelude::Element {
                 p { {i18n.t("install-purpose")} }
                 button { class: "secondary-button",
                     onclick: move |_| async move {
-                        let _ = dioxus::document::eval(PROMPT).await;
+                        let shown = dioxus::document::eval(PROMPT).join::<bool>().await;
+                        failed.set(!matches!(shown, Ok(true)));
                         browser.set(check().await);
                     },
                     {i18n.t("install-button")}

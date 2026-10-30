@@ -19,6 +19,7 @@
       window.addEventListener("beforeinstallprompt", (event) => {
         event.preventDefault();
         window.werdyInstall = event;
+        window.dispatchEvent(new Event("werdyinstall"));
       });
       window.addEventListener("appinstalled", () => { window.werdyInstall = null; });
       if ("serviceWorker" in navigator &&
