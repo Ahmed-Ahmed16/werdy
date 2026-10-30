@@ -120,31 +120,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn installed_app_shows_no_hint() {
-        let browser = BrowserInstall {
-            standalone: true,
-            ios: true,
-            prompt: true,
+    fn each_browser_gets_the_install_path_it_supports() {
+        let browser = |standalone, ios, prompt| BrowserInstall {
+            standalone,
+            ios,
+            prompt,
         };
-        assert_eq!(install_hint(browser), InstallHint::Hidden);
-    }
-
-    #[test]
-    fn chrome_prompt_gets_a_button_and_iphone_gets_the_share_steps() {
-        let chrome = BrowserInstall {
-            prompt: true,
-            ..BrowserInstall::default()
-        };
-        let iphone = BrowserInstall {
-            ios: true,
-            ..BrowserInstall::default()
-        };
-        assert_eq!(install_hint(chrome), InstallHint::Prompt);
-        assert_eq!(install_hint(iphone), InstallHint::IosSteps);
-    }
-
-    #[test]
-    fn browser_without_a_prompt_or_steps_shows_nothing() {
-        assert_eq!(install_hint(BrowserInstall::default()), InstallHint::Hidden);
+        let cases = [
+            (
+                "installed app",
+                browser(true, true, true),
+                InstallHint::Hidden,
+            ),
+            (
+                "Chrome prompt",
+                browser(false, false, true),
+                InstallHint::Prompt,
+            ),
+            (
+                "iPhone Safari",
+                browser(false, true, false),
+                InstallHint::IosSteps,
+            ),
+            (
+                "other browser",
+                browser(false, false, false),
+                InstallHint::Hidden,
+            ),
+        ];
+        for (name, input, expected) in cases {
+            assert_eq!(install_hint(input), expected, "{name}");
+        }
     }
 }
