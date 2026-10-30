@@ -23,6 +23,16 @@ $baseConfig = [IO.File]::ReadAllText($configPath)
 if ($baseConfig -match '(?m)^\s*\[bundle\.android\]') {
     throw 'Keep signing settings out of the tracked Dioxus.toml.'
 }
+$versionMatch = Select-String -LiteralPath (Join-Path $repo 'crates/werdy-app/Cargo.toml') -Pattern '^version = "(\d+)\.(\d+)\.(\d+)"$' | Select-Object -First 1
+if (-not $versionMatch) {
+    throw 'crates/werdy-app/Cargo.toml needs version = "major.minor.patch".'
+}
+$parts = $versionMatch.Matches[0].Groups[1..3] | ForEach-Object { [int]$_.Value }
+if ($parts[1] -ge 100 -or $parts[2] -ge 100) {
+    throw 'Keep the minor and patch version under 100, so each release gets its own version code.'
+}
+# 0.1.2 becomes 102 and 1.0.0 becomes 10000, so a later version always has a larger code.
+$versionCode = $parts[0] * 10000 + $parts[1] * 100 + $parts[2]
 if ((Test-Path -LiteralPath $signingDir) -or (Test-Path -LiteralPath $buildDir)) {
     throw 'Signing workspace exists. Follow interrupted build recovery in crates/werdy-app/README.md.'
 }
@@ -58,6 +68,21 @@ try {
     New-Item -ItemType Directory -Path $env:GRADLE_USER_HOME | Out-Null
     # A persistent daemon can keep secret caches locked on Windows.
     Set-Content -LiteralPath (Join-Path $env:GRADLE_USER_HOME 'gradle.properties') 'org.gradle.daemon=false'
+    # dx 0.7.10 writes versionCode = 1, and Play refuses an update whose code
+    # does not go up (#88). Gradle runs init.d scripts from GRADLE_USER_HOME;
+    # this one sets the code on every variant through the Android variant API.
+    $initDir = Join-Path $env:GRADLE_USER_HOME 'init.d'
+    New-Item -ItemType Directory -Path $initDir | Out-Null
+    Set-Content -LiteralPath (Join-Path $initDir 'werdy-version.gradle') @"
+allprojects {
+    pluginManager.withPlugin('com.android.application') {
+        def components = extensions.getByName('androidComponents')
+        components.onVariants(components.selector().all()) { variant ->
+            variant.outputs.each { it.versionCode.set($versionCode) }
+        }
+    }
+}
+"@
     [IO.File]::WriteAllText($configPath, $baseConfig + "`n" + $signingConfig, [Text.UTF8Encoding]::new($false))
     Push-Location $repo
     $locationPushed = $true
