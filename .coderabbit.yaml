@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit is an extra reviewer here; the debate review is the merge gate.
+# Keep these rules in step with AGENTS.md, which is the source of truth.
+language: en-US
+tone_instructions: Plain words, short sentences. The owner is learning Rust, so say briefly why each finding matters.
+
+reviews:
+  profile: chill
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: |
+        werdy rules (AGENTS.md):
+        - Never panic on input. Data from users, files, storage or the network must return errors, not unwrap or expect. Tests may unwrap.
+        - Every number shown to the user comes from a pure function with tests. A wrong number blocks a release.
+        - Every change comes with tests; a bug fix starts with a failing test. Flag new logic that has no test.
+        - Build for change: user facing text comes from the Fluent files in locales/, colours and sizes from design tokens. Flag hard coded strings or colours in UI code.
+        - Clean room: never suggest copying code, text or assets from the Werd app.
+    - path: "**/*.{md,ftl}"
+      instructions: |
+        Writing rules (AGENTS.md section 3): no em dashes, no en dashes, and no hyphens joining words in prose. Hyphens are fine in paths, code, flags, crate names and ISO dates.
+        Plain words, short sentences. An unknown fact is written as ___, never guessed.
+    - path: "locales/**"
+      instructions: Every message key must exist in both locales/ar and locales/en with the same name. Arabic text is right to left; check plural forms in Arabic.
+    - path: "crates/werdy-app/assets/**/*.css"
+      instructions: No raw colour values in app.css; use the tokens from tokens.css. Colour tokens must match docs/design/tokens.md. Touch targets use --touch-min.
+    - path: ".github/workflows/**"
+      instructions: Keep permissions minimal. Secrets must never reach pull requests from forks or be printed in logs. Check that a failed step really fails the job.
+    - path: "supabase/**"
+      instructions: Functions that are security definer must set search_path to an empty string and grant execute only to the roles that need it. Row level security stays on for every table.
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - docs/decisions.md
