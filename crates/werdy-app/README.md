@@ -63,6 +63,34 @@ Tests select `run_in_browser`; the runner uses headless Chrome. Geolocation
 is stubbed; timers and localStorage use the browser. Native workspace tests
 need no runner. See the [runner guide](https://wasm-bindgen.github.io/wasm-bindgen/wasm-bindgen-test/browsers.html#appendix-testing-in-headless-browsers-without-wasm-pack).
 
+## Release from GitHub Actions
+
+The usual way to release (#93). Pushing a tag runs `.github/workflows/release.yml`,
+which checks the tag against the app version, builds the signed ARM APK with the
+wrapper below, runs `cargo xtask apk inspect`, and publishes a GitHub release
+with install notes from `.github/release-notes.md`.
+
+1. Raise `version` in `crates/werdy-app/Cargo.toml` in a pull request and merge it.
+2. Tag the merged commit and push the tag:
+
+   ```powershell
+   git tag v0.1.2 origin/main
+   git push origin v0.1.2
+   ```
+
+**You should type this, once:** add three repository secrets (Settings, Secrets
+and variables, Actions). The keystore goes in as base64 text:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME/.android/werdy-release.jks")) | Set-Clipboard
+```
+
+* `WERDY_ANDROID_KEYSTORE_BASE64`: paste the clipboard.
+* `WERDY_ANDROID_STORE_PASSWORD` and `WERDY_ANDROID_KEY_PASSWORD`: the keystore passwords.
+
+Secrets are not given to pull requests from forks. Anyone with write access to
+this repository can change a workflow, so keep write access to people you trust.
+
 ## Release build
 
 Release checklist:

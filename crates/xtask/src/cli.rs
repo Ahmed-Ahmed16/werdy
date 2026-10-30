@@ -23,6 +23,10 @@ cargo xtask <job>
       Wait until CodeRabbit finishes on the PR's latest commit.
       Checks every 30 seconds; gives up after N minutes (default 20).
 
+  release check-tag <tag>
+      Check that the tag is v + the version in crates/werdy-app/Cargo.toml
+      and print the version. The release workflow runs it first.
+
   help
       Show this text.
 ";
@@ -34,6 +38,7 @@ pub enum Command {
     ApkInspect { path: String },
     PrComments { number: u32, all: bool, full: bool },
     PrWaitReview { number: u32, timeout_mins: u64 },
+    ReleaseCheckTag { tag: String },
 }
 
 pub fn parse(args: &[String]) -> Result<Command, String> {
@@ -67,6 +72,9 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             timeout_mins: minutes
                 .parse()
                 .map_err(|_| format!("--timeout-mins wants a whole number, got {minutes}"))?,
+        }),
+        ["release", "check-tag", tag] => Ok(Command::ReleaseCheckTag {
+            tag: (*tag).to_string(),
         }),
         _ => Err(format!(
             "unknown command `{}`. Run `cargo xtask help`.",
@@ -150,6 +158,17 @@ mod tests {
                 timeout_mins: 5
             })
         );
+    }
+
+    #[test]
+    fn release_check_tag_takes_one_tag() {
+        assert_eq!(
+            parse_words("release check-tag v0.1.2"),
+            Ok(Command::ReleaseCheckTag {
+                tag: "v0.1.2".to_string()
+            })
+        );
+        assert!(parse_words("release check-tag").is_err());
     }
 
     #[test]

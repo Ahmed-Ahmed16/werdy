@@ -7,6 +7,7 @@ mod cli;
 mod gates;
 mod pr;
 mod process;
+mod release;
 
 use std::process::ExitCode;
 
@@ -36,5 +37,6 @@ fn run(command: Command) -> Result<(), String> {
             number,
             timeout_mins,
         } => pr::wait_review(number, timeout_mins),
+        Command::ReleaseCheckTag { tag } => release::run_check_tag(&tag),
     }
 }

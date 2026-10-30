@@ -22,14 +22,16 @@ Use these commands for the jobs below. Do not write a `.ps1`, `.sh` or Python sc
 | Read unresolved review threads on a PR | `cargo xtask pr comments <n>` | 1 when gh fails |
 | Same, with resolved threads and whole bodies | `cargo xtask pr comments <n> --all --full` | same |
 | Wait for CodeRabbit on the PR's newest commit | `cargo xtask pr wait-review <n> [--timeout-mins N]` | 1 on timeout |
+| Check a release tag against the app version | `cargo xtask release check-tag <tag>` | 1 when they differ |
 
 ## What the output means
 
 * **gates**: prints `[k/total] command` before each step, then `All N steps passed.` The steps are the ones in `.github/workflows/ci.yml`; a unit test keeps the two the same. The headless Chrome tests are not included.
 * **apk inspect**: prints package, version, SDK levels, CPU types, signer and certificate SHA-256, then one `PROBLEM:` line for each of: no `arm64-v8a` code (phones refuse it, #84), a signature that does not verify, or the debug key. Needs `ANDROID_HOME`; uses the newest build tools there.
 * **pr comments**: one block per thread, `path:line`, marked `[resolved]` or `[outdated]`, with each comment's author, a three line summary and its link. The summary drops HTML and CodeRabbit's `<details>` logs; use `--full` before replying to a comment.
+* **release check-tag**: prints the version when the tag is `v` + the version in `crates/werdy-app/Cargo.toml`. The release workflow runs it first. To release, raise the version, merge, then push the tag (ask the owner first).
 * **pr wait-review**: checks CodeRabbit's check run every 30 seconds and prints a line when its state changes. "Skipped" means CodeRabbit did not review this commit. On this repo reviews are often asked for by hand; asking is the owner's call, so ask him before posting `@coderabbitai review`.
 
-## Not here yet
+## Releases
 
-The signed release build is still `scripts/build-android-release.ps1` (PR #81). It moves into `cargo xtask apk release` after that PR merges. The keystore stays outside every checkout, encrypted on the owner's PC; the command must read it only through the `WERDY_ANDROID_*` environment variables and never print a password.
+Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed (#93), using `scripts/build-android-release.ps1` and the keystore from repository secrets. Never ask for or print a keystore password. Pushing a tag publishes a release, so ask the owner first.
