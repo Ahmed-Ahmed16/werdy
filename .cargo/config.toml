@@ -1,0 +1,3 @@
+[alias]
+# One command for recurring jobs: cargo xtask help
+xtask = "run --quiet --package xtask --"

@@ -55,6 +55,17 @@ Not installed: Pocock's `code-review` (its name clashes with Claude Code's own `
 
 **REA (morluto/rea), owner runs it.** Its setup is interactive, so the owner runs `npx rea-agents setup` himself in a terminal and declines the Hopper install: Werd's web app is plain JavaScript, so no native disassembler is needed. Clean room limit: use REA to observe behaviour (screens, flows, what a request does), never to copy code or text into werdy. Whoever reads Werd's code does not write the matching werdy code from it.
 
+## 7. Recurring jobs: `cargo xtask`
+
+Every agent (Claude, Codex, any other) and the owner run recurring jobs through one CLI, `cargo xtask`, in `crates/xtask`. Do not write a one off script, temp file or polling loop for these jobs. `cargo xtask help` lists the commands; `.claude/skills/werdy-cli/SKILL.md` says when to use each one and what its output means.
+
+* `cargo xtask gates [--android]`: the CI gates, locally.
+* `cargo xtask apk inspect <file.apk>`: SDK levels, CPU types, signer, and whether phones would refuse it.
+* `cargo xtask pr comments <n>`: unresolved review threads.
+* `cargo xtask pr wait-review <n>`: wait for CodeRabbit on the newest commit.
+
+A missing recurring job becomes a new subcommand with tests, through an issue. Why: see `docs/context/agent-cli-proposal.md`.
+
 ## Agent skills
 
 ### Issue tracker
