@@ -56,6 +56,13 @@ fn start_app_state(
             })
             .is_err();
     let mut state = AppState::start(store, today, starter::slot_order());
+    // A share link opens Settings, where the code waits in the field (#90).
+    if mode == platform::DataMode::Normal
+        && state.screen == Screen::Sheet
+        && sharing::shared_code().is_some()
+    {
+        state.show_screen(Screen::Settings);
+    }
     if let Ok(day) = platform::today_with_settings(&state.data.settings) {
         state.update_today(day);
     }

@@ -20,3 +20,5 @@ sharing-error = Request failed. Check the code and connection, then try again.
 sharing-revoked = Your access to this person's data has ended.
 sharing-loading = Loading.
 sharing-day-boundary = Location is not shared. Today follows this device's date without the owner's Fajr calculation.
+sharing-qr = QR code for your share link
+sharing-qr-help = Your watcher scans this with their phone camera. werdy opens with the code filled in; they tap Use code.

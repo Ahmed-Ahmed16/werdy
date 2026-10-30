@@ -1547,3 +1547,13 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+/* Dark squares on a light frame in both themes, so any camera reads it. */
+.share-qr {
+  display: inline-block;
+  padding: var(--gap-l);
+  border-radius: var(--radius-control);
+  background: var(--qr-paper);
+  color: var(--qr-ink);
+  line-height: 0;
+}

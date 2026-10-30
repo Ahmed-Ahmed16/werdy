@@ -112,10 +112,19 @@ fn raw_colours(css: &str) -> Vec<String> {
 #[test]
 fn every_colour_token_has_its_light_and_dark_value_in_css() {
     let tokens = colour_tokens();
-    assert_eq!(tokens.len(), 20, "colour table rows in tokens.md");
+    assert_eq!(tokens.len(), 22, "colour table rows in tokens.md");
     for (name, light, dark) in tokens {
         let light_rule = format!("--{name}: {light};");
         let dark_rule = format!("--{name}: {dark};");
+        if light == dark {
+            // Same in both themes (the share QR): set once, dark inherits it.
+            assert_eq!(
+                TOKENS_CSS.matches(&light_rule).count(),
+                1,
+                "{light_rule} once for both themes"
+            );
+            continue;
+        }
         assert_eq!(
             TOKENS_CSS.matches(&light_rule).count(),
             1,

@@ -201,7 +201,8 @@ pub fn SharingSection() -> Element {
     let status = use_context::<Signal<AccountView>>();
     let handle = use_context::<AccountHandle>();
     let mut sharing = use_context::<Signal<Sharing>>();
-    let mut input = use_signal(String::new);
+    // A share link fills the field; the watcher still taps Use code (#90).
+    let mut input = use_signal(|| shared_code().unwrap_or_default());
     let mut confirm = use_signal(|| None::<String>);
     let mut copied = use_signal(|| None::<bool>);
     if !handle.0.enabled {
@@ -218,6 +219,10 @@ pub fn SharingSection() -> Element {
                 button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone(); move |_| run(sharing,store.clone(),Request::Create)}, {i18n.t("sharing-create")} }
                 if let Some(code) = data.code {
                     p { class:"share-code",dir:"ltr", "{code.code}" }
+                    if let Some(svg) = share_qr(&share_link(&code.code)) {
+                        div { class:"share-qr",role:"img",aria_label:i18n.t("sharing-qr"),dangerous_inner_html:svg }
+                        p { {i18n.t("sharing-qr-help")} }
+                    }
                     p { {i18n.t("sharing-expires")} " " {crate::account::runtime::display_time(code.expires_at).unwrap_or_default()} }
                     button { class:"secondary-button",onclick: move |_| {
                         let code=code.code.clone(); spawn(async move { copied.set(Some(copy_code(code).await)); });
@@ -258,6 +263,51 @@ pub fn SharingSection() -> Element {
             if let Some(error)=data.error {p {role:"alert",{i18n.t(error)}}}
         }
     }
+}
+
+/// Link a watcher opens to get the code filled in (#90).
+pub fn share_link(code: &str) -> String {
+    format!("{}?share={code}", crate::account::config::APP_URL)
+}
+
+/// The `share` code from an address query, or None when it is missing or
+/// could not be a share code.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn share_from_query(query: &str) -> Option<String> {
+    let code = query
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|part| part.strip_prefix("share="))?
+        .to_ascii_uppercase();
+    (!code.is_empty() && code.len() <= 32 && code.bytes().all(|b| b.is_ascii_alphanumeric()))
+        .then_some(code)
+}
+
+/// The share code in this page's address, on the web.
+pub fn shared_code() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .and_then(|query| share_from_query(&query))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// The share link as an SVG QR. Colours come from CSS through currentColor.
+pub fn share_qr(link: &str) -> Option<String> {
+    use qrcode::render::svg;
+    let code = qrcode::QrCode::new(link.as_bytes()).ok()?;
+    Some(
+        code.render::<svg::Color>()
+            .min_dimensions(176, 176)
+            .dark_color(svg::Color("currentColor"))
+            .light_color(svg::Color("transparent"))
+            .build(),
+    )
 }
 
 async fn copy_code(code: String) -> bool {
@@ -364,6 +414,36 @@ fn WatchedContent(view: WatchView, language: String, today: werdy_core::WerdyDay
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn share_link_carries_the_code_and_reads_back_from_the_address() {
+        let link = share_link("ABCDEFGH23");
+        assert_eq!(
+            link,
+            "https://ahmed-ahmed16.github.io/werdy/?share=ABCDEFGH23"
+        );
+        assert_eq!(
+            share_from_query("?demo&share=abcdefgh23").as_deref(),
+            Some("ABCDEFGH23")
+        );
+    }
+
+    #[test]
+    fn address_without_a_usable_code_fills_nothing() {
+        assert_eq!(share_from_query(""), None);
+        assert_eq!(share_from_query("?share="), None);
+        assert_eq!(share_from_query("?share=AB%3Cscript"), None);
+        assert_eq!(
+            share_from_query(&format!("?share={}", "A".repeat(33))),
+            None
+        );
+    }
+
+    #[test]
+    fn share_qr_is_an_svg_for_the_link() {
+        let svg = share_qr(&share_link("ABCDEFGH23")).expect("a short link fits in a QR");
+        assert!(svg.contains("<svg") && svg.contains("</svg>"));
+    }
     #[test]
     fn revoked_access_drops_view_and_list_but_network_failure_allows_retry() -> Result<(), SyncError>
     {
