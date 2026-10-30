@@ -4,3 +4,10 @@
 .DS_Store
 Thumbs.db
 /target-android
+*.jks
+*.keystore
+*.p12
+*.pfx
+/.android-signing/
+/target-release-signing/
+*.signing.local.*
