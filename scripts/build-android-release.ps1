@@ -61,11 +61,20 @@ try {
     [IO.File]::WriteAllText($configPath, $baseConfig + "`n" + $signingConfig, [Text.UTF8Encoding]::new($false))
     Push-Location $repo
     $locationPushed = $true
-    $buildArguments = @('bundle', '--platform', 'android', '--release', '--package', 'werdy-app', '--no-default-features', '--features', 'mobile')
+    # dx builds one CPU per bundle and otherwise picks the emulator's x86_64,
+    # which phones refuse as "app not supported" (#84). arm64-v8a is the phone CPU.
+    $outDir = Join-Path $repo 'target/android-release'
+    $buildArguments = @('bundle', '--platform', 'android', '--release', '--package', 'werdy-app', '--no-default-features', '--features', 'mobile', '--target', 'aarch64-linux-android')
     foreach ($format in $PackageType) { $buildArguments += @('--package-types', $format) }
-    $buildArguments += @('--out-dir', (Join-Path $repo 'target/android-release'))
+    $buildArguments += @('--out-dir', $outDir)
     & $dxCommand @buildArguments
     if ($LASTEXITCODE -ne 0) { throw "Android release build failed with exit code $LASTEXITCODE." }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($apk in Get-ChildItem -LiteralPath $outDir -Filter *.apk) {
+        $zip = [IO.Compression.ZipFile]::OpenRead($apk.FullName)
+        try { $phoneCode = $zip.Entries | Where-Object { $_.FullName -like 'lib/arm64-v8a/*' } } finally { $zip.Dispose() }
+        if (-not $phoneCode) { throw "$($apk.Name) has no lib/arm64-v8a code, so phones would refuse it." }
+    }
 } finally {
     if ($locationPushed) { Pop-Location }
     $env:CARGO_TARGET_DIR = $savedTarget

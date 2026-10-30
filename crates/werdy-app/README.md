@@ -117,8 +117,15 @@ the new release.
 The wrapper runs this dx command, with an absolute output path:
 
 ```powershell
-dx bundle --platform android --release --package werdy-app --no-default-features --features mobile --package-types apk --package-types aab --out-dir target/android-release
+dx bundle --platform android --release --package werdy-app --no-default-features --features mobile --target aarch64-linux-android --package-types apk --package-types aab --out-dir target/android-release
 ```
+
+dx 0.7.10 builds code for one CPU per bundle. Without `--target` it picks
+`x86_64`, the emulator CPU, and phones refuse that APK as "app not supported"
+(#84). The wrapper asks for `aarch64-linux-android`, the `arm64-v8a` CPU in
+almost every phone, and fails the build when an APK holds no `lib/arm64-v8a/`
+code. The emulator image must be `arm64-v8a` (or one that translates ARM) to
+run this APK.
 
 Use the wrapper, since dx 0.7.10 reads signing fields only from config.
 Its [Android build source](https://github.com/DioxusLabs/dioxus/blob/v0.7.10/packages/cli/src/build/android.rs)

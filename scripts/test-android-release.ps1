@@ -25,6 +25,15 @@ function global:dx {
     New-Item -ItemType Directory -Path $env:GRADLE_USER_HOME -Force | Out-Null
     Set-Content (Join-Path $env:GRADLE_USER_HOME 'cache') 'simulated compiled secret'
     if ($global:signingTestState.Fail) { $global:LASTEXITCODE = 7; return }
+    # Write a stand in APK whose native code folder names the built CPU.
+    $outDir = $args[[array]::IndexOf($args, '--out-dir') + 1]
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    $abi = if ($global:signingTestState.Abi) { $global:signingTestState.Abi } else { 'arm64-v8a' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $apk = Join-Path $outDir 'app-release.apk'
+    Remove-Item -LiteralPath $apk -ErrorAction SilentlyContinue
+    $zip = [IO.Compression.ZipFile]::Open($apk, 'Create')
+    try { $null = $zip.CreateEntry("lib/$abi/libmain.so") } finally { $zip.Dispose() }
     $global:LASTEXITCODE = 0
 }
 
@@ -57,6 +66,7 @@ try {
         $arguments = $global:signingTestState.Arguments -join ' '
         Assert-True ($arguments -like 'bundle --platform android --release*') 'Release bundle flags missing'
         Assert-True ($arguments -like '*--package-types apk --package-types aab*') 'APK or AAB missing'
+        Assert-True ($arguments -like '*--target aarch64-linux-android*') 'Phone CPU target missing'
         $config = $global:signingTestState.Config
         foreach ($field in @{ jks_password = $env:WERDY_ANDROID_STORE_PASSWORD; key_password = $env:WERDY_ANDROID_KEY_PASSWORD }.GetEnumerator()) {
             $match = [regex]::Match($config, "(?m)^$($field.Key) = '([^']*)'")
@@ -65,6 +75,18 @@ try {
         }
         Write-Output "PASS: build failure=$failBuild preserves config and environment, removes secrets, requests release APK and AAB"
     }
+
+    # The v0.1.0 APK held only x86_64 code, so phones refused it (#84).
+    $global:signingTestState = @{ Abi = 'x86_64' }
+    $failed = $false
+    try { & "$fixture/scripts/build-android-release.ps1" } catch {
+        $failed = $true
+        Assert-True ($_.Exception.Message -like '*arm64-v8a*') 'Unexpected CPU check failure'
+    }
+    Assert-True $failed 'APK without phone code accepted'
+    Assert-True (-not (Test-Path "$fixture/.android-signing")) 'Signing files survived CPU check'
+    Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($configPath)) -eq [Convert]::ToBase64String($original)) 'Config not restored after CPU check'
+    Write-Output 'PASS: an APK without arm64-v8a code fails the build'
 
     foreach ($name in @('WERDY_ANDROID_KEYSTORE', 'WERDY_ANDROID_STORE_PASSWORD', 'WERDY_ANDROID_KEY_PASSWORD')) {
         $saved = [Environment]::GetEnvironmentVariable($name)
