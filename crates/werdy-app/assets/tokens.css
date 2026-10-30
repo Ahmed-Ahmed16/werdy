@@ -28,6 +28,8 @@
   --on-mark-missed: #FFFFFF;
   --mark-open: #8A958E;
   --danger: #A3332C;
+  --qr-ink: #16201B;
+  --qr-paper: #FFFFFF;
   --overlay: #16201B;
   --overlay-opacity: 45%;
   color-scheme: light;

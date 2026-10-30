@@ -30,6 +30,8 @@ UI text is not a token: it lives in Fluent files per language and feature, `loca
 | `mark-open` | `#8A958E` (outline) | `#7C8983` (outline) | Open deeds and today in progress, always dashed or outlined, never filled |
 | `danger` | `#A3332C` | `#E5736A` | Destructive text (stop sharing, delete) |
 | `overlay` | `#16201B` | `#000000` | Day note dialog shade |
+| `qr-ink` | `#16201B` | `#16201B` | Share QR squares; the same in both themes so cameras always read dark on light |
+| `qr-paper` | `#FFFFFF` | `#FFFFFF` | Share QR background and quiet zone |
 
 Every mark has its own shape too (check, half filled circle, cross, dashed outline), so colour is never the only signal.
 
