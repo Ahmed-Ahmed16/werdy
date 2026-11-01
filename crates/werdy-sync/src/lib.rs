@@ -31,7 +31,7 @@ pub use supabase::sharing::{ShareCode, SharePerson, WatchPage};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;
-use werdy_core::DeedId;
+use werdy_core::{DeedId, WerdyDay};
 use werdy_store::OwnerData;
 
 /// Failures leave local records and queued operations available for retry.
@@ -326,6 +326,23 @@ impl Sync {
         staged.observed = snapshot;
         *self = staged;
         Ok(())
+    }
+
+    /// Local marks and clears captured but not yet acknowledged by the server.
+    /// After `finish_from` their saved time is zero, so callers comparing
+    /// marks must treat these as the newest.
+    pub fn unsent_marks(&self) -> std::collections::BTreeSet<(DeedId, WerdyDay)> {
+        self.outbox
+            .iter()
+            .filter_map(|pending| match &pending.change {
+                Change::Mark { id, day, .. } => self
+                    .bindings
+                    .iter()
+                    .find(|binding| &binding.remote == id)
+                    .map(|binding| (binding.local, *day)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// After capture, persist these domain identities with the same records.

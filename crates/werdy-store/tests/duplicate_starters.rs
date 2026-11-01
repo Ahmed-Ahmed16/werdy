@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use werdy_core::Target;
 use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule, SlotKey, WerdyDay,
@@ -45,7 +47,7 @@ fn oldest_copy_is_kept_and_takes_the_other_copys_marks() -> TestResult {
     mark(&mut records, 1, day(30)?, Mark::Done, 500);
     mark(&mut records, 2, day(25)?, Mark::Missed, 400);
 
-    assert!(records.merge_duplicate_starters());
+    assert!(records.merge_duplicate_starters(&BTreeSet::new()));
 
     let ids: Vec<DeedId> = records.deeds.iter().map(|deed| deed.id).collect();
     assert_eq!(ids, [DeedId(2)]);
@@ -65,7 +67,7 @@ fn on_a_day_both_copies_marked_the_later_change_wins() -> TestResult {
     let today = day(30)?;
     mark(&mut records, 1, today, Mark::Missed, 100);
     mark(&mut records, 2, today, Mark::Done, 200);
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     assert_eq!(records.marks[&(DeedId(1), today)].mark, Mark::Done);
 
     let mut records = OwnerData::default();
@@ -75,7 +77,7 @@ fn on_a_day_both_copies_marked_the_later_change_wins() -> TestResult {
     // The kept copy was cleared after the other copy was marked.
     mark(&mut records, 1, today, Mark::Missed, 50);
     records.set_mark(DeedId(1), today, None, 300);
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     assert!(!records.marks.contains_key(&(DeedId(1), today)));
     Ok(())
 }
@@ -104,8 +106,8 @@ fn every_device_keeps_the_same_copy_whatever_its_local_ids() -> TestResult {
         },
     );
 
-    here.merge_duplicate_starters();
-    there.merge_duplicate_starters();
+    here.merge_duplicate_starters(&BTreeSet::new());
+    there.merge_duplicate_starters(&BTreeSet::new());
 
     assert_eq!(
         here.deed_keys[&here.deeds[0].id],
@@ -115,14 +117,40 @@ fn every_device_keeps_the_same_copy_whatever_its_local_ids() -> TestResult {
 }
 
 #[test]
-fn an_archived_copy_gives_way_to_a_live_one() -> TestResult {
+fn an_older_archived_copy_is_kept_with_its_history_and_comes_back_live() -> TestResult {
     let mut records = OwnerData::default();
     add(&mut records, 1, day(20)?, "web", "fajr_on_time");
     add(&mut records, 2, day(30)?, "phone", "fajr_on_time");
+    mark(&mut records, 1, day(21)?, Mark::Done, 100);
     records.deeds[0].archive(day(25)?)?;
-    records.merge_duplicate_starters();
-    let ids: Vec<DeedId> = records.deeds.iter().map(|deed| deed.id).collect();
-    assert_eq!(ids, [DeedId(2)]);
+    records.merge_duplicate_starters(&BTreeSet::new());
+
+    let kept = &records.deeds[0];
+    assert_eq!(records.deeds.len(), 1);
+    assert_eq!(kept.id, DeedId(1));
+    // The day marked before the live copy existed still has a due rule.
+    assert!(kept.rule_on(day(21)?).is_some());
+    assert!(!kept.is_archived_on(day(21)?));
+    assert!(kept.is_archived_on(day(27)?));
+    assert!(!kept.is_archived_on(day(30)?));
+    Ok(())
+}
+
+#[test]
+fn an_unsent_mark_on_the_copy_beats_a_synced_one_on_the_kept_deed() -> TestResult {
+    let mut records = OwnerData::default();
+    add(&mut records, 1, day(20)?, "web", "fajr_on_time");
+    add(&mut records, 2, day(30)?, "phone", "fajr_on_time");
+    let today = day(30)?;
+    // A synced mark carries the server time; an unsent one carries zero.
+    mark(&mut records, 1, today, Mark::Missed, 1_800_000_000_000);
+    records
+        .marks
+        .insert((DeedId(2), today), MarkEntry::new(Mark::Done, today));
+    records.mark_revisions.insert((DeedId(2), today), 0);
+    let unsent = BTreeSet::from([(DeedId(2), today)]);
+    records.merge_duplicate_starters(&unsent);
+    assert_eq!(records.marks[&(DeedId(1), today)].mark, Mark::Done);
     Ok(())
 }
 
@@ -133,7 +161,7 @@ fn a_reminder_on_the_removed_copy_moves_to_the_kept_one() -> TestResult {
     add(&mut records, 2, day(30)?, "phone", "fajr_on_time");
     let time = ClockTime::new(5, 30)?;
     records.settings.reminders.deeds.insert(DeedId(2), time);
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     assert_eq!(
         records.settings.reminders.deeds.get(&DeedId(1)),
         Some(&time)
@@ -151,7 +179,7 @@ fn a_later_clear_on_the_removed_copy_clears_the_kept_deed() -> TestResult {
     mark(&mut records, 1, today, Mark::Done, 100);
     mark(&mut records, 2, today, Mark::Missed, 150);
     records.set_mark(DeedId(2), today, None, 300);
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     assert!(!records.marks.contains_key(&(DeedId(1), today)));
     assert!(records.cleared_marks.contains_key(&(DeedId(1), today)));
     Ok(())
@@ -167,7 +195,7 @@ fn a_rule_edit_on_the_removed_copy_moves_to_the_kept_deed() -> TestResult {
         ..rule()
     };
     records.deeds[1].change_rule(day(28)?, edited.clone())?;
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     let kept = &records.deeds[0];
     assert_eq!(kept.id, DeedId(1));
     assert_eq!(kept.rule_on(day(27)?), Some(&rule()));
@@ -186,7 +214,7 @@ fn a_typed_name_on_the_removed_copy_is_kept() -> TestResult {
     records
         .names
         .insert(DeedId(2), DeedName::Text("Fajr at the mosque".into()));
-    records.merge_duplicate_starters();
+    records.merge_duplicate_starters(&BTreeSet::new());
     assert_eq!(
         records.names.get(&DeedId(1)),
         Some(&DeedName::Text("Fajr at the mosque".into()))
@@ -203,7 +231,7 @@ fn distinct_starters_and_own_deeds_are_left_alone() -> TestResult {
     records.deeds.push(Deed::new(DeedId(3), day(20)?, rule()));
     records.deeds.push(Deed::new(DeedId(4), day(20)?, rule()));
     let before = records.clone();
-    assert!(!records.merge_duplicate_starters());
+    assert!(!records.merge_duplicate_starters(&BTreeSet::new()));
     assert_eq!(records, before);
     Ok(())
 }

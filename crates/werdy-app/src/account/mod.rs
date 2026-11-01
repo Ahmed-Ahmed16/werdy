@@ -209,7 +209,8 @@ impl AccountStore {
         // starter deed next to this device's copy. Merge them and queue the
         // repair, so every device and the account end with one copy.
         current.engine.remember_deed_keys(&mut records);
-        if records.merge_duplicate_starters() {
+        let unsent = current.engine.unsent_marks();
+        if records.merge_duplicate_starters(&unsent) {
             current
                 .engine
                 .capture(&records)
