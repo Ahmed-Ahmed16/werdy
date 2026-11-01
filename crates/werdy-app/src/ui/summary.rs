@@ -11,8 +11,10 @@ use crate::state::{AppState, SaveStatus, Screen};
 #[component]
 pub fn TodayCard() -> Element {
     let i18n = use_i18n();
+    let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let (summary, score, is_today, noted, note_late) = {
+    let can_filter = !super::sharing::read_only();
+    let (summary, score, is_today, noted, note_late, showing_unmarked) = {
         let state = state.read();
         (
             state.summary(),
@@ -22,6 +24,7 @@ pub fn TodayCard() -> Element {
             state
                 .viewing_note()
                 .is_some_and(|note| note.is_late_for(state.viewing)),
+            state.showing_unmarked(),
         )
     };
     let title_key = if is_today {
@@ -47,7 +50,17 @@ pub fn TodayCard() -> Element {
             div { class: "counts",
                 Count { kind: "done", value: summary.done, label: i18n.t("summary-done") }
                 Count { kind: "partial", value: summary.partial, label: i18n.t("summary-partial") }
-                if is_today {
+                if is_today && can_filter {
+                    button {
+                        class: "count count-button",
+                        "data-kind": "open",
+                        aria_pressed: "{showing_unmarked}",
+                        aria_label: i18n.t_with("summary-open-filter", &[("count", FluentValue::from(summary.open))]),
+                        onclick: move |_| actions.view(AppState::toggle_unmarked),
+                        span { class: "count-value", {i18n.num(summary.open)} }
+                        span { class: "count-label", {i18n.t("summary-open")} }
+                    }
+                } else if is_today {
                     Count { kind: "open", value: summary.open, label: i18n.t("summary-open") }
                 } else {
                     Count { kind: "missed", value: summary.missed, label: i18n.t("summary-missed") }

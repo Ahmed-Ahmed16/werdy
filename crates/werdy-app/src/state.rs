@@ -422,6 +422,8 @@ pub struct AppState {
     pub report_steps_back: usize,
     /// Welcome stays visible for this app opening only.
     pub welcome_visible: bool,
+    /// Today when the owner chose to see only unmarked deeds. A new day clears it.
+    unmarked_day: Option<WerdyDay>,
     kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
     pending_settings: PendingSettings,
     sets_dirty: bool,
@@ -467,6 +469,7 @@ impl AppState {
             report_period: Period::Week,
             report_steps_back: 0,
             welcome_visible: false,
+            unmarked_day: None,
             kept_days_cache: RefCell::new(None),
             pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
@@ -483,6 +486,33 @@ impl AppState {
             &self.slot_order,
             self.data.settings.calendar.clone(),
         )
+    }
+
+    /// Returns the sheet as shown: only unmarked deeds while that filter is on.
+    pub fn sheet_on_screen(&self) -> DailySheet {
+        let sheet = self.sheet();
+        if self.showing_unmarked() {
+            sheet.unmarked_only()
+        } else {
+            sheet
+        }
+    }
+
+    /// Says whether the sheet shows only unmarked deeds. Only today can.
+    pub fn showing_unmarked(&self) -> bool {
+        self.is_today() && self.unmarked_day == Some(self.today)
+    }
+
+    /// Turns the unmarked filter on or off. Does nothing on a past day.
+    pub fn toggle_unmarked(&mut self) {
+        if !self.is_today() {
+            return;
+        }
+        self.unmarked_day = if self.showing_unmarked() {
+            None
+        } else {
+            Some(self.today)
+        };
     }
 
     /// Returns the highest reached private milestone that is still new.
@@ -1550,6 +1580,50 @@ mod tests {
             let _ = store.save(&data);
         }
         Ok(AppState::start(store, today()?, slot_order()))
+    }
+
+    fn sheet_ids(state: &AppState) -> Vec<DeedId> {
+        state
+            .sheet_on_screen()
+            .slots
+            .iter()
+            .flat_map(|slot| slot.rows.iter().map(|row| row.deed_id))
+            .collect()
+    }
+
+    #[test]
+    fn unmarked_filter_shows_only_open_deeds_today_and_turns_off_again() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        let all = sheet_ids(&state);
+        state.tap(DeedId(1), Tap::Done);
+        state.tap(DeedId(2), Tap::Missed);
+
+        state.toggle_unmarked();
+        assert!(state.showing_unmarked());
+        let open = sheet_ids(&state);
+        assert!(!open.contains(&DeedId(1)) && !open.contains(&DeedId(2)));
+        assert_eq!(open.len(), all.len() - 2);
+        assert_eq!(open.len(), state.summary().open);
+
+        state.toggle_unmarked();
+        assert!(!state.showing_unmarked());
+        assert_eq!(sheet_ids(&state), all);
+        Ok(())
+    }
+
+    #[test]
+    fn unmarked_filter_belongs_to_today_only() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.toggle_unmarked();
+        state.show_previous_day();
+        assert!(!state.showing_unmarked());
+        state.toggle_unmarked();
+        assert!(!state.showing_unmarked());
+
+        state.show_today();
+        state.update_today(today()?.next()?);
+        assert!(!state.showing_unmarked());
+        Ok(())
     }
 
     #[test]
