@@ -19,7 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use werdy_core::{
-    CalendarSettings, DayNote, Deed, DeedId, HijriOffset, MarkEntry, OwnerRecords, WerdyDay,
+    CalendarSettings, DayNote, Deed, DeedId, DeedRule, HijriOffset, MarkEntry, OwnerRecords,
+    WerdyDay,
 };
 
 /// Version of the JSON layout written by this code.
@@ -290,6 +291,152 @@ impl OwnerData {
                 self.day_notes.remove(&day);
                 self.note_revisions.remove(&day);
                 self.cleared_notes.insert(day, changed_at);
+            }
+        }
+    }
+
+    /// Keeps one deed per starter key. A sheet set up on one device and an
+    /// account set up on another each have their own copy of a starter deed,
+    /// so the first sync brings both. Every device picks the same deed to
+    /// keep: the oldest, then the lowest lasting key, so every moved mark
+    /// falls inside its lifetime. The other copies are deleted and their marks
+    /// move to the kept deed. On a day both have, a mark not yet sent (in
+    /// `unsent`) wins, otherwise the later change. Returns whether anything changed.
+    pub fn merge_duplicate_starters(&mut self, unsent: &BTreeSet<(DeedId, WerdyDay)>) -> bool {
+        let mut groups: BTreeMap<&str, Vec<DeedId>> = BTreeMap::new();
+        for deed in &self.deeds {
+            if let Some(key) = self.starter_keys.get(&deed.id) {
+                groups.entry(key).or_default().push(deed.id);
+            }
+        }
+        let merges: Vec<Vec<DeedId>> = groups
+            .into_values()
+            .filter(|ids| ids.len() > 1)
+            .map(|mut ids| {
+                ids.sort_by_key(|id| self.keep_order(*id));
+                ids
+            })
+            .collect();
+        for ids in &merges {
+            if let Some((kept, copies)) = ids.split_first() {
+                for copy in copies {
+                    self.fold_deed_into(*copy, *kept, unsent);
+                }
+            }
+        }
+        !merges.is_empty()
+    }
+
+    /// Sort key for choosing the deed to keep. Lower is kept.
+    fn keep_order(&self, id: DeedId) -> (Option<WerdyDay>, bool, Option<DeedKey>) {
+        let created_on = self
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .map(Deed::created_on);
+        let key = self.deed_keys.get(&id).cloned();
+        (created_on, key.is_none(), key)
+    }
+
+    fn fold_deed_into(
+        &mut self,
+        copy: DeedId,
+        kept: DeedId,
+        unsent: &BTreeSet<(DeedId, WerdyDay)>,
+    ) {
+        self.fold_marks(copy, kept, unsent);
+        self.fold_rule_edits(copy, kept);
+        self.fold_live_state(copy, kept);
+        // A name the owner typed on the copy beats a starter name.
+        if let Some(DeedName::Text(text)) = self.names.remove(&copy)
+            && !matches!(self.names.get(&kept), Some(DeedName::Text(_)))
+        {
+            self.names.insert(kept, DeedName::Text(text));
+        }
+        if let Some(time) = self.settings.reminders.deeds.remove(&copy) {
+            self.settings.reminders.deeds.entry(kept).or_insert(time);
+        }
+        self.deeds.retain(|deed| deed.id != copy);
+        self.marks.retain(|(deed_id, _), _| *deed_id != copy);
+        self.mark_revisions
+            .retain(|(deed_id, _), _| *deed_id != copy);
+        self.cleared_marks
+            .retain(|(deed_id, _), _| *deed_id != copy);
+        self.starter_keys.remove(&copy);
+        self.deleted_deeds.insert(copy);
+    }
+
+    /// Moves the copy's marks and clears. On each day an unsent change wins,
+    /// then the later one. Unsent rows carry no server time yet, so their
+    /// saved time cannot be compared with a synced one.
+    fn fold_marks(&mut self, copy: DeedId, kept: DeedId, unsent: &BTreeSet<(DeedId, WerdyDay)>) {
+        let copy_days: BTreeSet<WerdyDay> = self
+            .marks
+            .keys()
+            .chain(self.cleared_marks.keys())
+            .filter(|(deed_id, _)| *deed_id == copy)
+            .map(|(_, day)| *day)
+            .collect();
+        for day in copy_days {
+            let changed_at = |id: DeedId| {
+                self.mark_revisions
+                    .get(&(id, day))
+                    .or(self.cleared_marks.get(&(id, day)))
+                    .copied()
+            };
+            let copy_time = changed_at(copy).unwrap_or(0);
+            let copy_wins = match (unsent.contains(&(copy, day)), unsent.contains(&(kept, day))) {
+                (true, false) => true,
+                (false, true) => false,
+                _ => changed_at(kept).is_none_or(|kept_time| copy_time > kept_time),
+            };
+            if !copy_wins {
+                continue;
+            }
+            let entry = self.marks.get(&(copy, day)).cloned();
+            self.set_mark(kept, day, entry, copy_time);
+        }
+    }
+
+    /// A live copy means the owner still uses this deed, so an archived kept
+    /// deed comes back from the day the copy started.
+    fn fold_live_state(&mut self, copy: DeedId, kept: DeedId) {
+        let Some(copy_start) = self
+            .deeds
+            .iter()
+            .find(|deed| deed.id == copy && deed.archived_from().is_none())
+            .map(Deed::created_on)
+        else {
+            return;
+        };
+        if let Some(kept_deed) = self.deeds.iter_mut().find(|deed| deed.id == kept)
+            && let Some(archived_from) = kept_deed.archived_from()
+        {
+            // Cannot fail: the day is not before the archive start.
+            kept_deed.restore(archived_from.max(copy_start)).ok();
+        }
+    }
+
+    /// Replays rule edits made on the copy. Its first rule is the starter's
+    /// own. `change_rule` refuses an edit dated before the kept deed's
+    /// creation or latest rule; there the kept history wins.
+    fn fold_rule_edits(&mut self, copy: DeedId, kept: DeedId) {
+        let copy_edits: Vec<(WerdyDay, DeedRule)> = self
+            .deeds
+            .iter()
+            .find(|deed| deed.id == copy)
+            .map(|deed| {
+                deed.rule_versions()
+                    .skip(1)
+                    .map(|(day, rule)| (day, rule.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(kept_deed) = self.deeds.iter_mut().find(|deed| deed.id == kept) {
+            for (day, rule) in copy_edits {
+                if kept_deed.rule_on(day) != Some(&rule) {
+                    kept_deed.change_rule(day, rule).ok();
+                }
             }
         }
     }

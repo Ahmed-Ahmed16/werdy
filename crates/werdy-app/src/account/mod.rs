@@ -205,6 +205,19 @@ impl AccountStore {
             .engine
             .finish_from(&completed.engine, &mut records)
             .map_err(|_| storage_error())?;
+        // The first sync after sign in can bring the account's copy of each
+        // starter deed next to this device's copy. Merge them and queue the
+        // repair, so every device and the account end with one copy.
+        current.engine.remember_deed_keys(&mut records);
+        let unsent = current.engine.unsent_marks();
+        if records.merge_duplicate_starters(&unsent) {
+            current
+                .engine
+                .capture(&records)
+                .map_err(|_| storage_error())?;
+            current.engine.remember_deed_keys(&mut records);
+            account.schedule.saved(runtime::elapsed_ms());
+        }
         current.records = to_json(&records)?;
         current.last_sync = Some(now);
         self.write_checkpoint(&current)?;
