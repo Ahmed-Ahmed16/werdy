@@ -17,7 +17,10 @@ pub fn Sheet() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     let actions = use_actions();
-    let sheet = state.read().sheet();
+    let (sheet, showing_unmarked) = {
+        let app = state.read();
+        (app.sheet_on_screen(), app.showing_unmarked())
+    };
     let (welcome, milestone) = {
         let app = state.read();
         if app.is_today() && !super::sharing::read_only() {
@@ -97,7 +100,21 @@ pub fn Sheet() -> Element {
                     }
                 }
             }
-            if sheet.slots.is_empty() {
+            if showing_unmarked {
+                div { class: "sheet-notice sheet-filter", role: "status",
+                    p {
+                        if sheet.slots.is_empty() {
+                            {i18n.t("sheet-unmarked-none")}
+                        } else {
+                            {i18n.t("sheet-unmarked-only")}
+                        }
+                    }
+                    button { class: "notice-dismiss",
+                        onclick: move |_| actions.view(AppState::toggle_unmarked),
+                        {i18n.t("sheet-show-all")}
+                    }
+                }
+            } else if sheet.slots.is_empty() {
                 p { class: "sheet-empty", {i18n.t("sheet-empty")} }
             }
             for slot in sheet.slots {

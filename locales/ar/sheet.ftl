@@ -19,12 +19,16 @@ sheet-previous-day = اليوم السابق
 sheet-next-day = اليوم التالي
 sheet-back-to-today = العودة إلى اليوم
 sheet-empty = لا أعمال مستحقة في هذا اليوم.
+sheet-unmarked-only = تعرض الآن الأعمال التي لم تُعلَّم بعد.
+sheet-unmarked-none = لم يبق عمل دون علامة اليوم.
+sheet-show-all = عرض الكل
 
 summary-title-today = اليوم حتى الآن
 summary-title-past = هذا اليوم
 summary-done = تم
 summary-partial = جزئي
 summary-open = باقٍ
+summary-open-filter = اعرض الأعمال الباقية وحدها: { $count }
 summary-missed = فائت
 summary-in-progress = اليوم لم ينته بعد، فلا نسبة له حتى يتم.
 summary-score = النتيجة: { $percent }%

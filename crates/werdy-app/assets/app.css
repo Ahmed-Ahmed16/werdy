@@ -473,6 +473,18 @@ textarea:focus-visible {
   border: 2px dashed var(--mark-open);
 }
 
+.count-button {
+  min-height: var(--touch-min);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.count-button[aria-pressed="true"] {
+  border-style: solid;
+  background: var(--primary-soft);
+}
+
 .count-value {
   font-size: var(--size-screen);
   font-weight: var(--weight-bold);

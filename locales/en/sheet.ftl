@@ -19,12 +19,16 @@ sheet-previous-day = Previous day
 sheet-next-day = Next day
 sheet-back-to-today = Back to today
 sheet-empty = No deeds are due on this day.
+sheet-unmarked-only = Showing deeds with no mark yet.
+sheet-unmarked-none = Every deed today has a mark.
+sheet-show-all = Show all
 
 summary-title-today = Today so far
 summary-title-past = This day
 summary-done = Done
 summary-partial = Partial
 summary-open = Open
+summary-open-filter = Show only open deeds: { $count }
 summary-missed = Missed
 summary-in-progress = Today is not over yet, so it has no percent until it ends.
 summary-score = Score: { $percent }%
