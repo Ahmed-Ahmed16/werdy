@@ -141,6 +141,49 @@ fn first_merge_and_edits_during_sync_keep_marks_and_distinct_deeds() {
     assert_eq!(other.marks.values().next().unwrap().mark, Mark::Done);
 }
 
+/// A sheet with one starter deed, made by its own install, as setup does.
+fn starter_sheet(mark_day: WerdyDay, mark: Mark) -> OwnerData {
+    let mut sheet = records();
+    sheet.starter_keys.insert(DeedId(1), "fajr_on_time".into());
+    sheet.set_mark(
+        DeedId(1),
+        mark_day,
+        Some(MarkEntry::new(mark, mark_day)),
+        1000,
+    );
+    sheet
+}
+
+#[test]
+fn signing_in_with_a_starter_sheet_merges_it_into_the_account_copy() {
+    let mut backend = FakeBackend::new(1000);
+    let yesterday = day().previous().unwrap();
+    // The account already has the starter deed from another device.
+    let mut web_engine = Sync::new("web").unwrap();
+    let mut web = starter_sheet(yesterday, Mark::Done);
+    run(web_engine.sync(&mut backend, &mut web, || 1000)).unwrap();
+
+    // This phone was set up offline with its own copy, then signs in.
+    let store = store();
+    let phone = starter_sheet(day(), Mark::Missed);
+    store.inner.save(&phone).unwrap();
+    store.sign_in(session(), &phone).unwrap();
+    let first = flight(&store, &mut backend);
+    let merged = store.complete(&first, 1, 1000).unwrap().unwrap();
+
+    assert_eq!(merged.deeds.len(), 1, "one deed per starter key");
+    let kept = merged.deeds[0].id;
+    assert_eq!(merged.marks[&(kept, yesterday)].mark, Mark::Done);
+    assert_eq!(merged.marks[&(kept, day())].mark, Mark::Missed);
+
+    // The repair reaches the account, so the other device sees one deed too.
+    let next = flight(&store, &mut backend);
+    store.complete(&next, 1, 2000).unwrap();
+    run(web_engine.sync(&mut backend, &mut web, || 2000)).unwrap();
+    assert_eq!(web.deeds.len(), 1);
+    assert_eq!(web.marks.len(), 2);
+}
+
 #[test]
 fn signout_clears_secrets_and_rejects_late_completion_without_losing_history() {
     let store = store();

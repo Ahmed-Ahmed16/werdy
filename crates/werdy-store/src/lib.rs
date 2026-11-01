@@ -293,6 +293,84 @@ impl OwnerData {
             }
         }
     }
+
+    /// Keeps one deed per starter key. A sheet set up on one device and an
+    /// account set up on another each have their own copy of a starter deed,
+    /// so the first sync brings both. Every device picks the same deed to
+    /// keep: not archived first, then the oldest, then the lowest lasting key.
+    /// The other copies are deleted and their marks move to the kept deed.
+    /// On a day both have, the later change wins. Returns whether anything changed.
+    pub fn merge_duplicate_starters(&mut self) -> bool {
+        let mut groups: BTreeMap<&str, Vec<DeedId>> = BTreeMap::new();
+        for deed in &self.deeds {
+            if let Some(key) = self.starter_keys.get(&deed.id) {
+                groups.entry(key).or_default().push(deed.id);
+            }
+        }
+        let merges: Vec<Vec<DeedId>> = groups
+            .into_values()
+            .filter(|ids| ids.len() > 1)
+            .map(|mut ids| {
+                ids.sort_by_key(|id| self.keep_order(*id));
+                ids
+            })
+            .collect();
+        for ids in &merges {
+            if let Some((kept, copies)) = ids.split_first() {
+                for copy in copies {
+                    self.fold_deed_into(*copy, *kept);
+                }
+            }
+        }
+        !merges.is_empty()
+    }
+
+    /// Sort key for choosing the deed to keep. Lower is kept.
+    fn keep_order(&self, id: DeedId) -> (bool, Option<WerdyDay>, bool, Option<DeedKey>) {
+        let deed = self.deeds.iter().find(|deed| deed.id == id);
+        let key = self.deed_keys.get(&id).cloned();
+        (
+            deed.is_none_or(|deed| deed.archived_from().is_some()),
+            deed.map(Deed::created_on),
+            key.is_none(),
+            key,
+        )
+    }
+
+    fn fold_deed_into(&mut self, copy: DeedId, kept: DeedId) {
+        let copy_days: Vec<WerdyDay> = self
+            .marks
+            .keys()
+            .filter(|(deed_id, _)| *deed_id == copy)
+            .map(|(_, day)| *day)
+            .collect();
+        for day in copy_days {
+            let copy_time = self.mark_revisions.get(&(copy, day)).copied().unwrap_or(0);
+            let kept_time = self
+                .mark_revisions
+                .get(&(kept, day))
+                .or(self.cleared_marks.get(&(kept, day)))
+                .copied();
+            let copy_wins = kept_time.is_none_or(|kept_time| copy_time > kept_time);
+            if copy_wins && let Some(entry) = self.marks.get(&(copy, day)).cloned() {
+                self.marks.insert((kept, day), entry);
+                self.mark_revisions.insert((kept, day), copy_time);
+                self.cleared_marks.remove(&(kept, day));
+            }
+        }
+        if let Some(time) = self.settings.reminders.deeds.remove(&copy) {
+            self.settings.reminders.deeds.entry(kept).or_insert(time);
+        }
+        self.deeds.retain(|deed| deed.id != copy);
+        self.marks.retain(|(deed_id, _), _| *deed_id != copy);
+        self.mark_revisions
+            .retain(|(deed_id, _), _| *deed_id != copy);
+        self.cleared_marks
+            .retain(|(deed_id, _), _| *deed_id != copy);
+        self.names.remove(&copy);
+        self.starter_keys.remove(&copy);
+        self.deleted_deeds.insert(copy);
+    }
 }
 
 /// Combines marks, notes, deleted deeds and issued ids from tab copies.
