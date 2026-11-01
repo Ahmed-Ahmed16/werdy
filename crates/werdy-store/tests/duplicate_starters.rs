@@ -1,7 +1,8 @@
+use werdy_core::Target;
 use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule, SlotKey, WerdyDay,
 };
-use werdy_store::{ClockTime, DeedKey, OwnerData};
+use werdy_store::{ClockTime, DeedKey, DeedName, OwnerData};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -138,6 +139,59 @@ fn a_reminder_on_the_removed_copy_moves_to_the_kept_one() -> TestResult {
         Some(&time)
     );
     assert!(!records.settings.reminders.deeds.contains_key(&DeedId(2)));
+    Ok(())
+}
+
+#[test]
+fn a_later_clear_on_the_removed_copy_clears_the_kept_deed() -> TestResult {
+    let mut records = OwnerData::default();
+    add(&mut records, 1, day(20)?, "web", "fajr_on_time");
+    add(&mut records, 2, day(30)?, "phone", "fajr_on_time");
+    let today = day(30)?;
+    mark(&mut records, 1, today, Mark::Done, 100);
+    mark(&mut records, 2, today, Mark::Missed, 150);
+    records.set_mark(DeedId(2), today, None, 300);
+    records.merge_duplicate_starters();
+    assert!(!records.marks.contains_key(&(DeedId(1), today)));
+    assert!(records.cleared_marks.contains_key(&(DeedId(1), today)));
+    Ok(())
+}
+
+#[test]
+fn a_rule_edit_on_the_removed_copy_moves_to_the_kept_deed() -> TestResult {
+    let mut records = OwnerData::default();
+    add(&mut records, 1, day(20)?, "web", "fajr_on_time");
+    add(&mut records, 2, day(25)?, "phone", "fajr_on_time");
+    let edited = DeedRule {
+        target: Some(Target::new(2, "rakah")?),
+        ..rule()
+    };
+    records.deeds[1].change_rule(day(28)?, edited.clone())?;
+    records.merge_duplicate_starters();
+    let kept = &records.deeds[0];
+    assert_eq!(kept.id, DeedId(1));
+    assert_eq!(kept.rule_on(day(27)?), Some(&rule()));
+    assert_eq!(kept.rule_on(day(28)?), Some(&edited));
+    Ok(())
+}
+
+#[test]
+fn a_typed_name_on_the_removed_copy_is_kept() -> TestResult {
+    let mut records = OwnerData::default();
+    add(&mut records, 1, day(20)?, "web", "fajr_on_time");
+    add(&mut records, 2, day(30)?, "phone", "fajr_on_time");
+    records
+        .names
+        .insert(DeedId(1), DeedName::Key("starter-fajr-on-time".into()));
+    records
+        .names
+        .insert(DeedId(2), DeedName::Text("Fajr at the mosque".into()));
+    records.merge_duplicate_starters();
+    assert_eq!(
+        records.names.get(&DeedId(1)),
+        Some(&DeedName::Text("Fajr at the mosque".into()))
+    );
+    assert!(!records.names.contains_key(&DeedId(2)));
     Ok(())
 }
 

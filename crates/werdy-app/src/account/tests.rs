@@ -181,7 +181,10 @@ fn signing_in_with_a_starter_sheet_merges_it_into_the_account_copy() {
     store.complete(&next, 1, 2000).unwrap();
     run(web_engine.sync(&mut backend, &mut web, || 2000)).unwrap();
     assert_eq!(web.deeds.len(), 1);
+    let web_deed = web.deeds[0].id;
     assert_eq!(web.marks.len(), 2);
+    assert_eq!(web.marks[&(web_deed, yesterday)].mark, Mark::Done);
+    assert_eq!(web.marks[&(web_deed, day())].mark, Mark::Missed);
 }
 
 #[test]

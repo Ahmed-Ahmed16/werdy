@@ -19,7 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use werdy_core::{
-    CalendarSettings, DayNote, Deed, DeedId, HijriOffset, MarkEntry, OwnerRecords, WerdyDay,
+    CalendarSettings, DayNote, Deed, DeedId, DeedRule, HijriOffset, MarkEntry, OwnerRecords,
+    WerdyDay,
 };
 
 /// Version of the JSON layout written by this code.
@@ -338,25 +339,13 @@ impl OwnerData {
     }
 
     fn fold_deed_into(&mut self, copy: DeedId, kept: DeedId) {
-        let copy_days: Vec<WerdyDay> = self
-            .marks
-            .keys()
-            .filter(|(deed_id, _)| *deed_id == copy)
-            .map(|(_, day)| *day)
-            .collect();
-        for day in copy_days {
-            let copy_time = self.mark_revisions.get(&(copy, day)).copied().unwrap_or(0);
-            let kept_time = self
-                .mark_revisions
-                .get(&(kept, day))
-                .or(self.cleared_marks.get(&(kept, day)))
-                .copied();
-            let copy_wins = kept_time.is_none_or(|kept_time| copy_time > kept_time);
-            if copy_wins && let Some(entry) = self.marks.get(&(copy, day)).cloned() {
-                self.marks.insert((kept, day), entry);
-                self.mark_revisions.insert((kept, day), copy_time);
-                self.cleared_marks.remove(&(kept, day));
-            }
+        self.fold_marks(copy, kept);
+        self.fold_rule_edits(copy, kept);
+        // A name the owner typed on the copy beats a starter name.
+        if let Some(DeedName::Text(text)) = self.names.remove(&copy)
+            && !matches!(self.names.get(&kept), Some(DeedName::Text(_)))
+        {
+            self.names.insert(kept, DeedName::Text(text));
         }
         if let Some(time) = self.settings.reminders.deeds.remove(&copy) {
             self.settings.reminders.deeds.entry(kept).or_insert(time);
@@ -367,9 +356,57 @@ impl OwnerData {
             .retain(|(deed_id, _), _| *deed_id != copy);
         self.cleared_marks
             .retain(|(deed_id, _), _| *deed_id != copy);
-        self.names.remove(&copy);
         self.starter_keys.remove(&copy);
         self.deleted_deeds.insert(copy);
+    }
+
+    /// Moves the copy's marks and clears. On each day the later change wins.
+    fn fold_marks(&mut self, copy: DeedId, kept: DeedId) {
+        let copy_days: BTreeSet<WerdyDay> = self
+            .marks
+            .keys()
+            .chain(self.cleared_marks.keys())
+            .filter(|(deed_id, _)| *deed_id == copy)
+            .map(|(_, day)| *day)
+            .collect();
+        for day in copy_days {
+            let changed_at = |id: DeedId| {
+                self.mark_revisions
+                    .get(&(id, day))
+                    .or(self.cleared_marks.get(&(id, day)))
+                    .copied()
+            };
+            let copy_time = changed_at(copy).unwrap_or(0);
+            if changed_at(kept).is_some_and(|kept_time| copy_time <= kept_time) {
+                continue;
+            }
+            let entry = self.marks.get(&(copy, day)).cloned();
+            self.set_mark(kept, day, entry, copy_time);
+        }
+    }
+
+    /// Replays rule edits made on the copy. Its first rule is the starter's
+    /// own. `change_rule` refuses an edit dated before the kept deed's
+    /// creation or latest rule; there the kept history wins.
+    fn fold_rule_edits(&mut self, copy: DeedId, kept: DeedId) {
+        let copy_edits: Vec<(WerdyDay, DeedRule)> = self
+            .deeds
+            .iter()
+            .find(|deed| deed.id == copy)
+            .map(|deed| {
+                deed.rule_versions()
+                    .skip(1)
+                    .map(|(day, rule)| (day, rule.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(kept_deed) = self.deeds.iter_mut().find(|deed| deed.id == kept) {
+            for (day, rule) in copy_edits {
+                if kept_deed.rule_on(day) != Some(&rule) {
+                    kept_deed.change_rule(day, rule).ok();
+                }
+            }
+        }
     }
 }
 
