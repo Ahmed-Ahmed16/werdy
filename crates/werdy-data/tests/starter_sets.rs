@@ -331,3 +331,40 @@ fn friday_box_deeds_are_due_only_on_fridays() {
         );
     }
 }
+
+#[test]
+fn only_level_sets_credit_the_instructors() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for set in &catalog.sets {
+        let is_level = set.key.starts_with("level");
+        assert_eq!(set.credit.is_some(), is_level, "{}", set.key);
+    }
+
+    let credited = SMALL.replace(
+        "name = \"set-basic\"",
+        "name = \"set-basic\"\ncredit = \"set-credit\"",
+    );
+    assert_eq!(
+        load(&credited, SMALL_FTL, SMALL_FTL),
+        Err(Error::MissingName {
+            locale: "ar",
+            name: "set-credit".into()
+        })
+    );
+}
+
+#[test]
+fn counted_level_deeds_carry_a_times_target() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for key in ["lv_tahlil_100", "lv_istighfar_100", "lv_friday_salawat_100"] {
+        let target = catalog
+            .deed(key)
+            .and_then(|deed| deed.target.as_ref())
+            .unwrap_or_else(|| panic!("{key} has no target"));
+        assert_eq!(
+            (target.amount, target.unit.as_str()),
+            (100, "times"),
+            "{key}"
+        );
+    }
+}

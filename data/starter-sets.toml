@@ -761,6 +761,7 @@ name = "deed-lv-tahlil-100"
 slot = "morning"
 category = "adhkar"
 schedule = "every_day"
+target = { amount = 100, unit = "times" }
 
 [[deeds]]
 key = "lv_morning_tahlil"
@@ -1347,6 +1348,7 @@ name = "deed-lv-istighfar-100"
 slot = "any_time"
 category = "adhkar"
 schedule = "every_day"
+target = { amount = 100, unit = "times" }
 
 [[deeds]]
 key = "lv_gathering_istighfar"
@@ -1596,6 +1598,7 @@ name = "deed-lv-friday-salawat-100"
 slot = "any_time"
 category = "adhkar"
 schedule = { weekdays = ["friday"] }
+target = { amount = 100, unit = "times" }
 
 [[deeds]]
 key = "lv_friday_salawat"
@@ -1609,6 +1612,7 @@ schedule = { weekdays = ["friday"] }
 [[sets]]
 key = "level_1"
 name = "set-level-1"
+credit = "set-credit-instructors"
 deeds = [
     "lv_fajr_sunnah_before",
     "lv_fajr_congregation",
@@ -1659,6 +1663,7 @@ deeds = [
 [[sets]]
 key = "levels_2_3"
 name = "set-levels-2-3"
+credit = "set-credit-instructors"
 deeds = [
     "lv_fajr_sunnah_before",
     "lv_fajr_dua_between",
@@ -1726,6 +1731,7 @@ deeds = [
 [[sets]]
 key = "level_advanced"
 name = "set-level-advanced"
+credit = "set-credit-instructors"
 deeds = [
     "lv_fajr_early",
     "lv_fajr_adhan_adhkar",
