@@ -2,11 +2,11 @@
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
+use werdy_core::TodaySummary;
 
 use super::context::{use_actions, use_i18n};
 use super::reports::Series;
 use crate::state::{AppState, SaveStatus, Screen};
-use werdy_core::TodaySummary;
 
 /// One line for the day on screen: counts, a thin bar and, on a finished day,
 /// the score.
@@ -147,13 +147,14 @@ mod tests {
 
     #[test]
     fn the_bar_splits_the_day_into_done_partial_and_missed_shares() {
+        // 2 done, 1 partial, 4 open and 1 missed out of 8 due deeds.
         let summary = TodaySummary {
-            done: 3,
+            done: 2,
             partial: 1,
-            open: 6,
-            missed: 2,
+            open: 4,
+            missed: 1,
         };
-        assert_eq!(bar_shares(&summary), [25.0, 100.0 / 12.0, 100.0 / 6.0]);
+        assert_eq!(bar_shares(&summary), [25.0, 12.5, 12.5]);
         let empty = TodaySummary {
             done: 0,
             partial: 0,

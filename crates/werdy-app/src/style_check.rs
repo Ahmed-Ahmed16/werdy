@@ -297,9 +297,11 @@ fn sheet_controls_keep_a_44px_tap_area_around_a_smaller_face() {
             "{selector} must be at least the sheet touch height"
         );
     }
-    // Tap areas sit side by side: no gap tricks or negative margins that overlap.
-    let controls = rule_body(APP_CSS, ".deed-controls").expect("rule");
-    assert!(!controls.contains("gap"));
+    // Tap areas sit side by side. A margin or an inset hit area (the prototype's
+    // ::before trick) would let neighbouring tap areas overlap.
+    let button = rule_body(APP_CSS, ".mark-button").expect("rule");
+    assert!(!button.contains("margin"));
+    assert!(!APP_CSS.contains(".mark-button::before"));
     let face = rule_body(APP_CSS, ".mark-face").expect("rule");
     assert!(has_declaration(face, "block-size", "var(--mark-face)"));
 }

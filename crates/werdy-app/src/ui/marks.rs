@@ -79,7 +79,7 @@ pub fn CountEntry(deed_id: DeedId, mark: Option<Mark>, target: u32) -> Element {
     };
 
     rsx! {
-        div { class: "count-entry", "data-kind": kind,
+        div { class: "count-entry",
             if editing() {
                 input {
                     id: "count-input-{deed_id.0}",

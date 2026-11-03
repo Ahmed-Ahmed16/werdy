@@ -315,7 +315,7 @@ fn DeedRow(row: SheetRow) -> Element {
                 if let Some(target) = target {
                     CountEntry { deed_id, mark, target }
                 } else {
-                    MarkButton { deed_id, tap: Tap::Partial, mark, target }
+                    MarkButton { deed_id, tap: Tap::Partial, mark, target: None }
                 }
                 MarkButton { deed_id, tap: Tap::Missed, mark, target }
             }
