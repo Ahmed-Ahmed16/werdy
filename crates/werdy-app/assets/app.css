@@ -441,54 +441,60 @@ textarea:focus-visible {
 /* Today card */
 
 .today-card {
-  padding: var(--gap-l);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  padding: var(--gap-s) var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-control);
   background: var(--surface);
 }
 
-.card-title {
-  margin: 0 0 var(--gap-m);
-  font-size: var(--size-title);
+.today-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--gap-s);
+  row-gap: var(--gap-xs);
+}
+
+.today-title {
+  margin: 0;
+  font-size: var(--size-label);
   font-weight: var(--weight-semibold);
 }
 
-.counts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--gap-s);
-}
-
-.count {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--gap-m) var(--gap-s);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-}
-
-.count[data-kind="open"] {
-  background: transparent;
-  border: 2px dashed var(--mark-open);
-}
-
-.count-value {
-  font-size: var(--size-screen);
-  font-weight: var(--weight-bold);
-}
-
-.count[data-kind="done"] .count-value {
-  color: var(--mark-done);
-}
-
-.count[data-kind="missed"] .count-value {
-  color: var(--mark-missed);
-}
-
-.count-label {
+.today-counts,
+.today-score {
+  margin: 0;
   font-size: var(--size-caption);
   color: var(--text-muted);
+}
+
+.today-score {
+  margin-inline-start: auto;
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+
+.today-bar {
+  display: flex;
+  block-size: var(--bar-thickness);
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.today-bar [data-kind="done"] {
+  background: var(--mark-done);
+}
+
+.today-bar [data-kind="partial"] {
+  background: var(--mark-partial);
+}
+
+.today-bar [data-kind="missed"] {
+  background: var(--mark-missed);
 }
 
 .card-note {
@@ -534,12 +540,12 @@ textarea:focus-visible {
   }
 }
 
-/* Sheet */
+/* Sheet: one surface, sticky slot chips and thin sticky slot headings (#73). */
 
 .sheet {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-m);
+  gap: var(--gap-s);
 }
 
 .sheet-notice {
@@ -579,19 +585,132 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.slot {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  overflow: hidden;
+.slot-strip {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  block-size: var(--strip-block);
+  margin-inline: calc(-1 * var(--page-gutter));
+  padding-inline: var(--page-gutter);
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--bg);
 }
 
-.slot-title {
-  margin: 0;
-  padding: var(--gap-m) var(--gap-l) 0;
-  font-size: var(--size-label);
+.slot-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  min-width: var(--mark-touch);
+  min-height: var(--mark-touch);
+  padding-inline: var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--size-caption);
+  white-space: nowrap;
+}
+
+.slot-chip[data-complete="true"] {
+  background: var(--primary-soft);
+  color: var(--mark-done);
+}
+
+.slot-chip[data-current="true"] {
+  border: var(--stroke-strong) solid var(--primary);
+  color: var(--primary);
   font-weight: var(--weight-semibold);
+}
+
+.chip-done {
+  display: inline-grid;
+  color: var(--mark-done);
+}
+
+.chip-done .icon {
+  inline-size: var(--size-caption);
+  block-size: var(--size-caption);
+}
+
+.sheet-tools {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sheet-surface {
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  /* clip, not hidden, so the sticky headings still stick. */
+  overflow: clip;
+}
+
+.slot {
+  scroll-margin-block-start: var(--strip-block);
+}
+
+.slot + .slot {
+  border-block-start: var(--stroke-thin) solid var(--border);
+}
+
+.slot-heading {
+  position: sticky;
+  inset-block-start: var(--strip-block);
+  z-index: 1;
+  margin: 0;
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.slot-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-xs) var(--gap-s);
+  inline-size: 100%;
+  min-height: var(--mark-touch);
+  padding-block: var(--gap-xs);
+  padding-inline: var(--gap-s) var(--gap-m);
+  border: none;
+  background: var(--primary-soft);
+  color: var(--primary);
+  text-align: start;
+}
+
+.slot[data-open="false"] .slot-toggle {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.fold-chevron {
+  inline-size: var(--mark-icon);
+  block-size: var(--mark-icon);
+  transition: transform 0.15s;
+}
+
+.slot[data-open="false"] .fold-chevron {
+  transform: rotate(-90deg);
+}
+
+[dir="rtl"] .slot[data-open="false"] .fold-chevron {
+  transform: rotate(90deg);
+}
+
+.slot-name {
+  flex: 1 1 auto;
+}
+
+.slot-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
   color: var(--text-muted);
+  font-weight: var(--weight-medium);
 }
 
 .slot-rows {
@@ -605,30 +724,40 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap-s);
-  min-height: var(--touch-min);
-  padding: var(--gap-m) var(--gap-l);
+  column-gap: var(--gap-s);
+  min-height: var(--mark-touch);
+  padding-inline: var(--gap-m) var(--gap-xs);
 }
 
 .deed-row + .deed-row {
-  border-top: 1px solid var(--border);
-}
-
-.deed-name {
-  font-size: var(--size-body);
-  font-weight: var(--weight-medium);
+  border-block-start: var(--stroke-thin) solid var(--border);
 }
 
 .deed-identity {
+  flex: 1 1 var(--name-min);
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap-s);
+  align-items: baseline;
+  column-gap: var(--gap-s);
+  padding-block: var(--gap-xs);
+}
+
+.deed-name {
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.count-tag {
+  font-size: var(--size-caption);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .late-sign {
   padding: 0 var(--gap-s);
-  border: 1px solid var(--text-muted);
+  border: var(--stroke-thin) solid var(--text-muted);
   border-radius: var(--radius-pill);
   color: var(--text-muted);
   font-size: var(--size-caption);
@@ -636,47 +765,57 @@ textarea:focus-visible {
 }
 
 .deed-controls {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: var(--gap-s);
+  margin-inline-start: auto;
 }
 
-.slot-folded {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-m);
-  width: 100%;
-  min-height: var(--touch-min);
-  padding: var(--gap-s) var(--gap-l);
-  border: none;
-  border-radius: var(--radius-card);
-  background: var(--primary-soft);
-  color: var(--primary);
-  text-align: start;
-}
+/* Mark buttons: a small face drawn inside a finger sized tap area. Each mark
+   has a colour and its own shape. Tap areas sit side by side, never overlap. */
 
-.slot-folded-mark {
+.mark-button {
+  min-width: var(--mark-touch);
+  min-height: var(--mark-touch);
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-pill);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.mark-face {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--mark-face);
+  block-size: var(--mark-face);
+  border-radius: var(--radius-mark);
+  background: var(--surface-muted);
+}
+
+.mark-face .icon {
+  inline-size: var(--mark-icon);
+  block-size: var(--mark-icon);
+}
+
+.mark-button[data-kind="done"][aria-pressed="true"] .mark-face {
   background: var(--mark-done);
   color: var(--on-mark-done);
 }
 
-.slot-folded-text {
-  flex: 1;
-  font-weight: var(--weight-semibold);
+.mark-button[data-kind="partial"][aria-pressed="true"] .mark-face {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
 }
 
-.slot-folded-show {
-  font-size: var(--size-caption);
+.mark-button[data-kind="missed"][aria-pressed="true"] .mark-face {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
 }
 
-/* Mark buttons: each mark has a colour and its own shape. */
+/* Plus and minus for a target amount in the deed editor. */
 
-.mark-button,
 .step-button {
   width: var(--touch-min);
   height: var(--touch-min);
@@ -689,52 +828,10 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.mark-button[data-kind="done"][aria-pressed="true"] {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.mark-button[data-kind="partial"][aria-pressed="true"] {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.mark-button[data-kind="missed"][aria-pressed="true"] {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
-}
-
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-xs);
-  padding: 0;
-  border-radius: var(--radius-control);
-}
-
-.step-count {
-  min-width: 72px;
-  min-height: var(--touch-min);
-  border: none;
-  border-radius: var(--radius-control);
-  padding: var(--gap-xs);
-  text-align: center;
+.count-face {
+  padding-inline: var(--gap-xs);
+  font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
-}
-
-.stepper[data-kind="done"] .step-count {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.stepper[data-kind="partial"] .step-count {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.stepper[data-kind="missed"] .step-count {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
 }
 
 .count-entry {
@@ -744,18 +841,16 @@ textarea:focus-visible {
 }
 
 .count-input {
-  width: 120px;
+  inline-size: var(--count-input);
+  min-height: var(--mark-touch);
   font: inherit;
-}
-
-.count-target {
-  font-size: var(--size-caption);
+  text-align: center;
 }
 
 .count-error {
+  max-inline-size: var(--name-min);
   color: var(--danger);
   font-size: var(--size-caption);
-  max-width: 160px;
 }
 
 .fatal {
@@ -1257,6 +1352,8 @@ textarea:focus-visible {
 .bottom-nav {
   position: sticky;
   bottom: 0;
+  /* Above the sticky slot strip and headings of the sheet. */
+  z-index: 3;
   width: 100%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -18,7 +18,7 @@ These are well established and need no new evidence here. The ones that matter m
 
 * WCAG 2.2 success criterion 2.5.8 (level AA) sets a floor of 24 by 24 CSS px. Criterion 2.5.5 (AAA) asks for 44 by 44. **Strong** (W3C standard, as summarised in [disabilityworld.org 2.5.8](https://www.disabilityworld.org/toolkit/standards/wcag/2-5-8-target-size-minimum/)).
 * Apple recommends 44 by 44 pt; Android recommends at least 48 by 48 dp. **Strong** (platform guidelines, summarised in [Smashing Magazine](https://shop.smashingmagazine.com/2024/07/getting-bottom-minimum-wcag-conformant-interactive-element-size/)).
-* **For werdy:** every mark button and stepper is 48 by 48 or larger, with at least 6 px between neighbours. Marking happens one handed, often right after prayer.
+* **For werdy:** every mark button and stepper is 48 by 48 or larger, with at least 6 px between neighbours. Marking happens one handed, often right after prayer. Changed for the daily sheet in #73: to fit the level sheets, mark buttons are drawn at 32 px inside tap areas of at least 44 px that sit side by side and never overlap (`mark-touch` in `docs/design/tokens.md`). Other controls keep 48 px.
 
 ## 3. Colour and marks
 

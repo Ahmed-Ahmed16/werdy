@@ -22,13 +22,11 @@ sheet-empty = No deeds are due on this day.
 
 summary-title-today = Today so far
 summary-title-past = This day
-summary-done = Done
-summary-partial = Partial
-summary-open = Open
-summary-missed = Missed
 summary-in-progress = Today is not over yet, so it has no percent until it ends.
 summary-score = Score: { $percent }%
 summary-score-error = Score unavailable.
+summary-line-today = { $done } done · { $partial } partial · { $last } open
+summary-line-past = { $done } done · { $partial } partial · { $last } missed
 
 slot-fajr = Fajr
 slot-morning = Morning
@@ -38,17 +36,21 @@ slot-maghrib = Maghrib
 slot-isha = Isha
 slot-night = Night
 slot-any_time = Any time
-slot-folded = { $slot }: all done
-slot-show = Show
+slot-count = { $marked } of { $total }
+slot-chip = { $slot } { $marked }/{ $total }
+slot-chip-label = { $slot }, { $marked } of { $total } marked
+sheet-slots = Slots of the day
+sheet-fold-all = Fold all
+sheet-open-all = Open all
 
 mark-done = Done
 mark-partial = Partial
 mark-missed = Missed
 mark-added-later = Added later
-count-minus = Take one away
-count-plus = Add one
 count-progress = { $count } of { $target }
 count-edit = Enter count
+count-empty = 123
+count-goal = Goal { $target }
 count-invalid = Enter a whole number from 0 to { $max }.
 
 note-button = Note
