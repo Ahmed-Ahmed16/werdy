@@ -254,3 +254,71 @@ fn loading_a_broken_file_is_an_error() {
         })
     );
 }
+
+#[test]
+fn level_sets_come_first_with_the_sheet_counts() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let keys: Vec<&str> = catalog.sets.iter().map(|set| set.key.as_str()).collect();
+    assert_eq!(keys[..3], ["level_1", "levels_2_3", "level_advanced"]);
+    // The advanced sheet has 113 deeds; visiting graves and sunan al fitra
+    // wait for weekly schedules (#108).
+    for (key, count) in [("level_1", 44), ("levels_2_3", 61), ("level_advanced", 111)] {
+        let set = catalog.set(key).expect("set exists");
+        assert_eq!(catalog.deeds_in(set).len(), count, "{key}");
+    }
+}
+
+#[test]
+fn level_sets_follow_sheet_order() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let first = |key: &str, count: usize| -> Vec<String> {
+        catalog.set(key).expect("set exists").deeds[..count].to_vec()
+    };
+    assert_eq!(
+        first("level_1", 4),
+        [
+            "lv_fajr_sunnah_before",
+            "lv_fajr_congregation",
+            "lv_fajr_adhkar_after",
+            "lv_morning_adhkar"
+        ]
+    );
+    assert_eq!(
+        first("level_advanced", 3),
+        [
+            "lv_fajr_early",
+            "lv_fajr_adhan_adhkar",
+            "lv_fajr_dua_between"
+        ]
+    );
+}
+
+#[test]
+fn moving_up_a_level_keeps_shared_deeds() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let deeds = |key: &str| -> BTreeSet<String> {
+        catalog
+            .set(key)
+            .expect("set exists")
+            .deeds
+            .iter()
+            .cloned()
+            .collect()
+    };
+    let shared = [
+        "lv_fajr_congregation",
+        "lv_witr",
+        "lv_parents",
+        "lv_sleep_adhkar",
+    ];
+    for key in ["level_1", "levels_2_3", "level_advanced"] {
+        for deed in shared {
+            assert!(deeds(key).contains(deed), "{key} lacks {deed}");
+        }
+    }
+    let friday = catalog.deed("lv_friday_kahf").expect("deed exists");
+    assert_eq!(
+        friday.schedule,
+        Schedule::Weekdays(vec![werdy_data::Weekday::Friday])
+    );
+}
