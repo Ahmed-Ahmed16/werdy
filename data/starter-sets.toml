@@ -1605,7 +1605,6 @@ category = "adhkar"
 schedule = { weekdays = ["friday"] }
 
 # The sets, in the order they are offered. The three levels come first.
-# A new sheet starts with five_prayers (by key, not by place).
 
 [[sets]]
 key = "level_1"

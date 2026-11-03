@@ -296,15 +296,6 @@ fn level_sets_follow_sheet_order() {
 #[test]
 fn moving_up_a_level_keeps_shared_deeds() {
     let catalog = builtin().expect("the shipped starter sets load");
-    let deeds = |key: &str| -> BTreeSet<String> {
-        catalog
-            .set(key)
-            .expect("set exists")
-            .deeds
-            .iter()
-            .cloned()
-            .collect()
-    };
     let shared = [
         "lv_fajr_congregation",
         "lv_witr",
@@ -312,13 +303,31 @@ fn moving_up_a_level_keeps_shared_deeds() {
         "lv_sleep_adhkar",
     ];
     for key in ["level_1", "levels_2_3", "level_advanced"] {
+        let set = catalog.set(key).expect("set exists");
         for deed in shared {
-            assert!(deeds(key).contains(deed), "{key} lacks {deed}");
+            assert!(
+                set.deeds.iter().any(|key| key == deed),
+                "{key} lacks {deed}"
+            );
         }
     }
-    let friday = catalog.deed("lv_friday_kahf").expect("deed exists");
-    assert_eq!(
-        friday.schedule,
-        Schedule::Weekdays(vec![werdy_data::Weekday::Friday])
-    );
+}
+
+#[test]
+fn friday_box_deeds_are_due_only_on_fridays() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let friday = catalog
+        .deeds
+        .iter()
+        .filter(|deed| deed.key.starts_with("lv_friday_"))
+        .collect::<Vec<_>>();
+    assert_eq!(friday.len(), 13);
+    for deed in friday {
+        assert_eq!(
+            deed.schedule,
+            Schedule::Weekdays(vec![werdy_data::Weekday::Friday]),
+            "{}",
+            deed.key
+        );
+    }
 }
