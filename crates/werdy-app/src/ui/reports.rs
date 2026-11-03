@@ -6,13 +6,14 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use werdy_core::{
-    Band, Consistency, DEFAULT_CONSISTENCY_WINDOW, DeedDay, DeedId, Fraction, Period, Report,
-    ReportLead, SeriesEntry, WerdyDay, consistency, report_lead,
+    Band, DayDot, DeedId, DeedRank, Period, PrayerDay, Report, ReportLead, SeriesEntry, WerdyDay,
+    categories_weakest_first, percent_change, prayer_grid, ranked_deeds, report_lead,
 };
 use werdy_store::DeedName;
 
 use super::context::{I18n, use_actions, use_i18n};
 use super::icons::{CheckIcon, ChevronBack, ChevronForward, CrossIcon, HalfIcon};
+use crate::starter::fard_prayer_ids;
 use crate::state::{AppState, Screen};
 
 const PERIODS: [(Period, &str); 5] = [
@@ -22,6 +23,11 @@ const PERIODS: [(Period, &str); 5] = [
     (Period::SixMonths, "reports-six-months"),
     (Period::Year, "reports-year"),
 ];
+
+/// Days of the period shown in the prayer grid, counted back from its last day.
+const PRAYER_GRID_DAYS: usize = 7;
+/// Deeds in each of the weakest and strongest lists.
+const RANKED_DEEDS: usize = 3;
 
 /// Full report, computed before any score is shown.
 #[component]
@@ -43,7 +49,7 @@ pub fn ReportsScreen() -> Element {
             ReportHeader { period, steps_back, days: report.as_ref().map_or_else(|_| Vec::new(), |report| report.days.clone()) }
             match report {
                 Ok(report) if report.overall.due == 0 => rsx! {
-                    section { class: "report-card report-empty",
+                    section { class: "report-surface report-empty",
                         p { {i18n.t("reports-empty")} }
                         TodayLink {}
                     }
@@ -52,13 +58,14 @@ pub fn ReportsScreen() -> Element {
                     let report = Rc::new(report);
                     rsx! {
                         div { class: "report-layout",
-                            div { class: "report-main",
-                                ScoreCard { report: Rc::clone(&report), previous, steps_back }
-                                MissedList { report: Rc::clone(&report) }
-                                CategorySplit { report: Rc::clone(&report) }
+                            div { class: "report-surface",
+                                Headline { report: Rc::clone(&report), previous, steps_back }
+                                DaysBlock { report: Rc::clone(&report), show_today: steps_back == 0 }
                             }
-                            div { class: "report-detail",
-                                PerDeed { report: Rc::clone(&report) }
+                            div { class: "report-surface",
+                                RankedBlock { report: Rc::clone(&report) }
+                                PrayersBlock { report: Rc::clone(&report) }
+                                CategorySplit { report: Rc::clone(&report) }
                                 NotDue { report }
                             }
                         }
@@ -128,8 +135,9 @@ fn range_text(i18n: &I18n, first: WerdyDay, last: WerdyDay) -> String {
     )
 }
 
+/// The period's percent, its change from the previous period, and today.
 #[component]
-fn ScoreCard(
+fn Headline(
     report: Rc<Report>,
     previous: Result<Report, werdy_core::Error>,
     steps_back: usize,
@@ -152,31 +160,21 @@ fn ScoreCard(
         "reports-score-due",
         &[("due", FluentValue::from(report.overall.due))],
     );
-    let previous_line = match previous {
-        Ok(previous) => match previous.overall.percent {
-            Some(percent) => i18n.t_with(
-                "reports-previous-score",
-                &[
-                    ("percent", FluentValue::from(percent)),
-                    ("due", FluentValue::from(previous.overall.due)),
-                ],
-            ),
-            None => i18n.t("reports-previous-empty"),
-        },
-        Err(_) => i18n.t("reports-previous-unavailable"),
-    };
+    let (trend, change) = change_line(&i18n, &report, previous.as_ref());
 
     rsx! {
-        section { class: "report-card report-score-card",
-            p { class: "report-lead", "{lead}" }
-            if let Some(percent) = report.overall.percent {
-                div { class: "report-score-line",
+        section { class: "report-block report-headline",
+            div { class: "report-score-line",
+                if let Some(percent) = report.overall.percent {
                     strong { class: "report-score", {percent_text(&i18n, percent)} }
-                    span { class: "report-muted", "{due}" }
                 }
+                span { class: "report-muted", "{due}" }
             }
-            p { class: "report-muted", "{previous_line}" }
-            Series { entries: report.series.clone(), noted_days: report.noted_days.clone(), late_noted_days: report.late_noted_days.clone(), show_today: steps_back == 0 }
+            p { class: "report-change", "data-trend": trend,
+                if let Some(sign) = trend_sign(trend) { span { aria_hidden: "true", "{sign} " } }
+                "{change}"
+            }
+            p { class: "report-lead", "{lead}" }
             if steps_back == 0 {
                 div { class: "report-today-line",
                     span { {i18n.t("reports-today")} }
@@ -193,6 +191,44 @@ fn ScoreCard(
     }
 }
 
+/// Trend name and text for the change from the previous period.
+fn change_line(
+    i18n: &I18n,
+    report: &Report,
+    previous: Result<&Report, &werdy_core::Error>,
+) -> (&'static str, String) {
+    let Ok(previous) = previous else {
+        return ("none", i18n.t("reports-previous-unavailable"));
+    };
+    let (Some(before), Some(points)) = (
+        previous.overall.percent,
+        percent_change(&report.overall, &previous.overall),
+    ) else {
+        return ("none", i18n.t("reports-previous-empty"));
+    };
+    let (trend, key) = match points.signum() {
+        1 => ("up", "reports-change-up"),
+        -1 => ("down", "reports-change-down"),
+        _ => ("same", "reports-change-same"),
+    };
+    let text = i18n.t_with(
+        key,
+        &[
+            ("points", FluentValue::from(points.unsigned_abs())),
+            ("percent", FluentValue::from(before)),
+        ],
+    );
+    (trend, text)
+}
+
+fn trend_sign(trend: &str) -> Option<&'static str> {
+    match trend {
+        "up" => Some("▲"),
+        "down" => Some("▼"),
+        _ => None,
+    }
+}
+
 #[component]
 fn TodayLink() -> Element {
     let i18n = use_i18n();
@@ -202,6 +238,115 @@ fn TodayLink() -> Element {
             {i18n.t("reports-open-today")}
         }
     }
+}
+
+/// A coloured bar per day for short periods, a bar per month for long ones.
+/// The numbers sit in each bar's label and in the list under the legend.
+#[component]
+fn DaysBlock(report: Rc<Report>, show_today: bool) -> Element {
+    let i18n = use_i18n();
+    let by_day = report
+        .series
+        .iter()
+        .all(|entry| matches!(entry, SeriesEntry::Day { .. }));
+    let signs = by_day && !report.noted_days.is_empty();
+    rsx! {
+        section { class: "report-block",
+            h2 { class: "report-block-title", {i18n.t("reports-series")} }
+            if by_day {
+                DayBars { report: Rc::clone(&report), show_today }
+            } else {
+                Series { entries: report.series.clone(), noted_days: report.noted_days.clone(), late_noted_days: report.late_noted_days.clone(), show_today: false }
+            }
+            BandLegend { report: Rc::clone(&report), signs }
+            details { class: "report-numbers",
+                summary { {i18n.t("reports-show-numbers")} }
+                ul {
+                    for (index, entry) in report.series.iter().enumerate() {
+                        li { key: "{index}", {entry_label(&i18n, entry, &report.noted_days, &report.late_noted_days)} }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn DayBars(report: Rc<Report>, show_today: bool) -> Element {
+    let i18n = use_i18n();
+    let first = report.days.first().map(|day| short_date(&i18n, *day));
+    let last = if show_today {
+        Some(i18n.t("reports-today-short"))
+    } else {
+        report.days.last().map(|day| short_date(&i18n, *day))
+    };
+    rsx! {
+        div { class: "report-bars", role: "list",
+            for (index, entry) in report.series.iter().enumerate() {
+                if let SeriesEntry::Day { day, score, band } = entry {
+                    div { key: "{index}", class: "report-day-bar", role: "listitem",
+                        "data-sign": report.noted_days.contains(day),
+                        aria_label: entry_label(&i18n, entry, &report.noted_days, &report.late_noted_days),
+                        title: entry_label(&i18n, entry, &report.noted_days, &report.late_noted_days),
+                        if let Some(percent) = score.percent {
+                            div { class: "report-day-fill", "data-band": band_name(*band), style: "block-size: {percent}%" }
+                        }
+                    }
+                }
+            }
+            if show_today {
+                div { class: "report-day-bar report-today-bar", role: "listitem", aria_label: i18n.t("reports-today"), title: i18n.t("reports-today") }
+            }
+        }
+        div { class: "report-axis", aria_hidden: "true",
+            if let Some(first) = first { span { "{first}" } }
+            if let Some(last) = last { span { "{last}" } }
+        }
+    }
+}
+
+#[component]
+fn BandLegend(report: Rc<Report>, signs: bool) -> Element {
+    let i18n = use_i18n();
+    let bands = report.bands;
+    rsx! {
+        ul { class: "report-legend",
+            li { span { class: "report-swatch", "data-band": "good" } {i18n.t_with("reports-legend-good", &[("percent", FluentValue::from(bands.good))])} }
+            li { span { class: "report-swatch", "data-band": "mid" } {i18n.t_with("reports-legend-mid", &[("low", FluentValue::from(bands.mid)), ("high", FluentValue::from(bands.good))])} }
+            li { span { class: "report-swatch", "data-band": "low" } {i18n.t_with("reports-legend-low", &[("percent", FluentValue::from(bands.mid))])} }
+            if signs { li { span { class: "report-swatch report-sign-swatch" } {i18n.t("reports-note")} } }
+        }
+    }
+}
+
+fn entry_label(
+    i18n: &I18n,
+    entry: &SeriesEntry,
+    noted_days: &BTreeSet<WerdyDay>,
+    late_noted_days: &BTreeSet<WerdyDay>,
+) -> String {
+    let mut label = series_label(i18n, entry);
+    if entry_is_noted(entry, noted_days) {
+        label = detail_label(i18n, &label, &i18n.t("reports-note"));
+    }
+    if entry_is_noted(entry, late_noted_days) {
+        label = detail_label(i18n, &label, &i18n.t("mark-added-later"));
+    }
+    label
+}
+
+fn short_date(i18n: &I18n, day: WerdyDay) -> String {
+    let (_, month, number) = day.date_parts();
+    i18n.t_with(
+        "reports-history-day",
+        &[
+            ("day", FluentValue::from(i18n.num(number))),
+            (
+                "month",
+                FluentValue::from(i18n.t(&format!("month-{month}"))),
+            ),
+        ],
+    )
 }
 
 #[component]
@@ -288,20 +433,48 @@ fn SeriesCell(entry: SeriesEntry, noted: bool, late_note: bool) -> Element {
             score,
             band,
         } => {
-            let name = i18n.t(&format!("month-{month}"));
+            let mut name = i18n.t(&format!("month-{month}"));
+            if noted {
+                name.push_str(&i18n.t("reports-note-sign"));
+            }
+            if late_note {
+                name.push_str(&i18n.t("reports-late-sign"));
+            }
+            let detail = if score.percent.is_some() {
+                i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])
+            } else {
+                String::new()
+            };
             rsx! {
-                div { class: "report-month-row", role: "img", aria_label: label,
-                    span { "{name}" if noted { {i18n.t("reports-note-sign")} } if late_note { {i18n.t("reports-late-sign")} } }
-                    div { class: "report-bar-track",
-                        if let Some(percent) = score.percent {
-                            div { class: "report-bar", "data-band": band_name(band), style: "width: {percent}%" }
-                        }
-                    }
-                    if let Some(percent) = score.percent { span { {percent_text(&i18n, percent)} } }
-                    if score.percent.is_none() { span { {i18n.t("reports-no-score")} } }
-                    if score.percent.is_some() { small { class: "report-muted", {i18n.t_with("reports-cell-due", &[("due", FluentValue::from(score.due))])} } }
+                div { role: "img", aria_label: label,
+                    MeterRow { label: name, percent: score.percent, band, detail }
                 }
             }
+        }
+    }
+}
+
+/// A name and its percent on one line, the bar under them, then a detail line.
+/// Long names wrap instead of squeezing the bar.
+#[component]
+fn MeterRow(label: String, percent: Option<u8>, band: Option<Band>, detail: String) -> Element {
+    let i18n = use_i18n();
+    rsx! {
+        div { class: "report-meter-row",
+            div { class: "report-row-head",
+                span { class: "report-row-name", "{label}" }
+                if let Some(percent) = percent {
+                    strong { {percent_text(&i18n, percent)} }
+                } else {
+                    span { class: "report-muted", {i18n.t("reports-no-score")} }
+                }
+            }
+            div { class: "report-bar-track",
+                if let Some(percent) = percent {
+                    div { class: "report-bar", "data-band": band_name(band), style: "inline-size: {percent}%" }
+                }
+            }
+            if !detail.is_empty() { small { class: "report-muted", "{detail}" } }
         }
     }
 }
@@ -372,145 +545,150 @@ fn band_name(band: Option<Band>) -> &'static str {
     }
 }
 
+/// The weakest deeds, then the strongest, each with a bar.
 #[component]
-fn CategorySplit(report: Rc<Report>) -> Element {
-    let i18n = use_i18n();
-    rsx! {
-        section { class: "report-card",
-            h2 { class: "card-title", {i18n.t("reports-category")} }
-            for (category, score) in report.by_category.iter() {
-                div { class: "report-meter-row", key: "{category.0}",
-                    span { {i18n.t(&format!("category-{}", category.0))} }
-                    div { class: "report-bar-track",
-                        if let Some(percent) = score.percent {
-                            div { class: "report-bar", "data-band": band_name(Some(report.bands.band(percent))),
-                                style: "width: {percent}%" }
-                        }
-                    }
-                    if let Some(percent) = score.percent { span { {percent_text(&i18n, percent)} } }
-                    small { {i18n.t_with("reports-category-due", &[("due", FluentValue::from(score.due))])} }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn MissedList(report: Rc<Report>) -> Element {
+fn RankedBlock(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    rsx! {
-        section { class: "report-card",
-            h2 { class: "card-title", {i18n.t("reports-missed")} }
-            if report.missed.is_empty() { p { class: "report-muted", {i18n.t("reports-none-missed")} } }
-            for missed in report.missed.iter() {
-                div { class: "report-list-row", key: "{missed.deed_id.0}",
-                    div { class: "report-list-detail",
-                        span { {deed_name(&state.read(), &i18n, missed.deed_id)} }
-                        small { class: "report-muted", {i18n.t_with("reports-missed-days", &[("days", FluentValue::from(missed.days_not_done))])} }
-                    }
-                    if let Some(score) = report.per_deed.get(&missed.deed_id) {
-                        div { class: "report-list-detail",
-                            if let Some(percent) = score.percent { strong { {percent_text(&i18n, percent)} } }
-                            small { class: "report-muted", {i18n.t_with("reports-deed-due", &[("due", FluentValue::from(score.due))])} }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn PerDeed(report: Rc<Report>) -> Element {
-    let i18n = use_i18n();
-    let state = use_context::<Signal<AppState>>();
-    let last_day = report.days.last().copied();
-    rsx! {
-        section { class: "report-card",
-            h2 { class: "card-title", {i18n.t("reports-deeds")} }
-            for (id, score) in report.per_deed.iter() {
-                div { class: "report-deed-row", key: "{id.0}",
-                    div { class: "report-deed-head",
-                        strong { {deed_name(&state.read(), &i18n, *id)} }
-                        if let Some(percent) = score.percent { strong { {percent_text(&i18n, percent)} } }
-                    }
-                    small { class: "report-muted", {i18n.t_with("reports-deed-due", &[("due", FluentValue::from(score.due))])} }
-                    small { class: "report-muted", {i18n.consistency_line(deed_consistency(&state.read(), *id, last_day))} }
-                    if let Some(days) = report.per_deed_days.get(id) {
-                        div { class: "report-history",
-                            for entry in days { HistoryDay { key: "{entry.day:?}", entry: *entry, noted: report.noted_days.contains(&entry.day) } }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn deed_consistency(state: &AppState, id: DeedId, last_day: Option<WerdyDay>) -> Consistency {
-    let cutoff = match last_day.and_then(|day| day.next().ok()) {
-        Some(day) => day,
-        None => state.today,
+    let ranked = ranked_deeds(&report, RANKED_DEEDS);
+    let due_days = |rank: &DeedRank| {
+        i18n.t_with(
+            "reports-deed-due",
+            &[("due", FluentValue::from(rank.score.due))],
+        )
     };
-    consistency(
-        &state.data.records(),
-        id,
-        cutoff,
-        DEFAULT_CONSISTENCY_WINDOW,
-    )
+    let not_done = |rank: &DeedRank| {
+        report
+            .missed
+            .iter()
+            .find(|missed| missed.deed_id == rank.deed_id)
+            .map_or_else(
+                || due_days(rank),
+                |missed| {
+                    i18n.t_with(
+                        "reports-missed-days",
+                        &[("days", FluentValue::from(missed.days_not_done))],
+                    )
+                },
+            )
+    };
+    rsx! {
+        section { class: "report-block",
+            h2 { class: "report-block-title", {i18n.t("reports-ranked")} }
+            h3 { class: "report-list-title", {i18n.t("reports-weakest")} }
+            if ranked.weakest.is_empty() { p { class: "report-muted", {i18n.t("reports-none-weak")} } }
+            for rank in ranked.weakest.iter() {
+                MeterRow { key: "{rank.deed_id.0}",
+                    label: deed_name(&state.read(), &i18n, rank.deed_id),
+                    percent: rank.score.percent,
+                    band: rank.score.percent.map(|percent| report.bands.band(percent)),
+                    detail: not_done(rank),
+                }
+            }
+            if !ranked.strongest.is_empty() {
+                h3 { class: "report-list-title", {i18n.t("reports-strongest")} }
+                for rank in ranked.strongest.iter() {
+                    MeterRow { key: "{rank.deed_id.0}",
+                        label: deed_name(&state.read(), &i18n, rank.deed_id),
+                        percent: rank.score.percent,
+                        band: rank.score.percent.map(|percent| report.bands.band(percent)),
+                        detail: due_days(rank),
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The five fard prayers (decision 0041): a dot per day for the last days of
+/// the period, and the period percent. Hidden when the owner has none of them.
+#[component]
+fn PrayersBlock(report: Rc<Report>) -> Element {
+    let i18n = use_i18n();
+    let state = use_context::<Signal<AppState>>();
+    let prayers = fard_prayer_ids(&state.read().data);
+    let start = report.days.len().saturating_sub(PRAYER_GRID_DAYS);
+    let days = report.days.get(start..).unwrap_or_default();
+    let grid = prayer_grid(&report, &prayers, days);
+    if grid.is_empty() {
+        return rsx! {};
+    }
+    let range = days
+        .first()
+        .zip(days.last())
+        .map(|(first, last)| range_text(&i18n, *first, *last));
+    rsx! {
+        section { class: "report-block",
+            h2 { class: "report-block-title", {i18n.t("reports-prayers")} }
+            if let Some(range) = range { p { class: "report-muted", "{range}" } }
+            for row in grid {
+                div { class: "report-prayer-row", key: "{row.deed_id.0}",
+                    div { class: "report-row-head",
+                        span { class: "report-row-name", {deed_name(&state.read(), &i18n, row.deed_id)} }
+                        if let Some(percent) = report.per_deed.get(&row.deed_id).and_then(|score| score.percent) {
+                            strong { {percent_text(&i18n, percent)} }
+                        }
+                    }
+                    div { class: "report-dots", role: "list",
+                        for cell in row.days {
+                            PrayerDot { key: "{cell.day:?}", cell }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[component]
-fn HistoryDay(entry: DeedDay, noted: bool) -> Element {
+fn PrayerDot(cell: PrayerDay) -> Element {
     let i18n = use_i18n();
-    let (_, month, day) = entry.day.date_parts();
-    let date = i18n.t_with(
-        "reports-history-day",
-        &[
-            ("day", FluentValue::from(day)),
-            (
-                "month",
-                FluentValue::from(i18n.t(&format!("month-{month}"))),
-            ),
-        ],
-    );
-    let (kind, key) = if entry.value == Fraction::ONE {
-        ("done", "reports-history-done")
-    } else if entry.value == Fraction::ZERO {
-        ("missed", "reports-history-missed")
-    } else {
-        ("partial", "reports-history-partial")
+    let (kind, key) = match cell.dot {
+        DayDot::Done => ("done", "reports-history-done"),
+        DayDot::Partial => ("partial", "reports-history-partial"),
+        DayDot::Missed => ("missed", "reports-history-missed"),
+        DayDot::NotDue => ("none", "reports-history-not-due"),
     };
     let mut label = i18n.t_with(
         "reports-history-label",
         &[
-            ("date", FluentValue::from(date.clone())),
+            ("date", FluentValue::from(short_date(&i18n, cell.day))),
             ("mark", FluentValue::from(i18n.t(key))),
         ],
     );
-    if noted {
+    if cell.noted {
         label = detail_label(&i18n, &label, &i18n.t("reports-note"));
     }
-    if entry.added_later {
+    if cell.added_later {
         label = detail_label(&i18n, &label, &i18n.t("mark-added-later"));
     }
     rsx! {
-        span { class: "report-history-cell", "data-kind": kind, role: "img",
-            aria_label: label.clone(),
-            title: label,
-            span { "{date}" }
-            span { class: "report-history-symbol",
-                match kind {
-                    "done" => rsx! { CheckIcon {} },
-                    "missed" => rsx! { CrossIcon {} },
-                    _ => rsx! { HalfIcon {} },
-                }
+        span { class: "report-dot", role: "listitem", "data-kind": kind,
+            "data-sign": cell.noted || cell.added_later,
+            aria_label: label.clone(), title: label,
+            match cell.dot {
+                DayDot::Done => rsx! { CheckIcon {} },
+                DayDot::Partial => rsx! { HalfIcon {} },
+                DayDot::Missed => rsx! { CrossIcon {} },
+                DayDot::NotDue => rsx! {},
             }
-            if noted || entry.added_later {
-                span { class: "report-history-signs",
-                    if noted { {i18n.t("reports-note-sign")} }
-                    if entry.added_later { {i18n.t("reports-late-sign")} }
+        }
+    }
+}
+
+/// Category scores, weakest first. Groups replace categories once #107 lands.
+#[component]
+fn CategorySplit(report: Rc<Report>) -> Element {
+    let i18n = use_i18n();
+    rsx! {
+        section { class: "report-block",
+            h2 { class: "report-block-title", {i18n.t("reports-category")} }
+            for (category, score) in categories_weakest_first(&report) {
+                MeterRow { key: "{category.0}",
+                    label: i18n.t(&format!("category-{}", category.0)),
+                    percent: score.percent,
+                    band: score.percent.map(|percent| report.bands.band(percent)),
+                    detail: i18n.t_with("reports-category-due", &[("due", FluentValue::from(score.due))]),
                 }
             }
         }
@@ -525,8 +703,8 @@ fn NotDue(report: Rc<Report>) -> Element {
         return rsx! {};
     }
     rsx! {
-        section { class: "report-card report-not-due",
-            h2 { class: "card-title", {i18n.t("reports-not-due")} }
+        section { class: "report-block report-not-due",
+            h2 { class: "report-block-title", {i18n.t("reports-not-due")} }
             for id in report.not_due.iter() {
                 p { key: "{id.0}", {deed_name(&state.read(), &i18n, *id)} }
             }

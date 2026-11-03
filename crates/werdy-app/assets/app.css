@@ -858,7 +858,9 @@ textarea:focus-visible {
   color: var(--danger);
 }
 
-/* Reports */
+/* Reports (issue 112): one surface like the sheet (issue 73), thin block headings,
+   a bar per day, short ranked lists and a dot per prayer. Text wraps and no
+   label sits inside a bar; the numbers are in each bar's label and list. */
 
 .report-panes {
   flex: 1;
@@ -867,8 +869,6 @@ textarea:focus-visible {
 }
 
 .reports,
-.report-main,
-.report-detail,
 .report-header {
   display: flex;
   flex-direction: column;
@@ -879,7 +879,8 @@ textarea:focus-visible {
 .report-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap-l);
+  align-items: start;
+  gap: var(--gap-m);
 }
 
 .period-chips {
@@ -908,8 +909,7 @@ textarea:focus-visible {
 }
 
 .period-nav,
-.report-score-line,
-.report-deed-head {
+.report-row-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -930,6 +930,7 @@ textarea:focus-visible {
   font-size: var(--size-caption);
 }
 
+/* The week card on the sheet keeps its own card. */
 .report-card {
   min-width: 0;
   padding: var(--gap-l);
@@ -938,30 +939,186 @@ textarea:focus-visible {
   background: var(--surface);
 }
 
-.report-card p {
-  margin-block: var(--gap-s);
+.report-surface {
+  min-width: 0;
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.report-empty {
+  padding: var(--gap-l);
+}
+
+.report-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  min-width: 0;
+  padding: var(--gap-m);
+}
+
+.report-block + .report-block {
+  border-block-start: var(--stroke-thin) solid var(--border);
+}
+
+.report-block p {
+  margin: 0;
+}
+
+.report-block-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.report-list-title {
+  margin: var(--gap-xs) 0 0;
+  font-size: var(--size-label);
+  font-weight: var(--weight-semibold);
 }
 
 .report-lead {
-  font-size: var(--size-title);
+  font-size: var(--size-label);
   font-weight: var(--weight-semibold);
 }
 
 .report-score-line {
-  justify-content: flex-start;
+  display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-xs) var(--gap-s);
 }
 
 .report-score {
   color: var(--primary);
-  font-size: var(--size-score);
+  font-size: var(--size-headline);
   line-height: 1;
 }
+
+.report-change {
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.report-change[data-trend="up"] {
+  color: var(--mark-done);
+}
+
+.report-change[data-trend="down"] {
+  color: var(--danger);
+}
+
+.report-change[data-trend="none"],
+.report-change[data-trend="same"] {
+  color: var(--text-muted);
+}
+
+/* Bars per day. Each bar is a track with its fill from the bottom. */
+
+.report-bars {
+  display: flex;
+  align-items: stretch;
+  gap: var(--bar-gap);
+  block-size: var(--day-bars-height);
+}
+
+.report-day-bar {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-inline-size: 0;
+  border-radius: var(--radius-bar);
+  background: var(--track);
+}
+
+.report-day-fill {
+  min-block-size: var(--stroke-strong);
+  border-radius: var(--radius-bar);
+}
+
+/* A day note sits as a small dot under its bar, not inside it. */
+.report-day-bar[data-sign="true"]::after,
+.report-sign-swatch {
+  inline-size: var(--sign-dot);
+  block-size: var(--sign-dot);
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+
+.report-day-bar[data-sign="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block-start: calc(100% + var(--gap-xs));
+  inset-inline: 0;
+  margin-inline: auto;
+}
+
+.report-today-bar {
+  border: var(--stroke-strong) dashed var(--mark-open);
+  background: transparent;
+}
+
+.report-axis {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  margin-block-start: var(--gap-s);
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.report-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs) var(--gap-m);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.report-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+
+.report-swatch {
+  flex: none;
+  inline-size: var(--mark-icon);
+  block-size: var(--bar-thickness);
+  border-radius: var(--radius-pill);
+}
+
+.report-numbers {
+  font-size: var(--size-caption);
+}
+
+.report-numbers summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.report-numbers ul {
+  margin: 0;
+  padding-inline-start: var(--gap-l);
+}
+
+/* Long periods keep a day cell strip on the week card and month rows here. */
 
 .report-series {
   display: grid;
   gap: var(--gap-xs);
-  margin-block: var(--gap-l);
 }
 
 .report-days {
@@ -989,18 +1146,24 @@ textarea:focus-visible {
 }
 
 .report-day-cell[data-band="good"],
+.report-day-fill[data-band="good"],
+.report-swatch[data-band="good"],
 .report-bar[data-band="good"] {
   background: var(--mark-done);
   color: var(--on-mark-done);
 }
 
 .report-day-cell[data-band="mid"],
+.report-day-fill[data-band="mid"],
+.report-swatch[data-band="mid"],
 .report-bar[data-band="mid"] {
   background: var(--mark-partial);
   color: var(--on-mark-partial);
 }
 
 .report-day-cell[data-band="low"],
+.report-day-fill[data-band="low"],
+.report-swatch[data-band="low"],
 .report-bar[data-band="low"] {
   background: var(--mark-missed);
   color: var(--on-mark-missed);
@@ -1012,34 +1175,85 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.report-month-row,
-.report-meter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
-  align-items: center;
-  gap: var(--gap-s);
-  min-height: var(--touch-min);
+/* A name and percent on one line that wraps, the bar under them. */
+
+.report-meter-row,
+.report-prayer-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding-block: var(--gap-xs);
 }
 
-.report-meter-row small {
-  grid-column: 1 / -1;
-  color: var(--text-muted);
+.report-row-head {
+  flex-wrap: wrap;
+  align-items: baseline;
 }
 
-.report-month-row small {
-  grid-column: 1 / -1;
+.report-row-name {
+  flex: 1 1 var(--name-min);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
 }
 
 .report-bar-track {
-  height: var(--gap-m);
+  block-size: var(--bar-thickness);
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--track);
 }
 
 .report-bar {
-  height: 100%;
+  block-size: 100%;
   border-radius: var(--radius-pill);
+}
+
+/* A dot per prayer per day, as many columns as days, never wider than a mark face. */
+
+.report-dots {
+  display: grid;
+  grid-auto-columns: minmax(0, var(--mark-face));
+  grid-auto-flow: column;
+  justify-content: space-between;
+  gap: var(--gap-xs);
+}
+
+.report-dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: var(--stroke-thin) dashed var(--border-strong);
+  border-radius: var(--radius-mark);
+}
+
+.report-dot svg {
+  inline-size: 70%;
+  block-size: 70%;
+}
+
+.report-dot[data-kind="done"] {
+  border: 0;
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.report-dot[data-kind="partial"] {
+  border: 0;
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.report-dot[data-kind="missed"] {
+  border: 0;
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.report-dot[data-sign="true"] {
+  outline: var(--stroke-strong) solid var(--text-muted);
+  outline-offset: var(--stroke-thin);
 }
 
 .report-today-line {
@@ -1047,9 +1261,10 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--gap-s);
-  padding: var(--gap-m);
+  padding: var(--gap-s) var(--gap-m);
   border-radius: var(--radius-control);
   background: var(--surface-muted);
+  font-size: var(--size-caption);
 }
 
 .report-link {
@@ -1062,67 +1277,8 @@ textarea:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
-.report-list-row,
-.report-deed-row {
-  min-height: var(--touch-min);
-  padding-block: var(--gap-m);
-  border-top: var(--stroke-thin) solid var(--border);
-}
-
-.report-list-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--gap-s);
-}
-
-.report-list-detail {
-  display: flex;
-  flex-direction: column;
-}
-
-.report-history {
-  display: flex;
-  gap: var(--gap-xs);
-  overflow-x: auto;
-  margin-block-start: var(--gap-s);
-}
-
-.report-history-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--gap-xs);
-  flex: 0 0 var(--touch-min);
-  min-height: var(--touch-min);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
+.report-not-due p {
   font-size: var(--size-caption);
-  text-align: center;
-}
-
-.report-history-signs {
-  display: flex;
-  gap: var(--gap-xs);
-}
-
-.report-history-cell[data-kind="done"] {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.report-history-cell[data-kind="partial"] {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.report-history-cell[data-kind="missed"] {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
-}
-
-.report-not-due {
-  border-style: dashed;
 }
 
 .sr-only {
@@ -1134,23 +1290,7 @@ textarea:focus-visible {
 
 @media (min-width: 840px) {
   .report-layout {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  }
-
-  /* The score card is narrow here. The due count and the long today label
-     stay in each cell's aria label. */
-  .report-layout .report-day-cell {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .report-layout .report-score-detail + .report-score-detail,
-  .report-layout .report-today-label {
-    display: none;
-  }
-
-  .report-layout .report-today-compact {
-    display: inline;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
