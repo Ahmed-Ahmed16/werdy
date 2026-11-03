@@ -54,15 +54,6 @@ pub enum Tap {
     Missed,
 }
 
-/// One press on a count stepper.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Step {
-    /// Add one.
-    Plus,
-    /// Take one away.
-    Minus,
-}
-
 /// Returns the mark after a tap. Tapping the button that is already on clears it.
 pub fn tapped(current: Option<Mark>, tap: Tap) -> Option<Mark> {
     if is_on(current, tap) {
@@ -75,14 +66,26 @@ pub fn tapped(current: Option<Mark>, tap: Tap) -> Option<Mark> {
     })
 }
 
-/// Returns the mark after a stepper press. Taking away the last one clears the
-/// mark; Missed is its own button, so the stepper never stores a zero count.
-pub fn stepped(current: Option<Mark>, step: Step) -> Option<Mark> {
-    let count = shown_count(current);
-    match step {
-        Step::Plus => Some(Mark::Count(count.saturating_add(1))),
-        Step::Minus if count > 1 => Some(Mark::Count(count - 1)),
-        Step::Minus => None,
+/// Returns the mark after a done or missed tap on a deed with a target (ADR 0040).
+/// Done stores the target as the count. Tapping the button that is on clears it.
+pub fn tapped_counted(current: Option<Mark>, tap: Tap, target: u32) -> Option<Mark> {
+    if is_on_counted(current, tap, target) {
+        return None;
+    }
+    match tap {
+        Tap::Done => Some(Mark::Count(target)),
+        // A counted deed has no partial button; a typed count is its partial.
+        Tap::Partial => current,
+        Tap::Missed => Some(Mark::Missed),
+    }
+}
+
+/// Says whether done or missed shows as on for a deed with a target.
+/// A count at or above the target shows as done.
+pub fn is_on_counted(current: Option<Mark>, tap: Tap, target: u32) -> bool {
+    match (current, tap) {
+        (Some(Mark::Count(count)), Tap::Done) => count >= target && count > 0,
+        _ => is_on(current, tap),
     }
 }
 
@@ -96,7 +99,7 @@ pub fn is_on(current: Option<Mark>, tap: Tap) -> bool {
     )
 }
 
-/// Returns the count a stepper shows for this mark.
+/// Returns the count a counted deed shows for this mark.
 pub fn shown_count(current: Option<Mark>) -> u32 {
     match current {
         Some(Mark::Count(count)) => count,
@@ -1106,9 +1109,9 @@ impl AppState {
         self.set_mark(deed_id, mark);
     }
 
-    /// Applies a stepper press on the day on screen.
-    pub fn step(&mut self, deed_id: DeedId, step: Step) {
-        let mark = stepped(self.mark(deed_id), step);
+    /// Applies a done or missed tap on a deed with a target, on the day on screen.
+    pub fn tap_counted(&mut self, deed_id: DeedId, tap: Tap, target: u32) {
+        let mark = tapped_counted(self.mark(deed_id), tap, target);
         self.set_mark(deed_id, mark);
     }
 
@@ -1470,8 +1473,8 @@ mod tests {
     };
 
     use super::{
-        AppState, EditorDraft, EditorError, LocationRequest, SaveStatus, Screen, Step, Tap, is_on,
-        stepped, tapped,
+        AppState, EditorDraft, EditorError, LocationRequest, SaveStatus, Screen, Tap, is_on,
+        is_on_counted, tapped, tapped_counted,
     };
     use crate::starter::{five_prayers, slot_order};
 
@@ -2019,6 +2022,49 @@ mod tests {
     }
 
     #[test]
+    fn done_on_a_counted_deed_stores_the_target_and_a_second_tap_clears_it() {
+        // ADR 0040: done stores the target as the count.
+        assert_eq!(tapped_counted(None, Tap::Done, 100), Some(Mark::Count(100)));
+        assert_eq!(
+            tapped_counted(Some(Mark::Count(40)), Tap::Done, 100),
+            Some(Mark::Count(100))
+        );
+        assert_eq!(
+            tapped_counted(Some(Mark::Missed), Tap::Done, 100),
+            Some(Mark::Count(100))
+        );
+        // A count at or above the target already shows as done, so a tap clears it.
+        assert_eq!(tapped_counted(Some(Mark::Count(100)), Tap::Done, 100), None);
+        assert_eq!(tapped_counted(Some(Mark::Count(120)), Tap::Done, 100), None);
+    }
+
+    #[test]
+    fn missed_on_a_counted_deed_stores_missed_and_a_second_tap_clears_it() {
+        assert_eq!(tapped_counted(None, Tap::Missed, 100), Some(Mark::Missed));
+        assert_eq!(
+            tapped_counted(Some(Mark::Count(120)), Tap::Missed, 100),
+            Some(Mark::Missed)
+        );
+        assert_eq!(tapped_counted(Some(Mark::Missed), Tap::Missed, 100), None);
+        assert_eq!(tapped_counted(Some(Mark::Count(0)), Tap::Missed, 100), None);
+    }
+
+    #[test]
+    fn counted_buttons_show_as_on_by_count_against_target() {
+        for (mark, done, missed) in [
+            (None, false, false),
+            (Some(Mark::Count(0)), false, true),
+            (Some(Mark::Missed), false, true),
+            (Some(Mark::Count(99)), false, false),
+            (Some(Mark::Count(100)), true, false),
+            (Some(Mark::Count(120)), true, false),
+        ] {
+            assert_eq!(is_on_counted(mark, Tap::Done, 100), done, "{mark:?}");
+            assert_eq!(is_on_counted(mark, Tap::Missed, 100), missed, "{mark:?}");
+        }
+    }
+
+    #[test]
     fn typed_count_accepts_only_whole_numbers_in_range() {
         use super::parse_count;
         // Boundaries: empty, whitespace, zero, max, overflow, signs, decimals, Arabic digits.
@@ -2043,77 +2089,43 @@ mod tests {
     }
 
     #[test]
-    fn typing_count_matches_taps_and_survives_saving() -> TestResult {
+    fn typed_count_keeps_the_real_number_and_scores_capped_at_one() -> TestResult {
         use werdy_core::{Deed, DeedRule, Target};
-        for count in [0, 1, 7, 99, 100, 101] {
+        // ADR 0040: 120 of 100 stays 120 but is worth one; 0 is an explicit miss.
+        for (count, value) in [(0, 0.0), (1, 0.01), (99, 0.99), (100, 1.0), (120, 1.0)] {
             let store = MemoryStore::default();
-            let mut typed = started(&store)?;
-            let id = typed.data.deeds[0].id;
+            let mut state = started(&store)?;
+            let id = state.data.deeds[0].id;
             let rule = DeedRule {
                 target: Some(Target::new(100, "times")?),
-                ..typed.data.deeds[0]
+                ..state.data.deeds[0]
                     .rule_on(today()?)
                     .ok_or("missing rule")?
                     .clone()
             };
-            typed.data.deeds[0] = Deed::new(id, today()?, rule.clone());
-            let mut tapped = typed.clone();
-            // Zero is an explicit miss. No taps leave that initial mark in place.
-            tapped.set_mark(id, Some(Mark::Count(0)));
-            for _ in 0..count {
-                tapped.step(id, Step::Plus);
-            }
-            assert!(typed.type_count(id, &count.to_string()));
-            assert_eq!(typed.mark(id), tapped.mark(id));
-            assert_eq!(typed.summary(), tapped.summary());
-            assert_eq!(
-                typed.mark(id).map(|m| m.value(&rule)),
-                tapped.mark(id).map(|m| m.value(&rule))
-            );
-            let tomorrow = WerdyDay::new(2026, 10, 28)?;
-            assert_eq!(
-                werdy_core::score(&typed.data.records(), &[today()?], tomorrow)?,
-                werdy_core::score(&tapped.data.records(), &[today()?], tomorrow)?
-            );
-            typed.save_to(&store);
+            state.data.deeds[0] = Deed::new(id, today()?, rule.clone());
+            assert!(state.type_count(id, &count.to_string()));
+            assert_eq!(state.mark(id), Some(Mark::Count(count)));
+            assert_eq!(state.mark(id).map(|mark| mark.value(&rule)), Some(value));
+            state.save_to(&store);
             let restored = AppState::start(&store, today()?, slot_order());
-            assert_eq!(restored.mark(id), typed.mark(id));
+            assert_eq!(restored.mark(id), Some(Mark::Count(count)));
         }
         Ok(())
     }
 
     #[test]
-    fn invalid_typed_count_keeps_old_mark_and_plus_saturates() -> TestResult {
+    fn invalid_typed_count_keeps_old_mark() -> TestResult {
         let mut state = started(&MemoryStore::default())?;
         let id = state.data.deeds[0].id;
-        state.step(id, Step::Plus);
+        assert!(state.type_count(id, "1"));
         for text in ["", "-1", "1.5", "4294967296"] {
             assert!(!state.type_count(id, text));
             assert_eq!(state.mark(id), Some(Mark::Count(1)));
         }
         assert!(state.type_count(id, "4294967295"));
-        state.step(id, Step::Plus);
         assert_eq!(state.mark(id), Some(Mark::Count(u32::MAX)));
         Ok(())
-    }
-
-    #[test]
-    fn the_stepper_counts_up_and_clears_below_one() {
-        assert_eq!(stepped(None, Step::Plus), Some(Mark::Count(1)));
-        assert_eq!(
-            stepped(Some(Mark::Missed), Step::Plus),
-            Some(Mark::Count(1))
-        );
-        assert_eq!(
-            stepped(Some(Mark::Count(4)), Step::Plus),
-            Some(Mark::Count(5))
-        );
-        assert_eq!(
-            stepped(Some(Mark::Count(2)), Step::Minus),
-            Some(Mark::Count(1))
-        );
-        assert_eq!(stepped(Some(Mark::Count(1)), Step::Minus), None);
-        assert_eq!(stepped(None, Step::Minus), None);
     }
 
     #[test]

@@ -44,23 +44,33 @@ Every mark has its own shape too (check, half filled circle, cross, dashed outli
 
 ## Type
 
+Type sizes are in rem, so they follow the text size the person sets on the phone or in the browser (#73).
+
 | Token | Value |
 | --- | --- |
 | `font-family` | IBM Plex Sans Arabic (covers Arabic and Latin); Noto Sans Arabic to compare, `___` |
 | `line-height-body` | 1.5 |
-| `size-caption` | 13 px |
-| `size-body` | 16 px (never below for body text) |
-| `size-label` | 15 px |
-| `size-title` | 17 px |
-| `size-screen` | 24 px (phone), 26 px (tablet) |
-| `size-score` | 48 px |
+| `size-caption` | 0.8125 rem (13 px at the default text size) |
+| `size-body` | 1 rem, 16 px at the default text size (never below for body text) |
+| `size-label` | 0.9375 rem (15 px) |
+| `size-title` | 1.0625 rem (17 px) |
+| `size-screen` | 1.5 rem (phone), 1.625 rem (tablet) |
+| `size-score` | 3 rem (48 px) |
 | `weight-regular`, `weight-medium`, `weight-semibold`, `weight-bold` | 400, 500, 600, 700 |
 
 ## Size and space
 
 | Token | Value |
 | --- | --- |
-| `touch-min` | 48 px for every interactive control |
+| `touch-min` | 48 px for every interactive control outside the daily sheet rows |
+| `mark-touch` | at least 44 px (`max(44px, 2.75rem)`): tap area of mark buttons, slot chips, slot headings and deed rows on the daily sheet (#73) |
+| `mark-face` | 2 rem (32 px): the drawn face of a mark button inside its tap area |
+| `mark-icon` | 1.25 rem: icon inside a mark face and the fold chevron |
+| `radius-mark` | 8 px: corner of a mark face |
+| `strip-block` | `mark-touch` plus `gap-s`: height of the sticky slot chip strip; slot headings stick below it |
+| `bar-thickness` | 0.375 rem: the progress bar on the today line |
+| `name-min` | 7 rem: narrowest a deed name gets before the mark buttons move to the next line |
+| `count-input` | 6 rem: width of the field for typing a count |
 | `rail-width` | 96 px (navigation rail on tablet and wide web) |
 | `gap-xs`, `gap-s`, `gap-m`, `gap-l` | 4, 8, 12, 16 px |
 | `page-gutter` | 16 px (phone), 28 px (tablet) |

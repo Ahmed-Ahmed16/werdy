@@ -87,33 +87,19 @@ pub fn ChevronForward() -> Element {
     }
 }
 
-/// Minus sign for the stepper.
+/// Down chevron on a slot heading. It turns to point along the line when the
+/// slot is folded.
 #[component]
-pub fn MinusIcon() -> Element {
+pub fn FoldChevron() -> Element {
     rsx! {
-        svg { class: "icon", view_box: "0 0 24 24", "aria-hidden": "true",
+        svg { class: "icon fold-chevron", view_box: "0 0 24 24", "aria-hidden": "true",
             path {
-                d: "M6 12h12",
+                d: "M7 10l5 5 5-5",
                 fill: "none",
                 stroke: "currentColor",
-                stroke_width: "2.6",
+                stroke_width: "2.4",
                 stroke_linecap: "round",
-            }
-        }
-    }
-}
-
-/// Plus sign for the stepper.
-#[component]
-pub fn PlusIcon() -> Element {
-    rsx! {
-        svg { class: "icon", view_box: "0 0 24 24", "aria-hidden": "true",
-            path {
-                d: "M6 12h12M12 6v12",
-                fill: "none",
-                stroke: "currentColor",
-                stroke_width: "2.6",
-                stroke_linecap: "round",
+                stroke_linejoin: "round",
             }
         }
     }
