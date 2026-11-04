@@ -291,6 +291,7 @@ deed-lv-gaze = ترك فضول النظر
 deed-lv-heart = معالجة القلب
 deed-lv-charity = الصدقة
 deed-lv-istikhara = صلاة الاستخارة
+deed-lv-hajah = صلاة الحاجة
 deed-lv-keep-wudu = المحافظة على الوضوء
 deed-lv-wudu-before-sleep = الوضوء للنوم
 deed-lv-worldly-knowledge = العلم الدنيوي

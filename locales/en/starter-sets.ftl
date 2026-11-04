@@ -279,6 +279,7 @@ deed-lv-gaze = Lowering the gaze
 deed-lv-heart = Treating the heart
 deed-lv-charity = Charity
 deed-lv-istikhara = Istikhara prayer
+deed-lv-hajah = Salat al hajah (prayer of need)
 deed-lv-keep-wudu = Staying in wudu
 deed-lv-wudu-before-sleep = Wudu before sleep
 deed-lv-worldly-knowledge = Worldly knowledge

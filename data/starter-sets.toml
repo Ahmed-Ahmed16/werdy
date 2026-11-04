@@ -673,6 +673,8 @@ schedule = { hijri = "last_ten_nights" }
 # not say what it is. Groups wait on #107, so group rows use any_time.
 # Left out until weekly schedules exist (#108): the advanced sheet's
 # visiting graves and sunan al fitra, due once a week on any day.
+# Added by the owner, not on the sheets: istikhara and salat al hajah in
+# levels 2 and 3, placed after dawah.
 
 # Level deeds at Fajr.
 
@@ -1465,6 +1467,13 @@ category = "prayer"
 schedule = "every_day"
 
 [[deeds]]
+key = "lv_hajah"
+name = "deed-lv-hajah"
+slot = "any_time"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
 key = "lv_keep_wudu"
 name = "deed-lv-keep-wudu"
 slot = "any_time"
@@ -1716,6 +1725,8 @@ deeds = [
     "lv_parents",
     "lv_study_or_work",
     "lv_dawah",
+    "lv_istikhara",
+    "lv_hajah",
     "lv_friday_fitra",
     "lv_friday_ghusl",
     "lv_friday_best_clothes",

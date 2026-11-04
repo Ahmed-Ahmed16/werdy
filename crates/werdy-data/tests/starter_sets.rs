@@ -261,8 +261,9 @@ fn level_sets_come_first_with_the_sheet_counts() {
     let keys: Vec<&str> = catalog.sets.iter().map(|set| set.key.as_str()).collect();
     assert_eq!(keys[..3], ["level_1", "levels_2_3", "level_advanced"]);
     // The advanced sheet has 113 deeds; visiting graves and sunan al fitra
-    // wait for weekly schedules (#108).
-    for (key, count) in [("level_1", 44), ("levels_2_3", 61), ("level_advanced", 111)] {
+    // wait for weekly schedules (#108). Levels 2 and 3 add istikhara and
+    // salat al hajah to the sheet's 61, at the owner's request.
+    for (key, count) in [("level_1", 44), ("levels_2_3", 63), ("level_advanced", 111)] {
         let set = catalog.set(key).expect("set exists");
         assert_eq!(catalog.deeds_in(set).len(), count, "{key}");
     }
