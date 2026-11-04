@@ -1042,7 +1042,7 @@ textarea:focus-visible {
 
 /* A day note sits as a small dot under its bar, not inside it. */
 .report-day-bar[data-sign="true"]::after,
-.report-sign-swatch {
+.report-swatch.report-sign-swatch {
   inline-size: var(--sign-dot);
   block-size: var(--sign-dot);
   border-radius: var(--radius-pill);
@@ -1119,6 +1119,10 @@ textarea:focus-visible {
 .report-series {
   display: grid;
   gap: var(--gap-xs);
+}
+
+.report-card .report-series {
+  margin-block: var(--gap-l);
 }
 
 .report-days {
