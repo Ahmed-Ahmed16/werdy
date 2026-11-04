@@ -337,9 +337,23 @@ fn friday_box_deeds_are_due_only_on_fridays() {
 fn only_level_sets_credit_the_instructors() {
     let catalog = builtin().expect("the shipped starter sets load");
     for set in &catalog.sets {
-        let is_level = set.key.starts_with("level");
-        assert_eq!(set.credit.is_some(), is_level, "{}", set.key);
+        let expected = set
+            .key
+            .starts_with("level")
+            .then_some("set-credit-instructors");
+        assert_eq!(set.credit.as_deref(), expected, "{}", set.key);
     }
+
+    let credit_is_a_deed_name = SMALL.replace(
+        "name = \"set-basic\"",
+        "name = \"set-basic\"\ncredit = \"deed-qiyam\"",
+    );
+    assert_eq!(
+        parse(&credit_is_a_deed_name),
+        Err(Error::DuplicateName {
+            name: "deed-qiyam".into()
+        })
+    );
 
     let credited = SMALL.replace(
         "name = \"set-basic\"",

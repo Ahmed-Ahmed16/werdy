@@ -292,6 +292,13 @@ fn check_keys(catalog: &Catalog) -> Result<(), Error> {
             return Err(Error::DuplicateName { name: name.into() });
         }
     }
+    // A credit may be shared by sets, but must not reuse a name's key.
+    let mut credits = catalog.sets.iter().filter_map(|set| set.credit.as_deref());
+    if let Some(credit) = credits.find(|credit| names.contains(credit)) {
+        return Err(Error::DuplicateName {
+            name: credit.into(),
+        });
+    }
 
     for deed in &catalog.deeds {
         check_deed(catalog, deed)?;
