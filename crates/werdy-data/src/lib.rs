@@ -105,6 +105,9 @@ pub struct StarterSet {
     pub key: String,
     /// Fluent key for the set's name.
     pub name: String,
+    /// Optional Fluent key for a line that credits the set's authors.
+    #[serde(default)]
+    pub credit: Option<String>,
     /// Deed keys in the order they are added.
     pub deeds: Vec<String>,
 }
@@ -236,8 +239,15 @@ impl Catalog {
         set.deeds.iter().filter_map(|key| self.deed(key)).collect()
     }
 
-    /// Every Fluent name key the file uses.
+    /// Every Fluent key the file uses: names, then credits.
     pub fn name_keys(&self) -> impl Iterator<Item = &str> {
+        let credits = self.sets.iter().filter_map(|set| set.credit.as_deref());
+        self.own_name_keys().chain(credits)
+    }
+
+    /// Keys that name one thing each, so each may appear only once.
+    /// Several sets may share one credit, so credits are not in this list.
+    fn own_name_keys(&self) -> impl Iterator<Item = &str> {
         let units = self.units.iter().map(|unit| unit.name.as_str());
         let deeds = self.deeds.iter().map(|deed| deed.name.as_str());
         let sets = self.sets.iter().map(|set| set.name.as_str());
@@ -277,10 +287,17 @@ fn check_keys(catalog: &Catalog) -> Result<(), Error> {
     unique("set", catalog.sets.iter().map(|set| set.key.as_str()))?;
 
     let mut names = BTreeSet::new();
-    for name in catalog.name_keys() {
+    for name in catalog.own_name_keys() {
         if !names.insert(name) {
             return Err(Error::DuplicateName { name: name.into() });
         }
+    }
+    // A credit may be shared by sets, but must not reuse a name's key.
+    let mut credits = catalog.sets.iter().filter_map(|set| set.credit.as_deref());
+    if let Some(credit) = credits.find(|credit| names.contains(credit)) {
+        return Err(Error::DuplicateName {
+            name: credit.into(),
+        });
     }
 
     for deed in &catalog.deeds {

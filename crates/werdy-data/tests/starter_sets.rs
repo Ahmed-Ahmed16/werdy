@@ -254,3 +254,132 @@ fn loading_a_broken_file_is_an_error() {
         })
     );
 }
+
+#[test]
+fn level_sets_come_first_with_the_sheet_counts() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let keys: Vec<&str> = catalog.sets.iter().map(|set| set.key.as_str()).collect();
+    assert_eq!(keys[..3], ["level_1", "levels_2_3", "level_advanced"]);
+    // The advanced sheet has 113 deeds; visiting graves and sunan al fitra
+    // wait for weekly schedules (#108). Levels 2 and 3 add istikhara and
+    // salat al hajah to the sheet's 61, at the owner's request.
+    for (key, count) in [("level_1", 44), ("levels_2_3", 63), ("level_advanced", 111)] {
+        let set = catalog.set(key).expect("set exists");
+        assert_eq!(catalog.deeds_in(set).len(), count, "{key}");
+    }
+}
+
+#[test]
+fn level_sets_follow_sheet_order() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let first = |key: &str, count: usize| -> Vec<String> {
+        catalog.set(key).expect("set exists").deeds[..count].to_vec()
+    };
+    assert_eq!(
+        first("level_1", 4),
+        [
+            "lv_fajr_sunnah_before",
+            "lv_fajr_congregation",
+            "lv_fajr_adhkar_after",
+            "lv_morning_adhkar"
+        ]
+    );
+    assert_eq!(
+        first("level_advanced", 3),
+        [
+            "lv_fajr_early",
+            "lv_fajr_adhan_adhkar",
+            "lv_fajr_dua_between"
+        ]
+    );
+}
+
+#[test]
+fn moving_up_a_level_keeps_shared_deeds() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let shared = [
+        "lv_fajr_congregation",
+        "lv_witr",
+        "lv_parents",
+        "lv_sleep_adhkar",
+    ];
+    for key in ["level_1", "levels_2_3", "level_advanced"] {
+        let set = catalog.set(key).expect("set exists");
+        for deed in shared {
+            assert!(
+                set.deeds.iter().any(|key| key == deed),
+                "{key} lacks {deed}"
+            );
+        }
+    }
+}
+
+#[test]
+fn friday_box_deeds_are_due_only_on_fridays() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let friday = catalog
+        .deeds
+        .iter()
+        .filter(|deed| deed.key.starts_with("lv_friday_"))
+        .collect::<Vec<_>>();
+    assert_eq!(friday.len(), 13);
+    for deed in friday {
+        assert_eq!(
+            deed.schedule,
+            Schedule::Weekdays(vec![werdy_data::Weekday::Friday]),
+            "{}",
+            deed.key
+        );
+    }
+}
+
+#[test]
+fn only_level_sets_credit_the_instructors() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for set in &catalog.sets {
+        let expected = set
+            .key
+            .starts_with("level")
+            .then_some("set-credit-instructors");
+        assert_eq!(set.credit.as_deref(), expected, "{}", set.key);
+    }
+
+    let credit_is_a_deed_name = SMALL.replace(
+        "name = \"set-basic\"",
+        "name = \"set-basic\"\ncredit = \"deed-qiyam\"",
+    );
+    assert_eq!(
+        parse(&credit_is_a_deed_name),
+        Err(Error::DuplicateName {
+            name: "deed-qiyam".into()
+        })
+    );
+
+    let credited = SMALL.replace(
+        "name = \"set-basic\"",
+        "name = \"set-basic\"\ncredit = \"set-credit\"",
+    );
+    assert_eq!(
+        load(&credited, SMALL_FTL, SMALL_FTL),
+        Err(Error::MissingName {
+            locale: "ar",
+            name: "set-credit".into()
+        })
+    );
+}
+
+#[test]
+fn counted_level_deeds_carry_a_times_target() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for key in ["lv_tahlil_100", "lv_istighfar_100", "lv_friday_salawat_100"] {
+        let target = catalog
+            .deed(key)
+            .and_then(|deed| deed.target.as_ref())
+            .unwrap_or_else(|| panic!("{key} has no target"));
+        assert_eq!(
+            (target.amount, target.unit.as_str()),
+            (100, "times"),
+            "{key}"
+        );
+    }
+}
