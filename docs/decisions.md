@@ -2,6 +2,9 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0041 (2026-11-04): The five fard prayers come from the five prayers starter set
+The reports page has a "prayers on time" block (#112). It shows the deeds whose starter key is in the `five_prayers` set in `data/starter-sets.toml`, in that set's order. A deed gets a starter key when it is added from a starter set, and the key is kept in the saved data. If the owner has none of the five, the block is hidden. Why: category Prayer is too wide (sunnah, congregation and first row deeds share it), and this needs no new field and no change to saved data or sync. Cost: a prayer deed the owner typed by hand, or a starter prayer deleted and remade by hand, is not in the block. Approved by the owner in chat on 2026-11-04. Rejected for now: a `fard_prayer` field on catalog deeds (would let congregation deeds count, but needs a rule for two deeds on one prayer), and a switch in the deed editor (a new stored field and sync change). Revisit: if owners want congregation deeds or their own typed prayers in the block.
+
 ## 0040 (2026-11-04): Counted deeds use done, a typed count, and missed
 A deed with a target shows three controls: done, a number button and missed. Done stores the target as the count. The number button opens a field to type the count. Missed stores Missed, and a typed 0 is also Missed. A count at or above the target shows and scores as Done, capped at 1, and the real number is kept (120 of 100 stays 120) for later use. A count below the target is partial, worth count over target. The plus and minus buttons from 0011 are removed. Why: friends found the sheet crowded, and one row of three controls matches the other deeds and the 44px touch floor. Typing is faster than many plus taps for counts like 100 tasbeeh. Approved by the owner in chat on 2026-11-04 (issue #73). Revisit: if people miss quick plus one taps for small targets.
 

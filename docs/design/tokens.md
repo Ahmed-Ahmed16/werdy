@@ -56,6 +56,7 @@ Type sizes are in rem, so they follow the text size the person sets on the phone
 | `size-title` | 1.0625 rem (17 px) |
 | `size-screen` | 1.5 rem (phone), 1.625 rem (tablet) |
 | `size-score` | 3 rem (48 px) |
+| `size-headline` | 2.25 rem (36 px): the period percent at the top of the reports page |
 | `weight-regular`, `weight-medium`, `weight-semibold`, `weight-bold` | 400, 500, 600, 700 |
 
 ## Size and space
@@ -70,6 +71,10 @@ Type sizes are in rem, so they follow the text size the person sets on the phone
 | `strip-block` | `mark-touch` plus `gap-s`: height of the sticky slot chip strip; slot headings stick below it |
 | `bar-thickness` | 0.375 rem: the progress bar on the today line |
 | `name-min` | 7 rem: narrowest a deed name gets before the mark buttons move to the next line |
+| `day-bars-height` | 5 rem: height of the bar per day on the reports page, so it grows with the text size |
+| `bar-gap` | 2 px: space between two day bars, so 30 bars still fit at 320 px |
+| `radius-bar` | 3 px: corners of a day bar |
+| `sign-dot` | 4 px: the dot under a day bar that has a day note |
 | `count-input` | 6 rem: width of the field for typing a count |
 | `rail-width` | 96 px (navigation rail on tablet and wide web) |
 | `gap-xs`, `gap-s`, `gap-m`, `gap-l` | 4, 8, 12, 16 px |

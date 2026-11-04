@@ -90,8 +90,9 @@ pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry, convert_mark_for_target};
 pub use note::{DayNote, ExcuseCredit};
 pub use report::{
-    Band, DeedDay, MissedDeed, Period, Report, ReportLead, ScoreBands, SeriesEntry, build_report,
-    report_lead,
+    Band, DayDot, DeedDay, DeedRank, MissedDeed, Period, PrayerDay, PrayerRow, RankedDeeds, Report,
+    ReportLead, ScoreBands, SeriesEntry, build_report, categories_weakest_first, percent_change,
+    prayer_grid, ranked_deeds, report_lead,
 };
 pub use score::{
     OwnerRecords, Score, ScoreValue, TodaySummary, finished_day_summary, score, today_summary,

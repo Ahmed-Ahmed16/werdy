@@ -98,6 +98,8 @@
   --size-title: 1.0625rem;
   --size-screen: 1.5rem;
   --size-score: 3rem;
+  /* The reports headline, a little smaller than the score (#112). */
+  --size-headline: 2.25rem;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -113,6 +115,11 @@
   --strip-block: calc(var(--mark-touch) + var(--gap-s));
   --bar-thickness: 0.375rem;
   --name-min: 7rem;
+  /* Reports (#112): a bar per day, with a day note dot under it. */
+  --day-bars-height: 5rem;
+  --bar-gap: 2px;
+  --radius-bar: 3px;
+  --sign-dot: 4px;
   --count-input: 6rem;
   --rail-width: 96px;
   --gap-xs: 4px;
