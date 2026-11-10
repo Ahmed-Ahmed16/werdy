@@ -62,5 +62,5 @@ Owner step. After approval and deployment, turn reminders on and close werdy. Ch
 
 ## Local test
 
-Run `node --test supabase/functions/push-send/` from the repo root. This checks payload, delivery headers, and reply handling without Deno or network access.
-The `package.json` and `index.js` in that folder exist only for Node tests; the package declares no dependencies.
+Run `node --test supabase/functions/push-send/core.test.ts` from the repo root. This checks payload, delivery headers, and reply handling without Deno or network access.
+The `package.json` in that folder exists only for Node tests and declares no dependencies.
