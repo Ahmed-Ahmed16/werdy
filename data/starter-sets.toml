@@ -12,6 +12,8 @@
 #   Two sets that share a deed list the same key, so the deed is added once.
 # * "name" is a Fluent key. Add it to locales/ar/starter-sets.ftl and
 #   locales/en/starter-sets.ftl, or the tests fail.
+# * An Academy set has a level block with a unique order and Fluent keys for
+#   its card title and summary. Add both keys to both starter sets locale files.
 # * A schedule is "every_day", { weekdays = ["friday"] } or
 #   { hijri = "ramadan" }. Hijri range keys must be in hijri_ranges.
 # * A target is optional: { amount = 20, unit = "pages" }.
@@ -1622,6 +1624,7 @@ schedule = { weekdays = ["friday"] }
 key = "level_1"
 name = "set-level-1"
 credit = "set-credit-instructors"
+level = { order = 1, title = "level-card-1-title", summary = "level-card-1-summary" }
 deeds = [
     "lv_fajr_sunnah_before",
     "lv_fajr_congregation",
@@ -1673,6 +1676,7 @@ deeds = [
 key = "levels_2_3"
 name = "set-levels-2-3"
 credit = "set-credit-instructors"
+level = { order = 2, title = "level-card-2-title", summary = "level-card-2-summary" }
 deeds = [
     "lv_fajr_sunnah_before",
     "lv_fajr_dua_between",
@@ -1743,6 +1747,7 @@ deeds = [
 key = "level_advanced"
 name = "set-level-advanced"
 credit = "set-credit-instructors"
+level = { order = 3, title = "level-card-3-title", summary = "level-card-3-summary" }
 deeds = [
     "lv_fajr_early",
     "lv_fajr_adhan_adhkar",
