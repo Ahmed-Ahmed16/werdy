@@ -24,7 +24,14 @@ pub fn Sheet() -> Element {
     let state = use_context::<Signal<AppState>>();
     let actions = use_actions();
     let mut choices = use_signal(FoldChoices::new);
-    let sheet = state.read().sheet();
+    let (sheet, showing_unmarked, open_count) = {
+        let app = state.read();
+        (
+            app.sheet_on_screen(),
+            app.showing_unmarked(),
+            app.summary().open,
+        )
+    };
     let (welcome, milestone, is_today) = {
         let app = state.read();
         if app.is_today() && !super::sharing::read_only() {
@@ -79,7 +86,7 @@ pub fn Sheet() -> Element {
         last_scroll_day.set(Some(day));
         let (hour, minute) = platform::local_time();
         let shown: Vec<SlotKey> = app
-            .sheet()
+            .sheet_on_screen()
             .slots
             .into_iter()
             .map(|slot| slot.slot)
@@ -116,9 +123,20 @@ pub fn Sheet() -> Element {
                     }
                 }
             }
-            if sheet.slots.is_empty() {
+            if showing_unmarked {
+                div { class: "sheet-notice sheet-filter", role: "status",
+                    p {
+                        {i18n.t(unmarked_notice(sheet.slots.len(), state.read().sheet().slots.len()))}
+                    }
+                    button { class: "notice-dismiss",
+                        onclick: move |_| actions.view(AppState::toggle_unmarked),
+                        {i18n.t("sheet-show-all")}
+                    }
+                }
+            } else if sheet.slots.is_empty() {
                 p { class: "sheet-empty", {i18n.t("sheet-empty")} }
-            } else {
+            }
+            if !sheet.slots.is_empty() {
                 nav { class: "slot-strip", aria_label: i18n.t("sheet-slots"),
                     for slot in sheet.slots.iter() {
                         SlotChip {
@@ -133,6 +151,12 @@ pub fn Sheet() -> Element {
                     }
                 }
                 div { class: "sheet-tools",
+                    if is_today && !showing_unmarked && open_count > 0 && !super::sharing::read_only() {
+                        button { class: "text-button open-only",
+                            onclick: move |_| actions.view(AppState::toggle_unmarked),
+                            {i18n.t_with("sheet-open-only", &[("count", FluentValue::from(open_count))])}
+                        }
+                    }
                     button { class: "text-button fold-all",
                         onclick: move |_| {
                             let mut choices = choices.write();
@@ -157,6 +181,18 @@ pub fn Sheet() -> Element {
                 }
             }
         }
+    }
+}
+
+/// Text key for the notice above a sheet filtered to open deeds. A day with
+/// no due deeds says so, rather than claiming every deed has a mark.
+fn unmarked_notice(shown_slots: usize, due_slots: usize) -> &'static str {
+    if due_slots == 0 {
+        "sheet-empty"
+    } else if shown_slots == 0 {
+        "sheet-unmarked-none"
+    } else {
+        "sheet-unmarked-only"
     }
 }
 
@@ -328,7 +364,22 @@ fn DeedRow(row: SheetRow) -> Element {
 mod tests {
     use werdy_core::{DeedId, Mark, SheetRow, SlotKey};
 
-    use super::{fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress};
+    use super::{
+        fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress,
+        unmarked_notice,
+    };
+
+    #[test]
+    fn unmarked_notice_distinguishes_no_due_deeds_from_all_marked() {
+        // Cases: no due deeds, all marked, some open.
+        for (shown, due, expected) in [
+            (0, 0, "sheet-empty"),
+            (0, 3, "sheet-unmarked-none"),
+            (2, 3, "sheet-unmarked-only"),
+        ] {
+            assert_eq!(unmarked_notice(shown, due), expected);
+        }
+    }
 
     #[test]
     fn notices_keep_sheet_at_the_top_until_they_are_gone() {

@@ -42,6 +42,10 @@ slot-chip-label = { $slot }، عُلّم { $marked } من { $total }
 sheet-slots = أوقات اليوم
 sheet-fold-all = طي الكل
 sheet-open-all = فتح الكل
+sheet-open-only = الباقي وحده ({ $count })
+sheet-unmarked-only = تعرض الآن الأعمال التي لم تُعلَّم بعد.
+sheet-unmarked-none = لم يبق عمل دون علامة اليوم.
+sheet-show-all = عرض الكل
 
 mark-done = تم
 mark-partial = جزئي
