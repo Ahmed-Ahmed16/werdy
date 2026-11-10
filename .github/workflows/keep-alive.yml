@@ -2,9 +2,8 @@ name: Keep Supabase awake
 
 # A free Supabase project pauses after a week without activity, and a paused
 # project stops every push reminder without a sound (decision 0042, #126).
-# This job makes one small request each day. A failed request fails the job,
-# and GitHub tells the repo owner. The daily backup job also touches the
-# database; this job is the cheap backup to that, and needs no secret.
+# This job runs one small database query through the API each day. A failed
+# request fails the job, and GitHub tells the repo owner. It needs no secret.
 
 on:
   schedule:
@@ -25,13 +24,17 @@ jobs:
       - name: Ask the project if it is up
         shell: bash
         run: |
-          status=$(curl --silent --show-error --output /dev/null \
+          response=$(curl --silent --show-error \
             --retry 3 --retry-delay 20 --max-time 30 \
-            --write-out '%{http_code}' \
+            --write-out '\n%{http_code}' \
+            --request POST --data '{}' \
             --header "apikey: $SUPABASE_KEY" \
-            "$SUPABASE_URL/auth/v1/health")
+            --header 'Content-Type: application/json' \
+            "$SUPABASE_URL/rest/v1/rpc/werdy_ping") || response=''
+          status=${response##*$'\n'}
+          body=${response%$'\n'*}
           echo "Supabase answered $status"
-          if [[ "$status" != "200" ]]; then
+          if [[ "$status" != "200" || "$body" != "true" ]]; then
             echo "Supabase did not answer 200. The project may be paused; restore it in the dashboard." >&2
             exit 1
           fi
