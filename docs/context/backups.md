@@ -110,8 +110,13 @@ sudo apt-get install --yes age unzip postgresql-client
    workflow, choose `main`, and run it. Confirm a successful encrypted artifact
    exists, then do the restore test below. Check later daily runs too. A paused
    project or wrong password makes a dump fail. Resume the project or correct
-   the secret, then run the workflow again. Errors are intentionally generic;
-   never add debug tracing or print SQL or URLs to diagnose them.
+   the secret, then run the workflow again. Before any dump, the script checks
+   the URL's shape (spaces, quotes, the placeholder, unencoded password
+   characters, the direct host, port 6543, the pooler user) and stops with a
+   fixed reason. When the CLI fails, the job log names a fixed cause matched
+   from the private CLI log, such as a rejected password or an unknown pooler
+   user. Neither message prints the URL, SQL or CLI text. Never add debug
+   tracing or print SQL or URLs to diagnose a failure.
 
 ## Download and decrypt
 
@@ -237,8 +242,8 @@ the app and migration context.
 
 With age installed, run `bash scripts/tests/backup.sh` from the repo root.
 It replaces the database CLI with a fixture, uses real age and tar, and checks
-missing secrets, both dump failures, invalid recipients, plaintext cleanup,
-log privacy and decryption of both dump files. It does not prove a live restore.
+missing secrets, malformed URLs, the named cause of each dump failure, invalid
+recipients, plaintext cleanup, log privacy and decryption of both dump files. It does not prove a live restore.
 Validate the workflow with `actionlint .github/workflows/backup.yml`.
 
 Command behavior was checked against the pinned
