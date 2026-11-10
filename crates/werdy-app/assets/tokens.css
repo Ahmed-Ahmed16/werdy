@@ -89,15 +89,17 @@
 }
 
 :root {
-  /* Type */
+  /* Type. Sizes in rem follow the text size the person set on the phone. */
   --font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
   --line-height-body: 1.5;
-  --size-caption: 13px;
-  --size-body: 16px;
-  --size-label: 15px;
-  --size-title: 17px;
-  --size-screen: 24px;
-  --size-score: 48px;
+  --size-caption: 0.8125rem;
+  --size-body: 1rem;
+  --size-label: 0.9375rem;
+  --size-title: 1.0625rem;
+  --size-screen: 1.5rem;
+  --size-score: 3rem;
+  /* The reports headline, a little smaller than the score (#112). */
+  --size-headline: 2.25rem;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -105,6 +107,20 @@
 
   /* Size and space */
   --touch-min: 48px;
+  /* Sheet rows (#73): a 32px face inside a tap area of at least 44px. */
+  --mark-touch: max(44px, 2.75rem);
+  --mark-face: 2rem;
+  --mark-icon: 1.25rem;
+  --radius-mark: 8px;
+  --strip-block: calc(var(--mark-touch) + var(--gap-s));
+  --bar-thickness: 0.375rem;
+  --name-min: 7rem;
+  /* Reports (#112): a bar per day, with a day note dot under it. */
+  --day-bars-height: 5rem;
+  --bar-gap: 2px;
+  --radius-bar: 3px;
+  --sign-dot: 4px;
+  --count-input: 6rem;
   --rail-width: 96px;
   --gap-xs: 4px;
   --gap-s: 8px;
@@ -125,7 +141,7 @@
 
 @media (min-width: 600px) {
   :root {
-    --size-screen: 26px;
+    --size-screen: 1.625rem;
     --page-gutter: 28px;
   }
 }

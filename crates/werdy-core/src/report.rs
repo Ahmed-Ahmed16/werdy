@@ -400,3 +400,159 @@ fn missed_deed(
         lost,
     }))
 }
+
+/// A deed and its score for the period, in a ranked list.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DeedRank {
+    /// Stable deed identity.
+    pub deed_id: DeedId,
+    /// Score for this deed over its due days.
+    pub score: Score,
+}
+
+/// The weakest and strongest deeds of a period. No deed is in both lists.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RankedDeeds {
+    /// Lowest percent first. Never holds a deed at 100 percent.
+    pub weakest: Vec<DeedRank>,
+    /// Highest percent first. Never holds a deed at 0 percent.
+    pub strongest: Vec<DeedRank>,
+}
+
+/// Ranks due deeds by percent, with equal percents in deed id order.
+/// The weakest list takes at most `limit` deeds and at most half the deeds,
+/// rounded up, so a short list is split instead of repeated.
+pub fn ranked_deeds(report: &Report, limit: usize) -> RankedDeeds {
+    let mut ranks: Vec<(u8, DeedRank)> = report
+        .per_deed
+        .iter()
+        .filter_map(|(deed_id, score)| {
+            score.percent.map(|percent| {
+                (
+                    percent,
+                    DeedRank {
+                        deed_id: *deed_id,
+                        score: *score,
+                    },
+                )
+            })
+        })
+        .collect();
+    ranks.sort_by_key(|(percent, rank)| (*percent, rank.deed_id));
+    let weakest_cap = limit.min(ranks.len().div_ceil(2));
+    let weakest: Vec<DeedRank> = ranks
+        .iter()
+        .filter(|(percent, _)| *percent < 100)
+        .take(weakest_cap)
+        .map(|(_, rank)| *rank)
+        .collect();
+    ranks.sort_by_key(|(percent, rank)| (std::cmp::Reverse(*percent), rank.deed_id));
+    let strongest = ranks
+        .iter()
+        .filter(|(percent, rank)| {
+            *percent > 0 && !weakest.iter().any(|weak| weak.deed_id == rank.deed_id)
+        })
+        .take(limit)
+        .map(|(_, rank)| *rank)
+        .collect();
+    RankedDeeds { weakest, strongest }
+}
+
+/// How one deed went on one day, drawn as a dot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DayDot {
+    /// The deed was not due that day.
+    NotDue,
+    /// Full value, after any day credit.
+    Done,
+    /// More than none and less than full value.
+    Partial,
+    /// No value.
+    Missed,
+}
+
+impl DayDot {
+    fn from_value(value: Fraction) -> Self {
+        if value >= Fraction::ONE {
+            Self::Done
+        } else if value.numerator() == 0 {
+            Self::Missed
+        } else {
+            Self::Partial
+        }
+    }
+}
+
+/// One day in a prayer row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PrayerDay {
+    /// Finished werdy day.
+    pub day: WerdyDay,
+    /// How the prayer went that day.
+    pub dot: DayDot,
+    /// A mark or day note for this day was added more than two days late.
+    pub added_later: bool,
+    /// The day has a day note, so a credit is never hidden.
+    pub noted: bool,
+}
+
+/// One prayer's days in the prayer grid.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PrayerRow {
+    /// Stable deed identity.
+    pub deed_id: DeedId,
+    /// One entry per requested day, in the order given.
+    pub days: Vec<PrayerDay>,
+}
+
+/// Builds a row of dots for each listed deed over the given days.
+/// Rows keep the caller's order. Deeds not in this report are skipped.
+pub fn prayer_grid(report: &Report, prayers: &[DeedId], days: &[WerdyDay]) -> Vec<PrayerRow> {
+    prayers
+        .iter()
+        .filter_map(|deed_id| {
+            let history = report.per_deed_days.get(deed_id);
+            if history.is_none() && !report.not_due.contains(deed_id) {
+                return None;
+            }
+            let row = days
+                .iter()
+                .map(|day| {
+                    let entry =
+                        history.and_then(|entries| entries.iter().find(|entry| entry.day == *day));
+                    PrayerDay {
+                        day: *day,
+                        dot: entry.map_or(DayDot::NotDue, |entry| DayDot::from_value(entry.value)),
+                        added_later: entry.is_some_and(|entry| entry.added_later),
+                        noted: report.noted_days.contains(day),
+                    }
+                })
+                .collect();
+            Some(PrayerRow {
+                deed_id: *deed_id,
+                days: row,
+            })
+        })
+        .collect()
+}
+
+/// Change in percent points from the previous period, or none when either
+/// period had no due deed.
+pub fn percent_change(current: &Score, previous: &Score) -> Option<i16> {
+    Some(i16::from(current.percent?) - i16::from(previous.percent?))
+}
+
+/// Category scores with the lowest percent first, then by key.
+pub fn categories_weakest_first(report: &Report) -> Vec<(CategoryKey, Score)> {
+    let mut categories: Vec<_> = report
+        .by_category
+        .iter()
+        .map(|(key, score)| (key.clone(), *score))
+        .collect();
+    categories.sort_by(|(left_key, left), (right_key, right)| {
+        left.percent
+            .cmp(&right.percent)
+            .then_with(|| left_key.cmp(right_key))
+    });
+    categories
+}

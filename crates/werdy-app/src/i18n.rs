@@ -440,12 +440,6 @@ mod tests {
                 due_deeds_english,
             ),
             (
-                "reports-previous-score",
-                "due",
-                due_deeds_arabic,
-                due_deeds_english,
-            ),
-            (
                 "reports-category-due",
                 "due",
                 due_deeds_arabic,
@@ -517,6 +511,32 @@ mod tests {
                     let rendered = rendered.replace(['\u{2068}', '\u{2069}'], "");
                     assert!(rendered.contains(english[index]), "{key}: {rendered}");
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn report_change_line_names_the_points_and_the_previous_percent() {
+        let texts = Texts::load();
+        let args = [
+            ("points", FluentValue::from(6)),
+            ("percent", FluentValue::from(66)),
+        ];
+        for (key, english, arabic) in [
+            (
+                "reports-change-up",
+                "Up 6 from the previous period (66%)",
+                "أعلى بـ 6 من الفترة السابقة (66%)",
+            ),
+            (
+                "reports-change-down",
+                "Down 6 from the previous period (66%)",
+                "أقل بـ 6 من الفترة السابقة (66%)",
+            ),
+        ] {
+            for (language, expected) in [(Language::English, english), (Language::Arabic, arabic)] {
+                let rendered = texts.get(language, key, &args);
+                assert_eq!(rendered.replace(['\u{2068}', '\u{2069}'], ""), expected);
             }
         }
     }

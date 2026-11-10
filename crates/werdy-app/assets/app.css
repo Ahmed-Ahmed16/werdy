@@ -45,7 +45,7 @@ textarea:focus-visible {
   display: block;
 }
 
-[dir="rtl"] .chevron {
+.chevron:dir(rtl) {
   transform: scaleX(-1);
 }
 
@@ -441,66 +441,60 @@ textarea:focus-visible {
 /* Today card */
 
 .today-card {
-  padding: var(--gap-l);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  padding: var(--gap-s) var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-control);
   background: var(--surface);
 }
 
-.card-title {
-  margin: 0 0 var(--gap-m);
-  font-size: var(--size-title);
+.today-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--gap-s);
+  row-gap: var(--gap-xs);
+}
+
+.today-title {
+  margin: 0;
+  font-size: var(--size-label);
   font-weight: var(--weight-semibold);
 }
 
-.counts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--gap-s);
-}
-
-.count {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--gap-m) var(--gap-s);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-}
-
-.count[data-kind="open"] {
-  background: transparent;
-  border: 2px dashed var(--mark-open);
-}
-
-.count-button {
-  min-height: var(--touch-min);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-
-.count-button[aria-pressed="true"] {
-  border-style: solid;
-  background: var(--primary-soft);
-}
-
-.count-value {
-  font-size: var(--size-screen);
-  font-weight: var(--weight-bold);
-}
-
-.count[data-kind="done"] .count-value {
-  color: var(--mark-done);
-}
-
-.count[data-kind="missed"] .count-value {
-  color: var(--mark-missed);
-}
-
-.count-label {
+.today-counts,
+.today-score {
+  margin: 0;
   font-size: var(--size-caption);
   color: var(--text-muted);
+}
+
+.today-score {
+  margin-inline-start: auto;
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+
+.today-bar {
+  display: flex;
+  block-size: var(--bar-thickness);
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.today-bar [data-kind="done"] {
+  background: var(--mark-done);
+}
+
+.today-bar [data-kind="partial"] {
+  background: var(--mark-partial);
+}
+
+.today-bar [data-kind="missed"] {
+  background: var(--mark-missed);
 }
 
 .card-note {
@@ -546,12 +540,12 @@ textarea:focus-visible {
   }
 }
 
-/* Sheet */
+/* Sheet: one surface, sticky slot chips and thin sticky slot headings (#73). */
 
 .sheet {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-m);
+  gap: var(--gap-s);
 }
 
 .sheet-notice {
@@ -591,19 +585,133 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.slot {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  overflow: hidden;
+.slot-strip {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  block-size: var(--strip-block);
+  margin-inline: calc(-1 * var(--page-gutter));
+  padding-inline: var(--page-gutter);
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--bg);
 }
 
-.slot-title {
-  margin: 0;
-  padding: var(--gap-m) var(--gap-l) 0;
-  font-size: var(--size-label);
+.slot-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  min-width: var(--mark-touch);
+  min-height: var(--mark-touch);
+  padding-inline: var(--gap-m);
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--size-caption);
+  white-space: nowrap;
+}
+
+.slot-chip[data-complete="true"] {
+  background: var(--primary-soft);
+  color: var(--mark-done);
+}
+
+.slot-chip[data-current="true"] {
+  border: var(--stroke-strong) solid var(--primary);
+  color: var(--primary);
   font-weight: var(--weight-semibold);
+}
+
+.chip-done {
+  display: inline-grid;
+  color: var(--mark-done);
+}
+
+.chip-done .icon {
+  inline-size: var(--size-caption);
+  block-size: var(--size-caption);
+}
+
+.sheet-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap-s);
+}
+
+.sheet-surface {
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  /* clip, not hidden, so the sticky headings still stick. */
+  overflow: clip;
+}
+
+.slot {
+  scroll-margin-block-start: var(--strip-block);
+}
+
+.slot + .slot {
+  border-block-start: var(--stroke-thin) solid var(--border);
+}
+
+.slot-heading {
+  position: sticky;
+  inset-block-start: var(--strip-block);
+  z-index: 1;
+  margin: 0;
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.slot-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-xs) var(--gap-s);
+  inline-size: 100%;
+  min-height: var(--mark-touch);
+  padding-block: var(--gap-xs);
+  padding-inline: var(--gap-s) var(--gap-m);
+  border: none;
+  background: var(--primary-soft);
+  color: var(--primary);
+  text-align: start;
+}
+
+.slot[data-open="false"] .slot-toggle {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.fold-chevron {
+  inline-size: var(--mark-icon);
+  block-size: var(--mark-icon);
+  transition: transform 0.15s;
+}
+
+.slot[data-open="false"] .fold-chevron {
+  transform: rotate(-90deg);
+}
+
+.slot[data-open="false"] .fold-chevron:dir(rtl) {
+  transform: rotate(90deg);
+}
+
+.slot-name {
+  flex: 1 1 auto;
+}
+
+.slot-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
   color: var(--text-muted);
+  font-weight: var(--weight-medium);
 }
 
 .slot-rows {
@@ -617,30 +725,40 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap-s);
-  min-height: var(--touch-min);
-  padding: var(--gap-m) var(--gap-l);
+  column-gap: var(--gap-s);
+  min-height: var(--mark-touch);
+  padding-inline: var(--gap-m) var(--gap-xs);
 }
 
 .deed-row + .deed-row {
-  border-top: 1px solid var(--border);
-}
-
-.deed-name {
-  font-size: var(--size-body);
-  font-weight: var(--weight-medium);
+  border-block-start: var(--stroke-thin) solid var(--border);
 }
 
 .deed-identity {
+  flex: 1 1 var(--name-min);
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap-s);
+  align-items: baseline;
+  column-gap: var(--gap-s);
+  padding-block: var(--gap-xs);
+}
+
+.deed-name {
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.count-tag {
+  font-size: var(--size-caption);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .late-sign {
   padding: 0 var(--gap-s);
-  border: 1px solid var(--text-muted);
+  border: var(--stroke-thin) solid var(--text-muted);
   border-radius: var(--radius-pill);
   color: var(--text-muted);
   font-size: var(--size-caption);
@@ -648,47 +766,57 @@ textarea:focus-visible {
 }
 
 .deed-controls {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: var(--gap-s);
+  margin-inline-start: auto;
 }
 
-.slot-folded {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-m);
-  width: 100%;
-  min-height: var(--touch-min);
-  padding: var(--gap-s) var(--gap-l);
-  border: none;
-  border-radius: var(--radius-card);
-  background: var(--primary-soft);
-  color: var(--primary);
-  text-align: start;
-}
+/* Mark buttons: a small face drawn inside a finger sized tap area. Each mark
+   has a colour and its own shape. Tap areas sit side by side, never overlap. */
 
-.slot-folded-mark {
+.mark-button {
+  min-width: var(--mark-touch);
+  min-height: var(--mark-touch);
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-pill);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.mark-face {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--mark-face);
+  block-size: var(--mark-face);
+  border-radius: var(--radius-mark);
+  background: var(--surface-muted);
+}
+
+.mark-face .icon {
+  inline-size: var(--mark-icon);
+  block-size: var(--mark-icon);
+}
+
+.mark-button[data-kind="done"][aria-pressed="true"] .mark-face {
   background: var(--mark-done);
   color: var(--on-mark-done);
 }
 
-.slot-folded-text {
-  flex: 1;
-  font-weight: var(--weight-semibold);
+.mark-button[data-kind="partial"][aria-pressed="true"] .mark-face {
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
 }
 
-.slot-folded-show {
-  font-size: var(--size-caption);
+.mark-button[data-kind="missed"][aria-pressed="true"] .mark-face {
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
 }
 
-/* Mark buttons: each mark has a colour and its own shape. */
+/* Plus and minus for a target amount in the deed editor. */
 
-.mark-button,
 .step-button {
   width: var(--touch-min);
   height: var(--touch-min);
@@ -701,52 +829,10 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.mark-button[data-kind="done"][aria-pressed="true"] {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.mark-button[data-kind="partial"][aria-pressed="true"] {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.mark-button[data-kind="missed"][aria-pressed="true"] {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
-}
-
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-xs);
-  padding: 0;
-  border-radius: var(--radius-control);
-}
-
-.step-count {
-  min-width: 72px;
-  min-height: var(--touch-min);
-  border: none;
-  border-radius: var(--radius-control);
-  padding: var(--gap-xs);
-  text-align: center;
+.count-face {
+  padding-inline: var(--gap-xs);
+  font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
-}
-
-.stepper[data-kind="done"] .step-count {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.stepper[data-kind="partial"] .step-count {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.stepper[data-kind="missed"] .step-count {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
 }
 
 .count-entry {
@@ -756,18 +842,16 @@ textarea:focus-visible {
 }
 
 .count-input {
-  width: 120px;
+  inline-size: var(--count-input);
+  min-height: var(--mark-touch);
   font: inherit;
-}
-
-.count-target {
-  font-size: var(--size-caption);
+  text-align: center;
 }
 
 .count-error {
+  max-inline-size: var(--name-min);
   color: var(--danger);
   font-size: var(--size-caption);
-  max-width: 160px;
 }
 
 .fatal {
@@ -775,7 +859,9 @@ textarea:focus-visible {
   color: var(--danger);
 }
 
-/* Reports */
+/* Reports (issue 112): one surface like the sheet (issue 73), thin block headings,
+   a bar per day, short ranked lists and a dot per prayer. Text wraps and no
+   label sits inside a bar; the numbers are in each bar's label and list. */
 
 .report-panes {
   flex: 1;
@@ -784,8 +870,6 @@ textarea:focus-visible {
 }
 
 .reports,
-.report-main,
-.report-detail,
 .report-header {
   display: flex;
   flex-direction: column;
@@ -796,7 +880,8 @@ textarea:focus-visible {
 .report-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap-l);
+  align-items: start;
+  gap: var(--gap-m);
 }
 
 .period-chips {
@@ -825,8 +910,7 @@ textarea:focus-visible {
 }
 
 .period-nav,
-.report-score-line,
-.report-deed-head {
+.report-row-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -847,6 +931,7 @@ textarea:focus-visible {
   font-size: var(--size-caption);
 }
 
+/* The week card on the sheet keeps its own card. */
 .report-card {
   min-width: 0;
   padding: var(--gap-l);
@@ -855,29 +940,189 @@ textarea:focus-visible {
   background: var(--surface);
 }
 
-.report-card p {
-  margin-block: var(--gap-s);
+.report-surface {
+  min-width: 0;
+  border: var(--stroke-thin) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.report-empty {
+  padding: var(--gap-l);
+}
+
+.report-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-s);
+  min-width: 0;
+  padding: var(--gap-m);
+}
+
+.report-block + .report-block {
+  border-block-start: var(--stroke-thin) solid var(--border);
+}
+
+.report-block p {
+  margin: 0;
+}
+
+.report-block-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.report-list-title {
+  margin: var(--gap-xs) 0 0;
+  font-size: var(--size-label);
+  font-weight: var(--weight-semibold);
 }
 
 .report-lead {
-  font-size: var(--size-title);
+  font-size: var(--size-label);
   font-weight: var(--weight-semibold);
 }
 
 .report-score-line {
-  justify-content: flex-start;
+  display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-xs) var(--gap-s);
 }
 
 .report-score {
   color: var(--primary);
-  font-size: var(--size-score);
+  font-size: var(--size-headline);
   line-height: 1;
 }
+
+.report-change {
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.report-change[data-trend="up"] {
+  color: var(--mark-done);
+}
+
+.report-change[data-trend="down"] {
+  color: var(--danger);
+}
+
+.report-change[data-trend="none"],
+.report-change[data-trend="same"] {
+  color: var(--text-muted);
+}
+
+/* Bars per day. Each bar is a track with its fill from the bottom. */
+
+.report-bars {
+  display: flex;
+  align-items: stretch;
+  gap: var(--bar-gap);
+  block-size: var(--day-bars-height);
+}
+
+.report-day-bar {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-inline-size: 0;
+  border-radius: var(--radius-bar);
+  background: var(--track);
+}
+
+.report-day-fill {
+  min-block-size: var(--stroke-strong);
+  border-radius: var(--radius-bar);
+}
+
+/* A day note sits as a small dot under its bar, not inside it. */
+.report-day-bar[data-sign="true"]::after,
+.report-swatch.report-sign-swatch {
+  inline-size: var(--sign-dot);
+  block-size: var(--sign-dot);
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+
+.report-day-bar[data-sign="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block-start: calc(100% + var(--gap-xs));
+  inset-inline: 0;
+  margin-inline: auto;
+}
+
+.report-today-bar {
+  border: var(--stroke-strong) dashed var(--mark-open);
+  background: transparent;
+}
+
+.report-axis {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  margin-block-start: var(--gap-s);
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.report-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs) var(--gap-m);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: var(--size-caption);
+}
+
+.report-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+
+.report-swatch {
+  flex: none;
+  inline-size: var(--mark-icon);
+  block-size: var(--bar-thickness);
+  border-radius: var(--radius-pill);
+}
+
+.report-numbers {
+  font-size: var(--size-caption);
+}
+
+.report-numbers summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.report-numbers ul {
+  margin: 0;
+  padding-inline-start: var(--gap-l);
+}
+
+/* Long periods keep a day cell strip on the week card and month rows here. */
 
 .report-series {
   display: grid;
   gap: var(--gap-xs);
+}
+
+.report-card .report-series {
   margin-block: var(--gap-l);
 }
 
@@ -906,18 +1151,24 @@ textarea:focus-visible {
 }
 
 .report-day-cell[data-band="good"],
+.report-day-fill[data-band="good"],
+.report-swatch[data-band="good"],
 .report-bar[data-band="good"] {
   background: var(--mark-done);
   color: var(--on-mark-done);
 }
 
 .report-day-cell[data-band="mid"],
+.report-day-fill[data-band="mid"],
+.report-swatch[data-band="mid"],
 .report-bar[data-band="mid"] {
   background: var(--mark-partial);
   color: var(--on-mark-partial);
 }
 
 .report-day-cell[data-band="low"],
+.report-day-fill[data-band="low"],
+.report-swatch[data-band="low"],
 .report-bar[data-band="low"] {
   background: var(--mark-missed);
   color: var(--on-mark-missed);
@@ -929,34 +1180,85 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.report-month-row,
-.report-meter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
-  align-items: center;
-  gap: var(--gap-s);
-  min-height: var(--touch-min);
+/* A name and percent on one line that wraps, the bar under them. */
+
+.report-meter-row,
+.report-prayer-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding-block: var(--gap-xs);
 }
 
-.report-meter-row small {
-  grid-column: 1 / -1;
-  color: var(--text-muted);
+.report-row-head {
+  flex-wrap: wrap;
+  align-items: baseline;
 }
 
-.report-month-row small {
-  grid-column: 1 / -1;
+.report-row-name {
+  flex: 1 1 var(--name-min);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
 }
 
 .report-bar-track {
-  height: var(--gap-m);
+  block-size: var(--bar-thickness);
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--track);
 }
 
 .report-bar {
-  height: 100%;
+  block-size: 100%;
   border-radius: var(--radius-pill);
+}
+
+/* A dot per prayer per day, as many columns as days, never wider than a mark face. */
+
+.report-dots {
+  display: grid;
+  grid-auto-columns: minmax(0, var(--mark-face));
+  grid-auto-flow: column;
+  justify-content: space-between;
+  gap: var(--gap-xs);
+}
+
+.report-dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: var(--stroke-thin) dashed var(--border-strong);
+  border-radius: var(--radius-mark);
+}
+
+.report-dot svg {
+  inline-size: 70%;
+  block-size: 70%;
+}
+
+.report-dot[data-kind="done"] {
+  border: 0;
+  background: var(--mark-done);
+  color: var(--on-mark-done);
+}
+
+.report-dot[data-kind="partial"] {
+  border: 0;
+  background: var(--mark-partial);
+  color: var(--on-mark-partial);
+}
+
+.report-dot[data-kind="missed"] {
+  border: 0;
+  background: var(--mark-missed);
+  color: var(--on-mark-missed);
+}
+
+.report-dot[data-sign="true"] {
+  outline: var(--stroke-strong) solid var(--text-muted);
+  outline-offset: var(--stroke-thin);
 }
 
 .report-today-line {
@@ -964,9 +1266,10 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--gap-s);
-  padding: var(--gap-m);
+  padding: var(--gap-s) var(--gap-m);
   border-radius: var(--radius-control);
   background: var(--surface-muted);
+  font-size: var(--size-caption);
 }
 
 .report-link {
@@ -979,67 +1282,8 @@ textarea:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
-.report-list-row,
-.report-deed-row {
-  min-height: var(--touch-min);
-  padding-block: var(--gap-m);
-  border-top: var(--stroke-thin) solid var(--border);
-}
-
-.report-list-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--gap-s);
-}
-
-.report-list-detail {
-  display: flex;
-  flex-direction: column;
-}
-
-.report-history {
-  display: flex;
-  gap: var(--gap-xs);
-  overflow-x: auto;
-  margin-block-start: var(--gap-s);
-}
-
-.report-history-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--gap-xs);
-  flex: 0 0 var(--touch-min);
-  min-height: var(--touch-min);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
+.report-not-due p {
   font-size: var(--size-caption);
-  text-align: center;
-}
-
-.report-history-signs {
-  display: flex;
-  gap: var(--gap-xs);
-}
-
-.report-history-cell[data-kind="done"] {
-  background: var(--mark-done);
-  color: var(--on-mark-done);
-}
-
-.report-history-cell[data-kind="partial"] {
-  background: var(--mark-partial);
-  color: var(--on-mark-partial);
-}
-
-.report-history-cell[data-kind="missed"] {
-  background: var(--mark-missed);
-  color: var(--on-mark-missed);
-}
-
-.report-not-due {
-  border-style: dashed;
 }
 
 .sr-only {
@@ -1051,23 +1295,7 @@ textarea:focus-visible {
 
 @media (min-width: 840px) {
   .report-layout {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  }
-
-  /* The score card is narrow here. The due count and the long today label
-     stay in each cell's aria label. */
-  .report-layout .report-day-cell {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .report-layout .report-score-detail + .report-score-detail,
-  .report-layout .report-today-label {
-    display: none;
-  }
-
-  .report-layout .report-today-compact {
-    display: inline;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
@@ -1269,6 +1497,8 @@ textarea:focus-visible {
 .bottom-nav {
   position: sticky;
   bottom: 0;
+  /* Above the sticky slot strip and headings of the sheet. */
+  z-index: 3;
   width: 100%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1360,6 +1590,7 @@ textarea:focus-visible {
 .set-card.selected { border-color: var(--primary); background: var(--primary-soft); }
 .set-copy { flex: 1; min-width: 0; }
 .set-copy p { font-size: var(--size-caption); }
+.set-copy .set-credit { margin-block-start: var(--gap-xs); }
 .set-toggle {
   min-height: var(--touch-min);
   min-width: var(--touch-min);

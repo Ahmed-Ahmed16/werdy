@@ -195,11 +195,16 @@ fn touch_sized(css: &str, selector: &str) -> bool {
     let Some(body) = rule_body(css, selector) else {
         return false;
     };
-    let height = has_declaration(body, "height", "var(--touch-min)")
-        || has_declaration(body, "min-height", "var(--touch-min)");
-    let width = has_declaration(body, "width", "var(--touch-min)")
-        || has_declaration(body, "min-width", "var(--touch-min)");
-    height && (!matches!(selector, ".mark-button" | ".step-button") || width)
+    has_declaration(body, "height", "var(--touch-min)")
+        || has_declaration(body, "min-height", "var(--touch-min)")
+}
+
+/// Sheet controls (#73) use the smaller sheet tap area, at least 44px.
+fn mark_touch_sized(css: &str, selector: &str) -> bool {
+    rule_body(css, selector).is_some_and(|body| {
+        has_declaration(body, "min-height", "var(--mark-touch)")
+            && has_declaration(body, "min-width", "var(--mark-touch)")
+    })
 }
 
 #[test]
@@ -267,17 +272,71 @@ fn interactive_controls_keep_touch_size_and_visible_focus() {
     assert!(APP_CSS.contains("select:focus-visible"));
     assert!(APP_CSS.contains("textarea:focus-visible"));
     assert!(APP_CSS.contains("a:focus-visible"));
-    for selector in [
-        ".mark-button",
-        ".step-button",
-        ".rail-item",
-        ".bottom-item",
-        ".period-chip",
-    ] {
+    for selector in [".step-button", ".rail-item", ".bottom-item", ".period-chip"] {
         assert!(
             touch_sized(APP_CSS, selector),
             "{selector} must use the touch token"
         );
+    }
+}
+
+#[test]
+fn sheet_controls_keep_a_44px_tap_area_around_a_smaller_face() {
+    assert!(TOKENS_CSS.contains("--mark-touch: max(44px, 2.75rem);"));
+    assert!(TOKENS_CSS.contains("--mark-face: 2rem;"));
+    for selector in [".mark-button", ".slot-chip"] {
+        assert!(
+            mark_touch_sized(APP_CSS, selector),
+            "{selector} must use the sheet touch token"
+        );
+    }
+    for selector in [".slot-toggle", ".deed-row", ".count-input"] {
+        let body = rule_body(APP_CSS, selector).expect("rule");
+        assert!(
+            has_declaration(body, "min-height", "var(--mark-touch)"),
+            "{selector} must be at least the sheet touch height"
+        );
+    }
+    // Tap areas sit side by side. A margin or an inset hit area (the prototype's
+    // ::before trick) would let neighbouring tap areas overlap.
+    let button = rule_body(APP_CSS, ".mark-button").expect("rule");
+    assert!(!button.contains("margin"));
+    assert!(!APP_CSS.contains(".mark-button::before"));
+    let face = rule_body(APP_CSS, ".mark-face").expect("rule");
+    assert!(has_declaration(face, "block-size", "var(--mark-face)"));
+}
+
+#[test]
+fn bottom_nav_stays_above_the_sticky_slot_strip_and_headings() {
+    let layer = |selector| {
+        rule_body(APP_CSS, selector)
+            .and_then(|body| {
+                body.lines()
+                    .find_map(|line| line.trim().strip_prefix("z-index:"))
+                    .and_then(|value| value.trim().trim_end_matches(';').parse::<i32>().ok())
+            })
+            .expect("z-index")
+    };
+    assert!(layer(".bottom-nav") > layer(".slot-strip"));
+    assert!(layer(".slot-strip") > layer(".slot-heading"));
+}
+
+#[test]
+fn type_sizes_follow_the_phone_text_size() {
+    for token in [
+        "--size-caption",
+        "--size-body",
+        "--size-label",
+        "--size-title",
+        "--size-screen",
+        "--size-score",
+        "--size-headline",
+    ] {
+        let line = TOKENS_CSS
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{token}:")))
+            .expect("token");
+        assert!(line.trim_end().ends_with("rem;"), "{token} must be in rem");
     }
 }
 
@@ -339,6 +398,21 @@ fn reminder_switch_thumb_moves_from_inline_start_in_both_directions() {
     }
 }
 
+/// `index.html` starts as `<html dir="rtl">` and the app root sets the real
+/// direction, so an ancestor `[dir="rtl"]` selector matches in English too.
+/// Direction flips use `:dir(rtl)`, which reads the nearest `dir`.
+#[test]
+fn direction_flips_follow_the_app_language_not_the_html_tag() {
+    assert!(!APP_CSS.contains("[dir=\"rtl\"]"));
+    assert!(!APP_CSS.contains("[dir=rtl]"));
+    for selector in [
+        ".chevron:dir(rtl)",
+        ".slot[data-open=\"false\"] .fold-chevron:dir(rtl)",
+    ] {
+        assert!(rule_body(APP_CSS, selector).is_some(), "missing {selector}");
+    }
+}
+
 #[test]
 fn compact_week_keeps_note_signs_and_short_today_label() {
     assert!(!APP_CSS.contains(".week-card .report-day-cell small {"));
@@ -356,29 +430,4 @@ fn compact_week_keeps_note_signs_and_short_today_label() {
             .is_some_and(|body| has_declaration(body, "display", "inline"))
     );
     assert!(include_str!("ui/reports.rs").contains("reports-today-short"));
-}
-
-#[test]
-fn two_column_reports_keep_day_cells_inside_their_boxes() {
-    // From 840px the score card is two fifths wide, so a day cell is about
-    // 53px. The due count and the long today label stay in the aria label.
-    let query = "(min-width: 840px)";
-    for (selector, declaration) in [
-        (".report-layout .report-day-cell", ("min-width", "0")),
-        (".report-layout .report-day-cell", ("overflow", "hidden")),
-        (
-            ".report-layout .report-score-detail + .report-score-detail",
-            ("display", "none"),
-        ),
-        (".report-layout .report-today-label", ("display", "none")),
-        (
-            ".report-layout .report-today-compact",
-            ("display", "inline"),
-        ),
-    ] {
-        assert!(
-            media_rule_has(APP_CSS, query, selector, declaration),
-            "missing {selector} {declaration:?}"
-        );
-    }
 }

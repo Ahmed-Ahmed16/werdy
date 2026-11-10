@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use werdy_core::{CategoryKey, DeedRule, Schedule, SlotKey, Target, Weekday};
+use werdy_core::{CategoryKey, DeedId, DeedRule, Schedule, SlotKey, Target, Weekday};
 use werdy_data::{Catalog, Deed as CatalogDeed, Schedule as CatalogSchedule};
 use werdy_store::{DeedName, OwnerData};
 
@@ -67,6 +67,26 @@ pub fn five_prayers(today: werdy_core::WerdyDay) -> Result<OwnerData, werdy_data
     data.first_run_complete = true;
     data.chosen_sets.insert("five_prayers".to_owned());
     Ok(data)
+}
+
+/// The owner's five fard prayer deeds, in the five prayers set order.
+/// A prayer deed is one added from that starter set (decision 0041).
+pub fn fard_prayer_ids(data: &OwnerData) -> Vec<DeedId> {
+    let Some(set) = crate::editor_data::catalog()
+        .ok()
+        .and_then(|catalog| catalog.set("five_prayers"))
+    else {
+        return Vec::new();
+    };
+    set.deeds
+        .iter()
+        .filter_map(|key| {
+            data.starter_keys
+                .iter()
+                .find(|(_, stored)| *stored == key)
+                .map(|(id, _)| *id)
+        })
+        .collect()
 }
 
 pub fn slot_order() -> Vec<SlotKey> {
@@ -142,9 +162,30 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
 
 #[cfg(test)]
 mod tests {
-    use super::{missing_deeds, rule};
+    use super::{fard_prayer_ids, missing_deeds, rule};
     use std::collections::BTreeSet;
+    use werdy_core::DeedId;
     use werdy_store::OwnerData;
+
+    #[test]
+    fn fard_prayers_follow_the_five_prayers_set_order() -> Result<(), Box<dyn std::error::Error>> {
+        let mut data = OwnerData::default();
+        for (id, key) in [
+            (7, "isha_on_time"),
+            (3, "sunnah_before_fajr"),
+            (5, "fajr_on_time"),
+            (9, "asr_on_time"),
+        ] {
+            data.starter_keys.insert(DeedId(id), key.to_owned());
+        }
+        assert_eq!(fard_prayer_ids(&data), [DeedId(5), DeedId(9), DeedId(7)]);
+        Ok(())
+    }
+
+    #[test]
+    fn a_sheet_without_starter_prayers_has_no_fard_prayers() {
+        assert!(fard_prayer_ids(&OwnerData::default()).is_empty());
+    }
 
     #[test]
     fn overlapping_sets_add_shared_deed_once() -> Result<(), Box<dyn std::error::Error>> {

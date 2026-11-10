@@ -158,6 +158,7 @@ pub fn SetPicker() -> Element {
                             div { class: "set-copy",
                                 h2 { {i18n.t(&set.name)} }
                                 p { "{contents}" }
+                                if let Some(credit) = &set.credit { p { class: "set-credit", {i18n.t(credit)} } }
                             }
                             button { class: "set-toggle", aria_label: i18n.t_with(if active { "sets-remove-named" } else { "sets-add-named" }, &[("set", FluentValue::from(i18n.t(&set.name)))]), aria_pressed: "{active}", onclick: move |_| {
                                 if actions.change_deed(|state| state.toggle_set(&key)).is_err() { error.set(true); }

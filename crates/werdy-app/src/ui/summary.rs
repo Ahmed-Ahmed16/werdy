@@ -2,19 +2,19 @@
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
+use werdy_core::TodaySummary;
 
 use super::context::{use_actions, use_i18n};
 use super::reports::Series;
 use crate::state::{AppState, SaveStatus, Screen};
 
-/// Done, partial and open or missed counts for the day on screen.
+/// One line for the day on screen: counts, a thin bar and, on a finished day,
+/// the score.
 #[component]
 pub fn TodayCard() -> Element {
     let i18n = use_i18n();
-    let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
-    let can_filter = !super::sharing::read_only();
-    let (summary, score, is_today, noted, note_late, showing_unmarked) = {
+    let (summary, score, is_today, noted, note_late) = {
         let state = state.read();
         (
             state.summary(),
@@ -24,7 +24,6 @@ pub fn TodayCard() -> Element {
             state
                 .viewing_note()
                 .is_some_and(|note| note.is_late_for(state.viewing)),
-            state.showing_unmarked(),
         )
     };
     let title_key = if is_today {
@@ -32,45 +31,63 @@ pub fn TodayCard() -> Element {
     } else {
         "summary-title-past"
     };
+    let (line_key, last) = if is_today {
+        ("summary-line-today", summary.open)
+    } else {
+        ("summary-line-past", summary.missed)
+    };
+    let line = i18n.t_with(
+        line_key,
+        &[
+            ("done", FluentValue::from(summary.done)),
+            ("partial", FluentValue::from(summary.partial)),
+            ("last", FluentValue::from(last)),
+        ],
+    );
+    let [done, partial, missed] = bar_shares(&summary);
 
     rsx! {
         aside { class: "today-card",
-            h2 { class: "card-title", {i18n.t(title_key)} }
-            if noted { span { class: "note-sign", role: "img", aria_label: i18n.t("note-sign"), {i18n.t("note-sign-symbol")} } }
-            if note_late { span { class: "late-sign", aria_label: i18n.t("mark-added-later"), {i18n.t("mark-added-later")} } }
-            match score {
-                Ok(Some(score)) => rsx! {
-                    if let Some(percent) = score.percent {
-                        p { class: "card-note", {i18n.t_with("summary-score", &[("percent", FluentValue::from(percent))])} }
-                    }
-                },
-                Err(_) => rsx! { p { class: "editor-error", role: "alert", {i18n.t("summary-score-error")} } },
-                Ok(None) => rsx! {},
-            }
-            div { class: "counts",
-                Count { kind: "done", value: summary.done, label: i18n.t("summary-done") }
-                Count { kind: "partial", value: summary.partial, label: i18n.t("summary-partial") }
-                if is_today && can_filter {
-                    button {
-                        class: "count count-button",
-                        "data-kind": "open",
-                        aria_pressed: "{showing_unmarked}",
-                        aria_label: i18n.t_with("summary-open-filter", &[("count", FluentValue::from(summary.open))]),
-                        onclick: move |_| actions.view(AppState::toggle_unmarked),
-                        span { class: "count-value", {i18n.num(summary.open)} }
-                        span { class: "count-label", {i18n.t("summary-open")} }
-                    }
-                } else if is_today {
-                    Count { kind: "open", value: summary.open, label: i18n.t("summary-open") }
-                } else {
-                    Count { kind: "missed", value: summary.missed, label: i18n.t("summary-missed") }
+            div { class: "today-line",
+                h2 { class: "today-title", {i18n.t(title_key)} }
+                p { class: "today-counts", "{line}" }
+                if noted { span { class: "note-sign", role: "img", aria_label: i18n.t("note-sign"), {i18n.t("note-sign-symbol")} } }
+                if note_late { span { class: "late-sign", aria_label: i18n.t("mark-added-later"), {i18n.t("mark-added-later")} } }
+                match score {
+                    Ok(Some(score)) => rsx! {
+                        if let Some(percent) = score.percent {
+                            p { class: "today-score", {i18n.t_with("summary-score", &[("percent", FluentValue::from(percent))])} }
+                        }
+                    },
+                    Err(_) => rsx! { p { class: "editor-error", role: "alert", {i18n.t("summary-score-error")} } },
+                    Ok(None) => rsx! {},
                 }
             }
+            div { class: "today-bar", "aria-hidden": "true",
+                span { "data-kind": "done", style: "inline-size: {done}%" }
+                span { "data-kind": "partial", style: "inline-size: {partial}%" }
+                span { "data-kind": "missed", style: "inline-size: {missed}%" }
+            }
             if is_today {
-                p { class: "card-note", {i18n.t("summary-in-progress")} }
+                p { class: "sr-only", {i18n.t("summary-in-progress")} }
             }
         }
     }
+}
+
+/// Done, partial and missed as percents of all due deeds, for the bar. The
+/// rest of the bar is open deeds.
+fn bar_shares(summary: &TodaySummary) -> [f64; 3] {
+    let total = summary.done + summary.partial + summary.open + summary.missed;
+    if total == 0 {
+        return [0.0; 3];
+    }
+    let share = |count: usize| count as f64 * 100.0 / total as f64;
+    [
+        share(summary.done),
+        share(summary.partial),
+        share(summary.missed),
+    ]
 }
 
 /// Finished days from the latest week, using the same scored cells as reports.
@@ -105,17 +122,6 @@ pub fn WeekCard() -> Element {
     }
 }
 
-#[component]
-fn Count(kind: &'static str, value: usize, label: String) -> Element {
-    let i18n = use_i18n();
-    rsx! {
-        div { class: "count", "data-kind": kind,
-            span { class: "count-value", {i18n.num(value)} }
-            span { class: "count-label", "{label}" }
-        }
-    }
-}
-
 /// Shows a short line when saving failed or saved data could not be read.
 #[component]
 pub fn StatusBanner() -> Element {
@@ -130,5 +136,31 @@ pub fn StatusBanner() -> Element {
 
     rsx! {
         p { class: "status-banner", role: "alert", {i18n.t(key)} }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use werdy_core::TodaySummary;
+
+    use super::bar_shares;
+
+    #[test]
+    fn the_bar_splits_the_day_into_done_partial_and_missed_shares() {
+        // 2 done, 1 partial, 4 open and 1 missed out of 8 due deeds.
+        let summary = TodaySummary {
+            done: 2,
+            partial: 1,
+            open: 4,
+            missed: 1,
+        };
+        assert_eq!(bar_shares(&summary), [25.0, 12.5, 12.5]);
+        let empty = TodaySummary {
+            done: 0,
+            partial: 0,
+            open: 0,
+            missed: 0,
+        };
+        assert_eq!(bar_shares(&empty), [0.0, 0.0, 0.0]);
     }
 }
