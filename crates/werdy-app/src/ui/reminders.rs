@@ -61,19 +61,21 @@ fn SlotReminderRow(slot: &'static str) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     let actions = use_actions();
+    let slot_key = SlotKey::new(slot);
     let rule = state
         .read()
         .data
         .settings
         .reminders
         .slots
-        .get(&SlotKey::new(slot))
+        .get(&slot_key)
         .cloned();
     let prayer = matches!(slot, "fajr" | "dhuhr" | "asr" | "maghrib" | "isha");
     let delay = match &rule {
-        Some(SlotReminder::Prayer { offset_minutes }) => u8::from(*offset_minutes),
-        _ => 0,
+        Some(SlotReminder::Prayer { offset_minutes }) => *offset_minutes,
+        _ => PrayerDelay::default_for(&slot_key),
     };
+    let delay_minutes = u8::from(delay);
     let time = match &rule {
         Some(SlotReminder::Clock(time)) => time_value(*time),
         _ => "09:00".into(),
@@ -85,7 +87,7 @@ fn SlotReminderRow(slot: &'static str) -> Element {
             label { class: "reminder-switch",
                 input { r#type: "checkbox", checked: rule.is_some(), onchange: move |event| {
                     let reminder = if !event.checked() { None }
-                        else if prayer { Some(SlotReminder::Prayer { offset_minutes: PrayerDelay::try_from(delay).unwrap_or_default() }) }
+                        else if prayer { Some(SlotReminder::Prayer { offset_minutes: delay }) }
                         else { parse_time(&toggle_time).map(SlotReminder::Clock) };
                     actions.change(|app| app.set_slot_reminder(SlotKey::new(slot), reminder));
                 } }
@@ -94,13 +96,13 @@ fn SlotReminderRow(slot: &'static str) -> Element {
             if rule.is_some() {
                 if prayer {
                     label { class: "editor-label", r#for: "reminder-delay-{slot}", {i18n.t("reminders-delay")} }
-                    select { id: "reminder-delay-{slot}", class: "editor-input", value: "{delay}", onchange: move |event| {
+                    select { id: "reminder-delay-{slot}", class: "editor-input", value: "{delay_minutes}", onchange: move |event| {
                         if let Ok(delay) = event.value().parse::<u8>() && let Ok(delay) = PrayerDelay::try_from(delay) {
                             actions.change(|app| app.set_slot_reminder(SlotKey::new(slot), Some(SlotReminder::Prayer { offset_minutes: delay })));
                         }
                     },
-                        if ![0, 5, 10, 15, 30].contains(&delay) {
-                            option { value: "{delay}", {i18n.t_with("reminders-delay-minutes", &[("minutes", FluentValue::from(i64::from(delay)))])} }
+                        if ![0, 5, 10, 15, 30].contains(&delay_minutes) {
+                            option { value: "{delay_minutes}", {i18n.t_with("reminders-delay-minutes", &[("minutes", FluentValue::from(i64::from(delay_minutes)))])} }
                         }
                         for minutes in [0, 5, 10, 15, 30] {
                             option { value: "{minutes}", {i18n.t_with("reminders-delay-minutes", &[("minutes", FluentValue::from(minutes))])} }
