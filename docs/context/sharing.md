@@ -112,6 +112,23 @@ For `watch_them`, owner is the receiver and watcher is the sender.
 `werdy_request_decline(request_id)` deletes quietly. Both actions and successful
 sends refresh Sharing lists, including People watching me and People I watch.
 Failed sends keep the entered email for retry. No email is sent.
+The Waiting list shows each sent request's stored receiver email, direction and
+expiry date. It is hidden when empty. `werdy_request_outgoing()` returns only
+the caller's waiting requests, ordered by creation time and id, and removes
+expired rows. Each row expires 30 days after creation.
+`werdy_request_cancel(request_id)` deletes only the caller's sent request and
+always returns `{"ok": true}`. Cancel refreshes the lists. Decline and expiry
+remove the row without a reason or status left in Waiting.
+
+A sender may have five waiting unexpired requests across both directions.
+Send clears expired rows and counts under the sender lock. The sixth insert
+raises `P0001` with `watch request limit reached`; invalid input, own email,
+duplicates and existing shares keep `22023`. A crossing request creates a
+share without inserting, so it still works at the limit. Cancelling frees a
+slot. The client maps only the send RPC's exact limit error to
+`SyncError::WatchRequestLimit`, shows the limit message and keeps the typed
+email. `WATCH_REQUEST_LIMIT` mirrors the server limit for that message.
+
 Sent requests cascade from the sender's account. A trigger
 on `auth.users` deletes requests addressed to a deleted account's email, so this
 migration does not redefine `werdy_account_delete`.

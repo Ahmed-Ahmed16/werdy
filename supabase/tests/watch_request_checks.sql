@@ -270,4 +270,95 @@ begin
         delete from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver);
     end loop;
 end $$;
+-- Sender controls, quiet removal, expiry and the shared limit in both directions.
+do $$
+declare
+    test_sender uuid := pg_catalog.gen_random_uuid();
+    test_receiver uuid := pg_catalog.gen_random_uuid();
+    test_third uuid := pg_catalog.gen_random_uuid();
+    outgoing jsonb;
+    request_id uuid;
+    test_direction text;
+    i integer;
+    rejected boolean;
+begin
+    insert into auth.users(id,email) values(test_sender, test_sender::text || '@outgoing.test'),
+        (test_receiver, test_receiver::text || '@outgoing.test'), (test_third, test_third::text || '@outgoing.test');
+    foreach test_direction in array array['watch_me', 'watch_them'] loop
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        set local role authenticated;
+        perform public.werdy_request_send('  ' || pg_catalog.upper(test_receiver::text || '@outgoing.test') || '  ',test_direction);
+        outgoing := public.werdy_request_outgoing();
+        if pg_catalog.jsonb_array_length(outgoing) <> 1
+            or outgoing#>>'{0,email}' is distinct from test_receiver::text || '@outgoing.test'
+            or outgoing#>>'{0,direction}' is distinct from test_direction
+            or (outgoing#>>'{0,expires_at}')::bigint is distinct from (outgoing#>>'{0,created_at}')::bigint + 2592000000 then
+            raise exception 'outgoing contract wrong';
+        end if;
+        request_id := (outgoing#>>'{0,id}')::uuid;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_third)::text,true);
+        if public.werdy_request_outgoing() is distinct from '[]'::jsonb then raise exception 'third sees outgoing'; end if;
+        if public.werdy_request_cancel(request_id) is distinct from '{"ok":true}'::jsonb then raise exception 'third cancel reply wrong'; end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        if public.werdy_request_outgoing() is distinct from outgoing then raise exception 'third cancelled request'; end if;
+        if public.werdy_request_cancel(request_id) is distinct from '{"ok":true}'::jsonb
+            or public.werdy_request_cancel(request_id) is distinct from '{"ok":true}'::jsonb
+            or public.werdy_request_outgoing() is distinct from '[]'::jsonb then raise exception 'sender cancel failed'; end if;
+        perform public.werdy_request_send(test_receiver::text || '@outgoing.test',test_direction);
+        outgoing := public.werdy_request_outgoing();
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        perform public.werdy_request_decline((outgoing#>>'{0,id}')::uuid);
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        if public.werdy_request_outgoing() is distinct from '[]'::jsonb then raise exception 'decline left outgoing trace'; end if;
+        reset role;
+        insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
+            values(test_sender, test_receiver::text || '@outgoing.test',test_direction,0,0);
+        set local role authenticated;
+        if public.werdy_request_outgoing() is distinct from '[]'::jsonb then raise exception 'expired outgoing visible'; end if;
+        reset role;
+        if exists(select 1 from werdy_private.watch_requests r where r.sender = test_sender) then raise exception 'expired outgoing not deleted'; end if;
+        -- Send must clear expiry before counting, even without a preceding list.
+        insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
+            values(test_sender, test_receiver::text || '@outgoing.test',test_direction,0,0);
+        set local role authenticated;
+        for i in 1..5 loop
+            perform public.werdy_request_send(i::text || '@limit.test',
+                case when i % 2 = 0 then 'watch_me' else 'watch_them' end);
+        end loop;
+        outgoing := public.werdy_request_outgoing();
+        if pg_catalog.jsonb_array_length(outgoing) <> 5 then raise exception 'five sends refused'; end if;
+        rejected := false;
+        begin
+            perform public.werdy_request_send('sixth@limit.test',test_direction);
+        exception when sqlstate 'P0001' then
+            if sqlerrm <> 'watch request limit reached' then raise; end if;
+            rejected := true;
+        end;
+        if not rejected then raise exception 'sixth send accepted'; end if;
+        -- Duplicate errors keep their original SQLSTATE even at the limit.
+        rejected := false;
+        begin perform public.werdy_request_send('1@limit.test','watch_them');
+            exception when invalid_parameter_value then rejected := true; end;
+        if not rejected then raise exception 'duplicate at limit error wrong'; end if;
+        perform public.werdy_request_cancel((outgoing#>>'{0,id}')::uuid);
+        perform public.werdy_request_send('sixth@limit.test',test_direction);
+        if pg_catalog.jsonb_array_length(public.werdy_request_outgoing()) <> 5 then raise exception 'cancel did not free slot'; end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        perform public.werdy_request_send(test_sender::text || '@outgoing.test',
+            case when test_direction = 'watch_me' then 'watch_them' else 'watch_me' end);
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        if public.werdy_request_send(test_receiver::text || '@outgoing.test',test_direction) is distinct from '{"ok":true}'::jsonb then
+            raise exception 'crossing at limit refused';
+        end if;
+        if pg_catalog.jsonb_array_length(public.werdy_request_outgoing()) <> 5 then raise exception 'crossing inserted request'; end if;
+        reset role;
+        if not exists(select 1 from public.werdy_shares s
+            where s.owner = case when test_direction = 'watch_me' then test_sender else test_receiver end
+            and s.watcher = case when test_direction = 'watch_me' then test_receiver else test_sender end) then
+            raise exception 'crossing at limit did not create share';
+        end if;
+        delete from public.werdy_shares s where s.owner in (test_sender,test_receiver);
+        delete from werdy_private.watch_requests r where r.sender in (test_sender,test_receiver);
+    end loop;
+end $$;
 rollback;
