@@ -43,6 +43,24 @@ impl From<ClockTime> for u16 {
 #[serde(try_from = "u8", into = "u8")]
 pub struct PrayerDelay(u8);
 
+const DEFAULT_PRAYER_DELAYS: [(&str, PrayerDelay); 5] = [
+    ("fajr", PrayerDelay(45)),
+    ("dhuhr", PrayerDelay(30)),
+    ("asr", PrayerDelay(30)),
+    ("maghrib", PrayerDelay(20)),
+    ("isha", PrayerDelay(30)),
+];
+
+impl PrayerDelay {
+    pub fn default_for(slot: &SlotKey) -> Self {
+        DEFAULT_PRAYER_DELAYS
+            .iter()
+            .find(|(key, _)| *key == slot.0)
+            .map(|(_, delay)| *delay)
+            .unwrap_or_default()
+    }
+}
+
 impl TryFrom<u8> for PrayerDelay {
     type Error = &'static str;
 
