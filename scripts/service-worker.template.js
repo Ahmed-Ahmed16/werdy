@@ -36,3 +36,36 @@ self.addEventListener("fetch", (event) => {
     caches.match(request).then((cached) => cached || fetch(request))
   );
 });
+
+self.addEventListener("push", (event) => {
+  let payload;
+  try {
+    payload = event.data?.json();
+  } catch (_error) {
+    return;
+  }
+  if (!payload?.notification) return;
+  const { title, body, navigate, tag } = payload.notification;
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag,
+    data: { url: navigate },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    const open = windows.find((client) => {
+      const url = new URL(client.url);
+      return url.origin === self.location.origin && url.pathname.startsWith(APP_ROOT);
+    });
+    if (open) return open.focus();
+    return clients.openWindow(APP_ROOT);
+  })());
+});
+
+self.addEventListener("pushsubscriptionchange", (_event) => {
+  // The next app open repairs the subscription with the owner's session.
+});
