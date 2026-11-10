@@ -141,6 +141,7 @@ pub enum SaveStatus {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Screen {
     FirstRunLevel,
+    FirstRunExtras,
     FirstRunLocation,
     SetPicker,
     /// Daily sheet.
@@ -416,6 +417,10 @@ pub struct AppState {
     pub screen: Screen,
     /// Selected Academy level before its deeds are added.
     pub pending_level: Option<String>,
+    /// Level whose extra ticks were last shown.
+    pub pending_extra_level: Option<String>,
+    /// Extra sets ticked on the first run view.
+    pub pending_extra_ticks: BTreeSet<String>,
     /// Screen to return to after changing location.
     pub location_return: Screen,
     /// Feedback for one browser location request.
@@ -468,6 +473,8 @@ impl AppState {
             save_status,
             screen,
             pending_level: None,
+            pending_extra_level: None,
+            pending_extra_ticks: BTreeSet::new(),
             location_return: Screen::Deeds,
             location_request: LocationRequest::default(),
             settings_back_to_deeds: false,
@@ -730,35 +737,94 @@ impl AppState {
         Ok(())
     }
 
-    /// Adds the chosen level, removes other levels, and keeps other saved sets.
+    /// Opens the extras step with that level's current ticks.
     pub fn continue_first_run_level(&mut self) -> Result<(), EditorError> {
         let key = self.pending_level.clone().ok_or(EditorError::RuleChange)?;
-        self.apply_first_run_level(Some(&key))
-    }
-
-    /// Opens location without a level, keeping other saved sets.
-    pub fn start_first_run_empty(&mut self) -> Result<(), EditorError> {
-        self.apply_first_run_level(None)
-    }
-
-    fn apply_first_run_level(&mut self, chosen: Option<&str>) -> Result<(), EditorError> {
         let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
-        if chosen.is_some_and(|key| !catalog.set(key).is_some_and(|set| set.level.is_some())) {
+        let level = catalog
+            .set(&key)
+            .and_then(|set| set.level.as_ref())
+            .ok_or(EditorError::RuleChange)?;
+        if self.pending_extra_level.as_deref() != Some(&key) {
+            self.pending_extra_ticks = level
+                .offers
+                .iter()
+                .filter(|offer| offer.ticked)
+                .map(|offer| offer.set.clone())
+                .collect();
+            self.pending_extra_level = Some(key);
+        }
+        self.show_screen(Screen::FirstRunExtras);
+        Ok(())
+    }
+
+    /// Changes one extra tick without changing saved deeds.
+    pub fn toggle_first_run_extra(&mut self, key: &str) -> Result<(), EditorError> {
+        let level_key = self
+            .pending_level
+            .as_deref()
+            .ok_or(EditorError::RuleChange)?;
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        let level = catalog
+            .set(level_key)
+            .and_then(|set| set.level.as_ref())
+            .ok_or(EditorError::RuleChange)?;
+        if self.screen != Screen::FirstRunExtras
+            || !level.offers.iter().any(|offer| offer.set == key)
+        {
             return Err(EditorError::RuleChange);
         }
+        if !self.pending_extra_ticks.insert(key.to_owned()) {
+            self.pending_extra_ticks.remove(key);
+        }
+        Ok(())
+    }
+
+    /// Returns to the level cards without losing the choice or ticks.
+    pub fn back_first_run_extras(&mut self) {
+        self.show_screen(Screen::FirstRunLevel);
+    }
+
+    /// Adds the level and selected extras, then opens location.
+    pub fn continue_first_run_extras(&mut self) -> Result<(), EditorError> {
+        self.finish_first_run_extras(self.pending_extra_ticks.clone())
+    }
+
+    /// Adds only the level, then opens location.
+    pub fn skip_first_run_extras(&mut self) -> Result<(), EditorError> {
+        self.finish_first_run_extras(BTreeSet::new())
+    }
+
+    fn finish_first_run_extras(&mut self, extra_keys: BTreeSet<String>) -> Result<(), EditorError> {
+        let key = self.pending_level.clone().ok_or(EditorError::RuleChange)?;
+        if self.screen != Screen::FirstRunExtras
+            || self.pending_extra_level.as_deref() != Some(&key)
+        {
+            return Err(EditorError::RuleChange);
+        }
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        let level = catalog
+            .set(&key)
+            .and_then(|set| set.level.as_ref())
+            .ok_or(EditorError::RuleChange)?;
+        let offered: BTreeSet<_> = level.offers.iter().map(|offer| offer.set.clone()).collect();
+        if !extra_keys.is_subset(&offered) {
+            return Err(EditorError::RuleChange);
+        }
+        let wanted: BTreeSet<_> = std::iter::once(key.clone()).chain(extra_keys).collect();
         let previous = self.clone();
         let result = (|| {
-            for key in self.data.chosen_sets.clone() {
-                if Some(key.as_str()) != chosen
-                    && catalog.set(&key).is_some_and(|set| set.level.is_some())
-                {
-                    self.toggle_set(&key)?;
+            self.apply_first_run_level(&key)?;
+            // Only this level's offers are managed here; sets saved elsewhere stay.
+            for selected in self.data.chosen_sets.clone() {
+                if offered.contains(&selected) && !wanted.contains(&selected) {
+                    self.toggle_set(&selected)?;
                 }
             }
-            if let Some(key) = chosen
-                && !self.data.chosen_sets.contains(key)
-            {
-                self.toggle_set(key)?;
+            for selected in wanted {
+                if !self.data.chosen_sets.contains(&selected) {
+                    self.toggle_set(&selected)?;
+                }
             }
             Ok(())
         })();
@@ -766,7 +832,51 @@ impl AppState {
             *self = previous;
             return Err(error);
         }
-        self.pending_level = chosen.map(str::to_owned);
+        Ok(())
+    }
+
+    /// Opens location without a level, keeping other saved sets.
+    pub fn start_first_run_empty(&mut self) -> Result<(), EditorError> {
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        let previous = self.clone();
+        for key in self.data.chosen_sets.clone() {
+            if catalog.set(&key).is_none_or(|set| set.level.is_none()) {
+                continue;
+            }
+            if let Err(error) = self.toggle_set(&key) {
+                *self = previous;
+                return Err(error);
+            }
+        }
+        self.pending_level = None;
+        self.pending_extra_level = None;
+        self.pending_extra_ticks.clear();
+        self.show_screen(Screen::FirstRunLocation);
+        Ok(())
+    }
+
+    fn apply_first_run_level(&mut self, chosen: &str) -> Result<(), EditorError> {
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        if !catalog.set(chosen).is_some_and(|set| set.level.is_some()) {
+            return Err(EditorError::RuleChange);
+        }
+        let previous = self.clone();
+        let result = (|| {
+            for key in self.data.chosen_sets.clone() {
+                if key != chosen && catalog.set(&key).is_some_and(|set| set.level.is_some()) {
+                    self.toggle_set(&key)?;
+                }
+            }
+            if !self.data.chosen_sets.contains(chosen) {
+                self.toggle_set(chosen)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            *self = previous;
+            return Err(error);
+        }
+        self.pending_level = Some(chosen.to_owned());
         self.show_screen(Screen::FirstRunLocation);
         Ok(())
     }
@@ -2205,7 +2315,7 @@ mod tests {
     }
 
     #[test]
-    fn first_run_level_selection_waits_until_next_and_adds_only_latest_level() -> TestResult {
+    fn first_run_level_next_opens_extras_with_default_tick() -> TestResult {
         let store = MemoryStore::default();
         let mut state = AppState::start(&store, today()?, slot_order());
         state.select_first_run_level("level_1")?;
@@ -2214,14 +2324,29 @@ mod tests {
         assert!(state.data.chosen_sets.is_empty());
 
         state.continue_first_run_level()?;
+        assert_eq!(state.screen, Screen::FirstRunExtras);
+        assert_eq!(
+            state.pending_extra_ticks,
+            BTreeSet::from(["five_prayers".into()])
+        );
+        assert!(state.data.chosen_sets.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_extras_next_adds_level_and_ticked_prayers() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.select_first_run_level("levels_2_3")?;
+        state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
         let catalog = werdy_data::builtin()?;
         let level = catalog.set("levels_2_3").ok_or("missing level")?;
+        let prayers = catalog.set("five_prayers").ok_or("missing prayers")?;
         assert_eq!(state.screen, Screen::FirstRunLocation);
         assert_eq!(
             state.data.chosen_sets,
-            BTreeSet::from(["levels_2_3".into()])
+            BTreeSet::from(["levels_2_3".into(), "five_prayers".into()])
         );
-        assert_eq!(state.data.deeds.len(), level.deeds.len());
         assert_eq!(
             state
                 .data
@@ -2229,20 +2354,80 @@ mod tests {
                 .values()
                 .cloned()
                 .collect::<BTreeSet<_>>(),
-            level.deeds.iter().cloned().collect()
+            level.deeds.iter().chain(&prayers.deeds).cloned().collect()
         );
+        Ok(())
+    }
 
-        state.toggle_set("five_prayers")?;
-        state.show_screen(Screen::FirstRunLevel);
+    #[test]
+    fn first_run_extras_toggle_and_skip_choose_expected_sets() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
         state.select_first_run_level("level_1")?;
         state.continue_first_run_level()?;
+        state.toggle_first_run_extra("five_prayers")?;
+        state.continue_first_run_extras()?;
+        assert_eq!(state.data.chosen_sets, BTreeSet::from(["level_1".into()]));
+        assert_eq!(state.data.deeds.len(), 44);
+        assert!(
+            !state
+                .data
+                .starter_keys
+                .values()
+                .any(|key| key == "fajr_on_time")
+        );
+
+        state.show_screen(Screen::FirstRunLevel);
+        state.continue_first_run_level()?;
+        state.toggle_first_run_extra("ramadan")?;
+        state.continue_first_run_extras()?;
         assert_eq!(
             state.data.chosen_sets,
-            BTreeSet::from(["level_1".into(), "five_prayers".into()])
+            BTreeSet::from(["level_1".into(), "ramadan".into()])
         );
+        let catalog = werdy_data::builtin()?;
+        for deed in &catalog.set("ramadan").ok_or("missing Ramadan set")?.deeds {
+            assert!(
+                state.data.starter_keys.values().any(|key| key == deed),
+                "{deed}"
+            );
+        }
+
+        state.show_screen(Screen::FirstRunLevel);
+        state.continue_first_run_level()?;
+        state.skip_first_run_extras()?;
+        assert_eq!(state.data.chosen_sets, BTreeSet::from(["level_1".into()]));
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_extras_back_keeps_ticks_and_level_change_resets_them() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.toggle_first_run_extra("five_prayers")?;
+        state.toggle_first_run_extra("ramadan")?;
+        state.back_first_run_extras();
+        assert_eq!(state.screen, Screen::FirstRunLevel);
+        assert_eq!(state.pending_level.as_deref(), Some("level_1"));
+        state.continue_first_run_level()?;
         assert_eq!(
-            state.data.deeds.len(),
-            crate::starter::selected_deeds(&catalog, &state.data.chosen_sets).len()
+            state.pending_extra_ticks,
+            BTreeSet::from(["ramadan".into()])
+        );
+        state.continue_first_run_extras()?;
+
+        state.show_screen(Screen::FirstRunLevel);
+        state.select_first_run_level("levels_2_3")?;
+        state.continue_first_run_level()?;
+        assert_eq!(
+            state.pending_extra_ticks,
+            BTreeSet::from(["five_prayers".into()])
+        );
+        state.continue_first_run_extras()?;
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["levels_2_3".into(), "five_prayers".into()])
         );
         Ok(())
     }
@@ -2263,6 +2448,8 @@ mod tests {
         let mut state = AppState::start(store, today()?, slot_order());
         state.select_first_run_level("level_1")?;
         state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
+        state.show_screen(Screen::SetPicker);
         state.toggle_set("quran")?;
         state.save_to(store);
         assert_eq!(state.save_status, SaveStatus::Saved);
@@ -2311,10 +2498,11 @@ mod tests {
         let mut state = resumed_first_run_with_quran(&store)?;
         state.select_first_run_level("level_1")?;
         state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
 
         assert_eq!(
             state.data.chosen_sets,
-            BTreeSet::from(["level_1".into(), "quran".into()])
+            BTreeSet::from(["level_1".into(), "five_prayers".into(), "quran".into()])
         );
         assert_quran_active_on_sheet(&state)
     }
@@ -2334,10 +2522,11 @@ mod tests {
         assert!(!old_only.is_empty());
         state.select_first_run_level("levels_2_3")?;
         state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
 
         assert_eq!(
             state.data.chosen_sets,
-            BTreeSet::from(["levels_2_3".into(), "quran".into()])
+            BTreeSet::from(["levels_2_3".into(), "five_prayers".into(), "quran".into()])
         );
         assert!(
             state
@@ -2355,9 +2544,15 @@ mod tests {
         let mut state = resumed_first_run_with_quran(&store)?;
         state.start_first_run_empty()?;
 
-        assert_eq!(state.data.chosen_sets, BTreeSet::from(["quran".into()]));
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["five_prayers".into(), "quran".into()])
+        );
         let catalog = werdy_data::builtin()?;
         let quran = catalog.set("quran").ok_or("missing Quran set")?;
+        let prayers = catalog
+            .set("five_prayers")
+            .ok_or("missing five prayers set")?;
         assert_eq!(
             state
                 .data
@@ -2365,7 +2560,64 @@ mod tests {
                 .values()
                 .cloned()
                 .collect::<BTreeSet<_>>(),
-            quran.deeds.iter().cloned().collect()
+            quran.deeds.iter().chain(&prayers.deeds).cloned().collect()
+        );
+        assert_quran_active_on_sheet(&state)
+    }
+
+    #[test]
+    fn first_run_empty_sheet_removes_level_and_keeps_other_sets() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.toggle_set("level_1")?;
+        state.toggle_set("five_prayers")?;
+        state.toggle_set("ramadan")?;
+        state.start_first_run_empty()?;
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["five_prayers".into(), "ramadan".into()])
+        );
+        let catalog = werdy_data::builtin()?;
+        for set_key in ["five_prayers", "ramadan"] {
+            for deed in &catalog.set(set_key).ok_or("missing saved set")?.deeds {
+                assert!(state.data.starter_keys.values().any(|key| key == deed));
+            }
+        }
+        let level = catalog.set("level_1").ok_or("missing first level")?;
+        assert!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .all(|key| !level.deeds.contains(key))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resumed_first_run_unticked_prayers_are_removed_and_quran_stays() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = resumed_first_run_with_quran(&store)?;
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        assert!(state.pending_extra_ticks.contains("five_prayers"));
+        state.toggle_first_run_extra("five_prayers")?;
+        state.continue_first_run_extras()?;
+
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["level_1".into(), "quran".into()])
+        );
+        let catalog = werdy_data::builtin()?;
+        let prayers = catalog
+            .set("five_prayers")
+            .ok_or("missing five prayers set")?;
+        assert!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .all(|key| !prayers.deeds.contains(key))
         );
         assert_quran_active_on_sheet(&state)
     }

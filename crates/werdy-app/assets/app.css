@@ -1587,6 +1587,9 @@ textarea:focus-visible {
   background: var(--surface);
 }
 .set-card.selected { border-color: var(--primary); background: var(--primary-soft); }
+.extra-card { min-width: 0; flex-wrap: wrap; }
+.extra-card .set-copy { min-width: min(100%, 12rem); overflow-wrap: anywhere; }
+.extra-card .set-copy p + p { margin-block-start: var(--gap-xs); }
 .set-copy { flex: 1; min-width: 0; }
 .set-copy p { font-size: var(--size-caption); }
 .set-copy .set-credit { margin-block-start: var(--gap-xs); }
