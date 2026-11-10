@@ -556,7 +556,7 @@ mod tests {
         for (language, watch_me, watch_them, until, limit) in [
             (
                 Language::English,
-                "Asked to watch you",
+                "You asked them to watch you",
                 "You asked to watch them",
                 "Until DATE",
                 "You have 4 requests waiting. Cancel one to send another.",
