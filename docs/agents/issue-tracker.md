@@ -2,7 +2,7 @@
 
 Issues and specs for werdy will live as GitHub issues on `Ahmed-Ahmed16/werdy`. Use the `gh` CLI for all operations.
 
-**Status: live since 2026-10-27.** The repo is public at https://github.com/Ahmed-Ahmed16/werdy, with the labels from `docs/agents/triage-labels.md` plus `spec`. The v1 spec is issue #1; its tickets are sub issues with native blocked by links. Pushing still needs the owner's OK.
+**Status: live since 2026-10-27.** The repo is public at https://github.com/Ahmed-Ahmed16/werdy, with the labels from `docs/agents/triage-labels.md` plus `spec`. The v1 spec is issue #1; its tickets are sub issues with native blocked by links. Agents commit, push and open pull requests without asking; the owner merges (see `CLAUDE.md`).
 
 ## Conventions
 
