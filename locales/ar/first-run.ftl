@@ -1,4 +1,19 @@
 first-run-title = أهلًا بك. جهز صفحتك
+first-run-level-title = اختر مستواك في الأكاديمية
+first-run-level-help = نضع لك أعمال ورقة مستواك. يمكنك تغييرها لاحقًا.
+first-run-level-count =
+    { $count ->
+        [zero] لا أعمال
+        [one] عمل واحد
+        [two] عملان
+        [few] { $count } أعمال
+        [many] { $count } عملًا
+       *[other] { $count } عمل
+    }
+first-run-level-show = اعرض الأعمال
+first-run-level-hide = أخفِ الأعمال
+first-run-level-next = التالي
+first-run-level-empty = لا أتبع الأكاديمية؟ ابدأ صفحة فارغة
 first-run-intro = اختر مكانك ثم أعمالك. يمكنك تغييرهما لاحقًا.
 first-run-location-title = مكانك
 first-run-location-help = يحدد مكانك بداية اليوم عند الفجر. يبقى على هذا الجهاز.
