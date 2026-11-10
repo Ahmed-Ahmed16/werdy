@@ -25,8 +25,8 @@ begin
         if not rejected then raise exception 'invalid or duplicate email accepted: %',bad; end if;
     end loop;
     rejected := false;
-    begin perform public.werdy_request_send(t.receiver::text || '@requests.test','watch_them'); exception when invalid_parameter_value then rejected := true; end;
-    if not rejected then raise exception 'watch_them accepted'; end if;
+    begin perform public.werdy_request_send(t.receiver::text || '@requests.test','invalid'); exception when invalid_parameter_value then rejected := true; end;
+    if not rejected then raise exception 'invalid direction accepted'; end if;
     rejected := false;
     begin perform 1 from werdy_private.watch_requests; exception when insufficient_privilege then rejected := true; end;
     if not rejected then raise exception 'direct table select allowed'; end if;
@@ -139,5 +139,135 @@ begin
         raise exception 'account deletion left sent or addressed request';
     end if;
     if exists(select 1 from auth.users u join request_test t on u.id=t.receiver) then raise exception 'account remains'; end if;
+end $$;
+-- Both directions must preserve the owner's and watcher's consent.
+do $$
+declare
+    test_sender uuid := pg_catalog.gen_random_uuid();
+    test_receiver uuid := pg_catalog.gen_random_uuid();
+    test_direction text;
+    incoming jsonb;
+    rejected boolean;
+    expected_owner uuid;
+    expected_watcher uuid;
+begin
+    insert into auth.users(id,email) values(test_sender, test_sender::text || '@directions.test'),
+        (test_receiver, test_receiver::text || '@directions.test');
+    foreach test_direction in array array['watch_me', 'watch_them'] loop
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        set local role authenticated;
+        if public.werdy_request_send(test_receiver::text || '@directions.test',test_direction) is distinct from '{"ok":true}'::jsonb then
+            raise exception 'direction send failed: %',test_direction;
+        end if;
+        if public.werdy_request_send(pg_catalog.gen_random_uuid()::text || '@unknown.test',test_direction) is distinct from '{"ok":true}'::jsonb then
+            raise exception 'direction send reveals account existence: %',test_direction;
+        end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        incoming := public.werdy_request_incoming();
+        if pg_catalog.jsonb_array_length(incoming) <> 1 or incoming#>>'{0,direction}' is distinct from test_direction then
+            raise exception 'incoming direction wrong: %',test_direction;
+        end if;
+        if public.werdy_request_accept((incoming#>>'{0,id}')::uuid) is distinct from '{"ok":true}'::jsonb then
+            raise exception 'direction accept failed: %',test_direction;
+        end if;
+        reset role;
+        expected_owner := case when test_direction = 'watch_me' then test_sender else test_receiver end;
+        expected_watcher := case when test_direction = 'watch_me' then test_receiver else test_sender end;
+        if not exists(select 1 from public.werdy_shares s where s.owner = expected_owner and s.watcher = expected_watcher)
+            or exists(select 1 from public.werdy_shares s where s.owner = expected_watcher and s.watcher = expected_owner) then
+            raise exception 'accepted share direction wrong: %',test_direction;
+        end if;
+        if exists(select 1 from werdy_private.watch_requests r where r.sender = test_sender and r.receiver_email = test_receiver::text || '@directions.test') then
+            raise exception 'accepted direction request remains';
+        end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        set local role authenticated;
+        rejected := false;
+        begin perform public.werdy_request_send(test_receiver::text || '@directions.test',test_direction);
+            exception when invalid_parameter_value then rejected := true; end;
+        if not rejected then raise exception 'existing share accepted for sender: %',test_direction; end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        rejected := false;
+        begin perform public.werdy_request_send(test_sender::text || '@directions.test',
+            case when test_direction = 'watch_me' then 'watch_them' else 'watch_me' end);
+            exception when invalid_parameter_value then rejected := true; end;
+        if not rejected then raise exception 'existing share accepted for receiver: %',test_direction; end if;
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        perform public.werdy_request_send(test_receiver::text || '@directions.test',
+            case when test_direction = 'watch_me' then 'watch_them' else 'watch_me' end);
+        reset role;
+        if not exists(select 1 from werdy_private.watch_requests r where r.sender = test_sender and r.receiver_email = test_receiver::text || '@directions.test') then
+            raise exception 'opposite share request blocked: %',test_direction;
+        end if;
+        delete from public.werdy_shares s where s.owner in (test_sender, test_receiver);
+        delete from werdy_private.watch_requests r where r.sender = test_sender;
+    end loop;
+end $$;
+
+do $$
+declare
+    test_sender uuid := pg_catalog.gen_random_uuid();
+    test_receiver uuid := pg_catalog.gen_random_uuid();
+    test_direction text;
+    expected_owner uuid;
+    expected_watcher uuid;
+begin
+    insert into auth.users(id,email) values(test_sender, pg_catalog.upper(test_sender::text || '@crossing.test')),
+        (test_receiver, pg_catalog.upper(test_receiver::text || '@crossing.test'));
+    foreach test_direction in array array['watch_me', 'watch_them'] loop
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        set local role authenticated;
+        perform public.werdy_request_send(test_receiver::text || '@crossing.test',test_direction);
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        if public.werdy_request_send('  ' || pg_catalog.upper(test_sender::text || '@crossing.test') || '  ',
+            case when test_direction = 'watch_me' then 'watch_them' else 'watch_me' end) is distinct from '{"ok":true}'::jsonb then
+            raise exception 'crossing reply differs: %',test_direction;
+        end if;
+        reset role;
+        expected_owner := case when test_direction = 'watch_me' then test_sender else test_receiver end;
+        expected_watcher := case when test_direction = 'watch_me' then test_receiver else test_sender end;
+        if (select pg_catalog.count(*) from public.werdy_shares s where s.owner in (test_sender, test_receiver)) <> 1
+            or not exists(select 1 from public.werdy_shares s where s.owner = expected_owner and s.watcher = expected_watcher) then
+            raise exception 'crossing share direction wrong: %',test_direction;
+        end if;
+        if exists(select 1 from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver)) then
+            raise exception 'crossing left requests: %',test_direction;
+        end if;
+        delete from public.werdy_shares s where s.owner in (test_sender, test_receiver);
+    end loop;
+end $$;
+
+do $$
+declare
+    test_sender uuid := pg_catalog.gen_random_uuid();
+    test_receiver uuid := pg_catalog.gen_random_uuid();
+    test_direction text;
+begin
+    insert into auth.users(id,email) values(test_sender, test_sender::text || '@waiting.test'),
+        (test_receiver, test_receiver::text || '@waiting.test');
+    foreach test_direction in array array['watch_me', 'watch_them'] loop
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_sender)::text,true);
+        set local role authenticated;
+        perform public.werdy_request_send(test_receiver::text || '@waiting.test',test_direction);
+        perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',test_receiver)::text,true);
+        perform public.werdy_request_send(test_sender::text || '@waiting.test',test_direction);
+        reset role;
+        if exists(select 1 from public.werdy_shares s where s.owner in (test_sender, test_receiver))
+            or (select pg_catalog.count(*) from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver)) <> 2 then
+            raise exception 'different shares crossed: %',test_direction;
+        end if;
+        delete from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver);
+        insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
+            values(test_sender, test_receiver::text || '@waiting.test', test_direction, 0, 0);
+        set local role authenticated;
+        perform public.werdy_request_send(test_sender::text || '@waiting.test',
+            case when test_direction = 'watch_me' then 'watch_them' else 'watch_me' end);
+        reset role;
+        if exists(select 1 from public.werdy_shares s where s.owner in (test_sender, test_receiver))
+            or (select pg_catalog.count(*) from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver)) <> 1 then
+            raise exception 'expired request crossed: %',test_direction;
+        end if;
+        delete from werdy_private.watch_requests r where r.sender in (test_sender, test_receiver);
+    end loop;
 end $$;
 rollback;

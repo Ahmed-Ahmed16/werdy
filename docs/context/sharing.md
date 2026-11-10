@@ -86,17 +86,32 @@ and account deletion migrations. Run `supabase/tests/watch_request_checks.sql`
 separately as database owner. These checks roll back. If a check fails, issue
 `rollback` before trying again. These SQL checks still need a Supabase run.
 
-An owner enters the receiver's Google email in Sharing. The client trims and
-lowercases it without alias rules. `werdy_request_send(email, direction)` accepts
-only `watch_me` for now. Both known and unknown emails receive the same success
-reply. Own email, invalid shape, an existing share and a duplicate waiting
-request are refused. Requests expire after 30 days. Expired rows are removed
-when requests are sent, listed or accepted.
+Sharing has one Google email field and two buttons: Ask them to watch me
+(`watch_me`) and Ask to watch them (`watch_them`). The client trims and
+lowercases the email without alias rules. `werdy_request_send(email, direction)`
+accepts both directions. Both known and unknown emails receive the same
+`{"ok": true}` reply and sent message. Own email, invalid shape, an existing
+share in the requested direction and a duplicate waiting request are refused.
+An existing share in the opposite direction does not block a request.
+Requests expire after 30 days. Expired rows are removed when requests are sent,
+listed or accepted.
 
-`werdy_request_incoming()` lists requests addressed to the signed in email.
-`werdy_request_accept(request_id)` creates the same share as a share code:
-owner is the sender, watcher is the receiver. `werdy_request_decline(request_id)`
-deletes quietly. Both actions refresh Sharing lists. Failed sends keep the
-entered email for retry. No email is sent. Sent requests cascade from the sender's account. A trigger
+If the other person already sent an unexpired request for the same share,
+sending creates the share at once and deletes their request. No new request
+is stored, and the success reply stays the same. Their `watch_them` matches
+my `watch_me`, and their `watch_me` matches my `watch_them`. Two `watch_me`
+requests describe opposite shares, so both stay waiting. The same is true
+of two `watch_them` requests. Sends lock the email pair so simultaneous
+requests can cross too.
+
+`werdy_request_incoming()` lists both directions addressed to the signed in
+email. The consent text explains who will see whose sheet, reports and note
+text, read only. `werdy_request_accept(request_id)` creates the same share as
+a share code. For `watch_me`, owner is the sender and watcher is the receiver.
+For `watch_them`, owner is the receiver and watcher is the sender.
+`werdy_request_decline(request_id)` deletes quietly. Both actions and successful
+sends refresh Sharing lists, including People watching me and People I watch.
+Failed sends keep the entered email for retry. No email is sent.
+Sent requests cascade from the sender's account. A trigger
 on `auth.users` deletes requests addressed to a deleted account's email, so this
 migration does not redefine `werdy_account_delete`.

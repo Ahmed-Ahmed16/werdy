@@ -23,8 +23,9 @@ declare
     now_ms bigint := public.werdy_sync_server_time();
     normalized text := pg_catalog.lower(pg_catalog.btrim(email));
     own_email text;
+    crossing werdy_private.watch_requests%rowtype;
 begin
-    if direction is null or direction <> 'watch_me' or normalized is null
+    if direction is null or direction not in ('watch_me', 'watch_them') or normalized is null
         or pg_catalog.length(normalized) not between 3 and 254
         or normalized !~ '^[^@[:space:]]+@[^@[:space:]]+$' then
         raise exception 'invalid watch request' using errcode = '22023';
@@ -36,15 +37,32 @@ begin
     if normalized = own_email then
         raise exception 'cannot request own email' using errcode = '22023';
     end if;
-    if exists(select 1 from public.werdy_shares s join auth.users u on u.id = s.watcher
-        where s.owner = caller and pg_catalog.lower(u.email) = normalized) then
-        raise exception 'receiver already watches owner' using errcode = '22023';
+    -- Both senders must use the same lock so simultaneous requests can cross.
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+        least(own_email, normalized) || ':' || greatest(own_email, normalized), 130));
+    if exists(select 1 from public.werdy_shares s join auth.users u
+        on u.id = case when direction = 'watch_me' then s.watcher else s.owner end
+        where pg_catalog.lower(u.email) = normalized
+        and case when direction = 'watch_me' then s.owner = caller else s.watcher = caller end) then
+        raise exception 'share already exists' using errcode = '22023';
     end if;
     delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
-    insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
-        values(caller, normalized, direction, now_ms, now_ms + 2592000000)
-        on conflict do nothing;
-    if not found then raise exception 'watch request already waiting' using errcode = '22023'; end if;
+    select r.* into crossing from werdy_private.watch_requests r join auth.users u on u.id = r.sender
+        where pg_catalog.lower(u.email) = normalized and r.receiver_email = own_email
+        and r.direction <> $2 and r.expires_at > now_ms
+        order by r.created_at, r.id limit 1 for update of r;
+    if crossing.id is not null then
+        insert into public.werdy_shares(owner, watcher, created_at)
+            values(case when direction = 'watch_me' then caller else crossing.sender end,
+                case when direction = 'watch_me' then crossing.sender else caller end, now_ms)
+            on conflict do nothing;
+        delete from werdy_private.watch_requests r where r.id = crossing.id;
+    else
+        insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
+            values(caller, normalized, direction, now_ms, now_ms + 2592000000)
+            on conflict do nothing;
+        if not found then raise exception 'watch request already waiting' using errcode = '22023'; end if;
+    end if;
     return pg_catalog.jsonb_build_object('ok', true);
 end $$;
 
@@ -76,11 +94,13 @@ begin
     select r.* into request from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email)
         and r.expires_at > now_ms for update of r;
-    if request.id is null or request.direction <> 'watch_me' then
+    if request.id is null then
         return pg_catalog.jsonb_build_object('ok', false);
     end if;
     insert into public.werdy_shares(owner, watcher, created_at)
-        values(request.sender, caller, now_ms) on conflict do nothing;
+        values(case when request.direction = 'watch_me' then request.sender else caller end,
+            case when request.direction = 'watch_me' then caller else request.sender end, now_ms)
+        on conflict do nothing;
     delete from werdy_private.watch_requests r where r.id = request.id;
     return pg_catalog.jsonb_build_object('ok', true);
 end $$;

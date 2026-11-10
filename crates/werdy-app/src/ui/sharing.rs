@@ -35,10 +35,10 @@ pub struct Sharing {
 }
 
 impl Sharing {
-    fn send_request(&mut self) -> Option<Request> {
+    fn send_request(&mut self, direction: WatchDirection) -> Option<Request> {
         self.request_sent = false;
         match normalize_email(&self.request_email) {
-            Ok(email) => Some(Request::SendWatchRequest(email)),
+            Ok(email) => Some(Request::SendWatchRequest(email, direction)),
             Err(_) => {
                 self.error = Some("sharing-email-invalid");
                 None
@@ -63,7 +63,7 @@ impl Sharing {
             Ok(Reply::Code(code)) => self.code = Some(code),
             Ok(Reply::View(view)) => self.view = Some(*view),
             Ok(Reply::Changed) => {
-                if matches!(request, Request::SendWatchRequest(_)) {
+                if matches!(request, Request::SendWatchRequest(..)) {
                     self.request_email.clear();
                     self.request_sent = true;
                 }
@@ -86,7 +86,7 @@ impl Sharing {
             Err(_)
                 if matches!(
                     request,
-                    Request::SendWatchRequest(_) | Request::Accept(_) | Request::Decline(_)
+                    Request::SendWatchRequest(..) | Request::Accept(_) | Request::Decline(_)
                 ) =>
             {
                 self.error = Some("sharing-request-error");
@@ -94,6 +94,13 @@ impl Sharing {
             Err(_) => self.error = Some("sharing-error"),
         }
         false
+    }
+}
+
+fn request_consent_key(direction: WatchDirection) -> &'static str {
+    match direction {
+        WatchDirection::WatchMe => "sharing-request-consent",
+        WatchDirection::WatchThem => "sharing-request-consent-watch-them",
     }
 }
 
@@ -282,15 +289,21 @@ pub fn SharingSection() -> Element {
                         sharing.request_sent = false;
                     }
                 }
-                button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
-                    let request = sharing.write().send_request();
-                    if let Some(request) = request { run(sharing,store.clone(),request); }
-                }},{i18n.t("sharing-request-send")} }
+                div { class:"settings-options",
+                    button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
+                        let request = sharing.write().send_request(WatchDirection::WatchMe);
+                        if let Some(request) = request { run(sharing,store.clone(),request); }
+                    }},{i18n.t("sharing-request-send")} }
+                    button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
+                        let request = sharing.write().send_request(WatchDirection::WatchThem);
+                        if let Some(request) = request { run(sharing,store.clone(),request); }
+                    }},{i18n.t("sharing-request-send-watch-them")} }
+                }
                 if data.request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
                 h3 {{i18n.t("sharing-requests")}}
-                for request in data.incoming.into_iter().filter(|request| request.direction == WatchDirection::WatchMe) {
+                for request in data.incoming {
                     div { key:"{request.id}",
-                        p { {i18n.t_with("sharing-request-consent", &[("email", fluent_bundle::FluentValue::from(request.email.clone().unwrap_or_else(||i18n.t("account-email-unknown"))))])} }
+                        p { {i18n.t_with(request_consent_key(request.direction), &[("email", fluent_bundle::FluentValue::from(request.email.clone().unwrap_or_else(||i18n.t("account-email-unknown"))))])} }
                         button {class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Accept(id.clone()))},{i18n.t("sharing-request-accept")}}
                         button {class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Decline(id.clone()))},{i18n.t("sharing-request-decline")}}
                     }
@@ -466,51 +479,74 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepting_watch_request_refreshes_watched_owners() {
-        let mut sharing = Sharing::default();
-        let request = werdy_sync::WatchRequest {
-            id: "request".into(),
-            email: Some("owner@example.test".into()),
-            direction: werdy_sync::WatchDirection::WatchMe,
-            created_at: 1,
-        };
-        sharing.receive(
-            &Request::Lists,
-            Ok(Reply::Lists(vec![], vec![], vec![request])),
-        );
-        assert!(sharing.receive(&Request::Accept("request".into()), Ok(Reply::Changed)));
-        let owner = SharePerson {
-            id: "owner".into(),
-            email: Some("owner@example.test".into()),
-            created_at: 2,
-        };
-        sharing.receive(
-            &Request::Lists,
-            Ok(Reply::Lists(vec![], vec![owner], vec![])),
-        );
-        assert!(sharing.incoming.is_empty());
-        assert_eq!(sharing.watched[0].id, "owner");
+    fn accepting_either_direction_refreshes_the_matching_people_list() {
+        for direction in [WatchDirection::WatchMe, WatchDirection::WatchThem] {
+            let mut sharing = Sharing::default();
+            let request = werdy_sync::WatchRequest {
+                id: "request".into(),
+                email: Some("owner@example.test".into()),
+                direction,
+                created_at: 1,
+            };
+            sharing.receive(
+                &Request::Lists,
+                Ok(Reply::Lists(vec![], vec![], vec![request])),
+            );
+            assert!(sharing.receive(&Request::Accept("request".into()), Ok(Reply::Changed)));
+            let person = SharePerson {
+                id: "person".into(),
+                email: Some("person@example.test".into()),
+                created_at: 2,
+            };
+            let (watchers, watched) = match direction {
+                WatchDirection::WatchMe => (vec![], vec![person]),
+                WatchDirection::WatchThem => (vec![person], vec![]),
+            };
+            sharing.receive(
+                &Request::Lists,
+                Ok(Reply::Lists(watchers.clone(), watched.clone(), vec![])),
+            );
+            assert!(sharing.incoming.is_empty());
+            assert_eq!(sharing.watchers, watchers);
+            assert_eq!(sharing.watched, watched);
+        }
     }
 
     #[test]
     fn failed_send_keeps_email_for_retry_and_success_clears_it() {
-        let mut sharing = Sharing {
-            request_email: " A@B ".into(),
-            ..Sharing::default()
-        };
-        let request = sharing.send_request().unwrap();
-        assert!(matches!(&request, Request::SendWatchRequest(email) if email == "a@b"));
-        sharing.receive(&request, Err(SyncError::Http(503)));
-        assert_eq!(sharing.request_email, " A@B ");
-        assert_eq!(sharing.error, Some("sharing-request-error"));
-        assert!(sharing.idle());
-        assert!(sharing.send_request().is_some());
-        sharing.receive(&request, Ok(Reply::Changed));
-        assert!(sharing.request_email.is_empty());
-        assert!(sharing.request_sent);
-        sharing.request_email = "bad".into();
-        assert!(sharing.send_request().is_none());
-        assert_eq!(sharing.error, Some("sharing-email-invalid"));
+        for direction in [WatchDirection::WatchMe, WatchDirection::WatchThem] {
+            let mut sharing = Sharing {
+                request_email: " A@B ".into(),
+                ..Sharing::default()
+            };
+            let request = sharing.send_request(direction).unwrap();
+            assert!(
+                matches!(&request, Request::SendWatchRequest(email, sent_direction) if email == "a@b" && *sent_direction == direction)
+            );
+            sharing.receive(&request, Err(SyncError::Http(503)));
+            assert_eq!(sharing.request_email, " A@B ");
+            assert_eq!(sharing.error, Some("sharing-request-error"));
+            assert!(sharing.idle());
+            assert!(sharing.send_request(direction).is_some());
+            assert!(sharing.receive(&request, Ok(Reply::Changed)));
+            assert!(sharing.request_email.is_empty());
+            assert!(sharing.request_sent);
+            sharing.request_email = "bad".into();
+            assert!(sharing.send_request(direction).is_none());
+            assert_eq!(sharing.error, Some("sharing-email-invalid"));
+        }
+    }
+
+    #[test]
+    fn incoming_direction_explains_who_will_see_the_sheet() {
+        assert_eq!(
+            request_consent_key(WatchDirection::WatchMe),
+            "sharing-request-consent"
+        );
+        assert_eq!(
+            request_consent_key(WatchDirection::WatchThem),
+            "sharing-request-consent-watch-them"
+        );
     }
 
     #[test]
