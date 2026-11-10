@@ -100,3 +100,8 @@ deletes quietly. Both actions refresh Sharing lists. Failed sends keep the
 entered email for retry. No email is sent. Sent requests cascade from the sender's account. A trigger
 on `auth.users` deletes requests addressed to a deleted account's email, so this
 migration does not redefine `werdy_account_delete`.
+
+Revoke ends every waiting request for the same share, in both directions,
+so a revoked watcher cannot accept an older request to get back in. This
+migration redefines `werdy_share_revoke` for that. Revoke and accept both take
+the owner head lock first, so they cannot interleave.
