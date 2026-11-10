@@ -2,6 +2,21 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0043 (2026-11-11): Watch requests by email, both ways
+A watch request adds a watcher by Google email, in either direction: the owner asks someone to watch them, or a watcher asks to watch an owner. The other person accepts or declines in the app, and accepting creates the same read only share as a share code (0006, 0039). Rules:
+* The email is matched after trimming and lowercasing, with no alias rules. Sign in is Google only, so the app asks for "their Google email".
+* Sending always answers "Request sent. They see it when they sign in to werdy", so nobody can learn whether an email uses werdy.
+* No email is sent. The request waits until a Google account with that email signs in. It lasts 30 days, and the sender can cancel it at any time.
+* The receiver sees a card above the sheet and in the sharing section, with the sender's email and what accepting means. At every sign in, waiting requests are shown first with Accept, Decline and Later.
+* Declining is quiet: the request leaves the sender's waiting list, the same as when it expires.
+* Two requests for the same link (A asks to watch B, and B asks A to watch B) become a share at once.
+* At most 5 waiting sent requests per person, one waiting request per pair and direction, none to your own email or to a link that already exists. No cap on watchers or watched people.
+* The server keeps the receiver's email only for matching. The request is deleted when it is answered, cancelled or expired, or when the sender or receiver deletes their account.
+* Share codes stay, for people sitting together. Revoke and Stop watching are unchanged and tell nobody why.
+* First run: near its end it asks once "Do you have a watcher?" (yes leads to sign in and the email field; Not now skips). Its first screen has a small "I'm here to watch someone" link that signs in and shows waiting requests without any deed setup. Where these sit is settled in #121.
+
+Why: family members are often apart, and a 24 hour code needs both people at once. Accepting in the app keeps consent with both people. Not sending mail keeps the free tier and avoids a mail service for now. Decided by the owner in chat on 2026-11-11 (issue #120, map #117). Revisit: when real invite emails are added, or if requests are used to pester people.
+
 ## 0041 (2026-11-04): The five fard prayers come from the five prayers starter set
 The reports page has a "prayers on time" block (#112). It shows the deeds whose starter key is in the `five_prayers` set in `data/starter-sets.toml`, in that set's order. A deed gets a starter key when it is added from a starter set, and the key is kept in the saved data. If the owner has none of the five, the block is hidden. Why: category Prayer is too wide (sunnah, congregation and first row deeds share it), and this needs no new field and no change to saved data or sync. Cost: a prayer deed the owner typed by hand, or a starter prayer deleted and remade by hand, is not in the block. Approved by the owner in chat on 2026-11-04. Rejected for now: a `fard_prayer` field on catalog deeds (would let congregation deeds count, but needs a rule for two deeds on one prayer), and a switch in the deed editor (a new stored field and sync change). Revisit: if owners want congregation deeds or their own typed prayers in the block.
 
