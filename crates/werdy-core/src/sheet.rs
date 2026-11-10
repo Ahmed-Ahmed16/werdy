@@ -37,6 +37,18 @@ pub struct DailySheet {
     pub slots: Vec<SheetSlot>,
 }
 
+impl DailySheet {
+    /// Keeps only rows with no mark yet and drops slots left empty.
+    /// On today the rows kept match the open count of `today_summary`.
+    pub fn unmarked_only(mut self) -> Self {
+        for slot in &mut self.slots {
+            slot.rows.retain(|row| row.mark.is_none());
+        }
+        self.slots.retain(|slot| !slot.rows.is_empty());
+        self
+    }
+}
+
 /// Builds the sheet for a day. Slots follow `slot_order`; slots missing from it
 /// come last in key order, so no due deed is ever hidden.
 pub fn daily_sheet(
