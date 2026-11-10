@@ -2,6 +2,21 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0043 (2026-11-11): Watch requests by email, both ways
+A watch request adds a watcher by Google email, in either direction: the owner asks someone to watch them, or a watcher asks to watch an owner. The other person accepts or declines in the app, and accepting creates the same read only share as a share code (0006, 0039). Rules:
+* The email is matched after trimming and lowercasing, with no alias rules. Sign in is Google only, so the app asks for "their Google email".
+* Sending always answers "Request sent. They see it when they sign in to werdy", so nobody can learn whether an email uses werdy.
+* No email is sent. The request waits until a Google account with that email signs in. It lasts 30 days, and the sender can cancel it at any time.
+* The receiver sees a card above the sheet and in the sharing section, with the sender's email and what accepting means. At every sign in, waiting requests are shown first with Accept, Decline and Later.
+* Declining is quiet: the request leaves the sender's waiting list, the same as when it expires.
+* Two requests for the same link (A asks to watch B, and B asks A to watch B) become a share at once.
+* At most 5 waiting sent requests per person, one waiting request per pair and direction, none to your own email or to a link that already exists. No cap on watchers or watched people.
+* The server keeps the receiver's email only for matching. The request is deleted when it is answered, cancelled or expired, or when the sender or receiver deletes their account.
+* Share codes stay, for people sitting together. Revoke and Stop watching are unchanged and tell nobody why.
+* First run: near its end it asks once "Do you have a watcher?" (yes leads to sign in and the email field; Not now skips). Its first screen has a small "I'm here to watch someone" link that signs in and shows waiting requests without any deed setup. Where these sit is settled in #121.
+
+Why: family members are often apart, and a 24 hour code needs both people at once. Accepting in the app keeps consent with both people. Not sending mail keeps the free tier and avoids a mail service for now. Decided by the owner in chat on 2026-11-11 (issue #120, map #117). Revisit: when real invite emails are added, or if requests are used to pester people.
+
 ## 0042 (2026-11-11): Prayer reminders reach the web app as pushes of times the phone planned
 This revisits 0038, which said web delivery needs a server and left it out. The five prayer slot reminders now reach the web app as Web Push, opt in, per device. The phone runs the `werdy-reminders` planner and uploads only the next 7 days of reminders: for each one a UTC time, its stable id and the finished text. A Supabase Cron job calls an Edge Function each minute, which sends the due ones (research for #118, `docs/context/web-push-research.md`). On iPhone this needs werdy added to the home screen. The default delays after the adhan change from zero to Fajr 45, Maghrib 20, and Dhuhr, Asr and Isha 30 minutes, each still 0 to 120.
 
