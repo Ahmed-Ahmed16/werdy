@@ -136,4 +136,7 @@ migration does not redefine `werdy_account_delete`.
 Revoke ends every waiting request for the same share, in both directions,
 so a revoked watcher cannot accept an older request to get back in. This
 migration redefines `werdy_share_revoke` for that. Revoke and accept both take
-the owner head lock first, so they cannot interleave.
+the owner head lock first, so they cannot interleave. Send, revoke and leave also take
+one lock per pair of people (`werdy_private.watch_pair_lock`, by lowercased
+email), always after the caller's head lock, so a crossing send cannot
+recreate a share that a revoke or leave is ending.

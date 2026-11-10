@@ -1,4 +1,4 @@
-//! First run location and shared starter set picker.
+//! First run level and location steps, and shared starter set picker.
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
@@ -31,6 +31,82 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
             "location-fajr-unknown",
             &[("city", FluentValue::from(city))],
         )),
+    }
+}
+
+#[component]
+pub fn LevelStep() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let mut open_level = use_signal(|| None::<String>);
+    let mut error = use_signal(|| false);
+    let selected = state.read().pending_level.clone();
+    let Ok(catalog) = editor_data::catalog() else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let levels = catalog.level_sets();
+    let credit = levels.first().and_then(|set| set.credit.as_deref());
+
+    rsx! {
+        section { class: "first-run-screen",
+            header { class: "first-run-header",
+                span { class: "rail-brand", {i18n.t("app-name")} }
+                h1 { {i18n.t("first-run-level-title")} }
+                p { {i18n.t("first-run-level-help")} }
+            }
+            if error() { p { class: "editor-error", role: "alert", {i18n.t("sets-add-error")} } }
+            div { class: "level-grid",
+                for set in levels {
+                    if let Some(level) = &set.level {
+                        { let key = set.key.clone();
+                          let active = selected.as_deref() == Some(key.as_str());
+                          let expanded = open_level().as_deref() == Some(key.as_str());
+                          let deeds = catalog.deeds_in(set);
+                          rsx! {
+                            article { class: if active { "level-card selected" } else { "level-card" }, key: "{key}",
+                                button { class: "level-choice", aria_pressed: "{active}", onclick: move |_| {
+                                    actions.view(|state| {
+                                        if state.select_first_run_level(&key).is_err() { error.set(true); }
+                                    });
+                                },
+                                    strong { {i18n.t(&level.title)} }
+                                    span { class: "level-count", {i18n.t_with("first-run-level-count", &[("count", FluentValue::from(deeds.len()))])} }
+                                    span { class: "level-summary", {i18n.t(&level.summary)} }
+                                }
+                                button { class: "text-button level-details-toggle", aria_expanded: "{expanded}", onclick: move |_| {
+                                    if expanded { open_level.set(None); } else { open_level.set(Some(set.key.clone())); }
+                                }, {i18n.t(if expanded { "first-run-level-hide" } else { "first-run-level-show" })} }
+                                if expanded {
+                                    div { class: "level-deeds",
+                                        for slot in &catalog.slots {
+                                            { let in_slot = deeds.iter().filter(|deed| deed.slot == *slot).collect::<Vec<_>>();
+                                              if in_slot.is_empty() { rsx! {} } else { rsx! {
+                                                section { class: "level-slot", key: "{slot}",
+                                                    h3 { {i18n.t(&format!("slot-{slot}"))} }
+                                                    ul { for deed in in_slot { li { key: "{deed.key}", {i18n.t(&deed.name)} } } }
+                                                }
+                                              } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                          }
+                        }
+                    }
+                }
+            }
+            if let Some(credit) = credit { p { class: "level-credit", {i18n.t(credit)} } }
+            footer { class: "first-run-footer",
+                button { class: "primary-button", disabled: selected.is_none(), onclick: move |_| {
+                    if actions.change_deed(|state| state.continue_first_run_level()).is_err() { error.set(true); }
+                }, {i18n.t("first-run-level-next")} }
+                button { class: "text-button", onclick: move |_| {
+                    if actions.change_deed(|state| state.start_first_run_empty()).is_err() { error.set(true); }
+                }, {i18n.t("first-run-level-empty")} }
+            }
+        }
     }
 }
 
@@ -184,6 +260,27 @@ pub fn SetPicker() -> Element {
 mod tests {
     use crate::i18n::{Language, Texts};
     use fluent_bundle::FluentValue;
+    use werdy_store::Digits;
+
+    #[test]
+    fn level_deed_count_uses_arabic_plural_and_selected_digits() {
+        let texts = Texts::load();
+        for (count, expected) in [
+            (1, "عمل واحد"),
+            (2, "عملان"),
+            (3, "٣ أعمال"),
+            (11, "١١ عملًا"),
+            (100, "١٠٠ عمل"),
+        ] {
+            let rendered = texts.get_with_digits(
+                Language::Arabic,
+                Digits::ArabicIndic,
+                "first-run-level-count",
+                &[("count", FluentValue::from(count))],
+            );
+            assert_eq!(rendered.replace(['\u{2068}', '\u{2069}'], ""), expected);
+        }
+    }
 
     #[test]
     fn fajr_clock_formats_local_minutes() {

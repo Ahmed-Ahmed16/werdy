@@ -399,4 +399,36 @@ begin
         delete from werdy_private.watch_requests r where r.sender in (test_sender,test_receiver);
     end loop;
 end $$;
+-- A share made by crossing requests is ended by revoke like any other share.
+create temporary table cross_revoke(owner uuid, watcher uuid);
+insert into cross_revoke values(pg_catalog.gen_random_uuid(), pg_catalog.gen_random_uuid());
+grant select on cross_revoke to authenticated;
+insert into auth.users(id,email) select owner,owner::text || '@cross.test' from cross_revoke
+    union all select watcher,watcher::text || '@cross.test' from cross_revoke;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from cross_revoke;
+set local role authenticated;
+select public.werdy_request_send(owner::text || '@cross.test','watch_them') from cross_revoke;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',owner,'role','authenticated')::text,true) from cross_revoke;
+set local role authenticated;
+select public.werdy_request_send(watcher::text || '@cross.test','watch_me') from cross_revoke;
+select public.werdy_share_revoke(watcher) from cross_revoke;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from cross_revoke;
+set local role authenticated;
+do $$
+declare t record; refused boolean := false;
+begin
+    select * into strict t from cross_revoke;
+    begin perform public.werdy_watch_pull(t.owner,0,1); exception when insufficient_privilege then refused := true; end;
+    if not refused then raise exception 'crossing share survived revoke'; end if;
+end $$;
+reset role;
+do $$
+begin
+    if exists(select 1 from public.werdy_shares s join cross_revoke t on s.owner=t.owner and s.watcher=t.watcher)
+        or exists(select 1 from werdy_private.watch_requests r join cross_revoke t on r.sender in (t.owner,t.watcher)) then
+        raise exception 'revoke left a crossing share or request';
+    end if;
+end $$;
 rollback;
