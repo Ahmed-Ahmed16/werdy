@@ -8,7 +8,7 @@ fn reminders_round_trip_and_old_settings_default_to_empty() {
     owner.settings.reminders.slots.insert(
         SlotKey::new("asr"),
         SlotReminder::Prayer {
-            offset_minutes: PrayerDelay::try_from(20).unwrap(),
+            offset_minutes: PrayerDelay::try_from(10).unwrap(),
         },
     );
     owner.settings.reminders.slots.insert(
@@ -27,6 +27,24 @@ fn reminders_round_trip_and_old_settings_default_to_empty() {
     let loaded = from_json(&old.to_string()).unwrap();
     assert!(loaded.settings.reminders.slots.is_empty());
     assert!(loaded.settings.reminders.deeds.is_empty());
+}
+
+#[test]
+fn new_prayer_reminders_use_slot_delays() {
+    for (slot, minutes) in [
+        ("fajr", 45),
+        ("dhuhr", 30),
+        ("asr", 30),
+        ("maghrib", 20),
+        ("isha", 30),
+        ("unknown", 0),
+    ] {
+        assert_eq!(
+            u8::from(PrayerDelay::default_for(&SlotKey::new(slot))),
+            minutes,
+            "slot {slot}"
+        );
+    }
 }
 
 #[test]
