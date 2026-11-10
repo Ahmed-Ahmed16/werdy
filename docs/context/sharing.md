@@ -78,3 +78,25 @@ Sign out drops sharing state. Network failures keep the view and offer retry.
    account cannot pull, and direct table writes and forged owner pushes fail.
 6. Sign out during a slow sharing request, then sign in with another account.
    Confirm late replies never restore the old code, list or viewed records.
+
+## Watch requests
+
+Apply `supabase/migrations/20261111000000_watch_requests.sql` after the sharing
+and account deletion migrations. Run `supabase/tests/watch_request_checks.sql`
+separately as database owner. These checks roll back. If a check fails, issue
+`rollback` before trying again. These SQL checks still need a Supabase run.
+
+An owner enters the receiver's Google email in Sharing. The client trims and
+lowercases it without alias rules. `werdy_request_send(email, direction)` accepts
+only `watch_me` for now. Both known and unknown emails receive the same success
+reply. Own email, invalid shape, an existing share and a duplicate waiting
+request are refused. Requests expire after 30 days. Expired rows are removed
+when requests are sent, listed or accepted.
+
+`werdy_request_incoming()` lists requests addressed to the signed in email.
+`werdy_request_accept(request_id)` creates the same share as a share code:
+owner is the sender, watcher is the receiver. `werdy_request_decline(request_id)`
+deletes quietly. Both actions refresh Sharing lists. Failed sends keep the
+entered email for retry. No email is sent. Sent requests cascade from the sender's account. A trigger
+on `auth.users` deletes requests addressed to a deleted account's email, so this
+migration does not redefine `werdy_account_delete`.
