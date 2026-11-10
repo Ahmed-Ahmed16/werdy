@@ -9,6 +9,13 @@ Public repositories can have schedules disabled after 60 days without activity;
 check that the workflow remains enabled. See the
 [GitHub schedule rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
+[keep-alive.yml](../../.github/workflows/keep-alive.yml) runs at 09:41 UTC daily
+and asks the project's auth health endpoint, with the public key, whether it is
+up. A Supabase Free project pauses after a week without activity, and a pause
+would stop all push reminders (decision 0042). A failed run means the project
+may be paused: restore it in the Supabase dashboard. The same 60 day rule
+applies to this schedule.
+
 ## What is saved
 
 Supabase CLI 2.54.11 runs two dumps through Docker on the GitHub runner:
