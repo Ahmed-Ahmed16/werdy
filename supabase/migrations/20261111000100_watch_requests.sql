@@ -89,8 +89,17 @@ declare
     caller uuid := werdy_private.share_caller();
     now_ms bigint := public.werdy_sync_server_time();
     request werdy_private.watch_requests%rowtype;
+    owner_id uuid;
 begin
     delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
+    select case when r.direction = 'watch_me' then r.sender else caller end into owner_id
+        from werdy_private.watch_requests r join auth.users u on u.id = caller
+        where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email);
+    if owner_id is null then return pg_catalog.jsonb_build_object('ok', false); end if;
+    -- Take the owner head lock first, as revoke does, so a revoke and an
+    -- accept of the same share run one after the other.
+    insert into public.werdy_sync_heads(owner) values(owner_id) on conflict do nothing;
+    perform 1 from public.werdy_sync_heads h where h.owner = owner_id for update;
     select r.* into request from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email)
         and r.expires_at > now_ms for update of r;
@@ -102,6 +111,23 @@ begin
             case when request.direction = 'watch_me' then caller else request.sender end, now_ms)
         on conflict do nothing;
     delete from werdy_private.watch_requests r where r.id = request.id;
+    return pg_catalog.jsonb_build_object('ok', true);
+end $$;
+
+-- Revoke also ends every waiting request for the same share, in both
+-- directions, so an older request cannot bring a revoked watcher back.
+create or replace function public.werdy_share_revoke(watcher_id uuid)
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
+declare caller uuid := werdy_private.share_caller();
+begin
+    insert into public.werdy_sync_heads(owner) values(caller) on conflict do nothing;
+    perform 1 from public.werdy_sync_heads h where h.owner = caller for update;
+    delete from public.werdy_shares s where s.owner = caller and s.watcher = watcher_id;
+    delete from werdy_private.watch_requests r
+        where (r.sender = caller and r.direction = 'watch_me'
+            and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = watcher_id))
+        or (r.sender = watcher_id and r.direction = 'watch_them'
+            and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = caller));
     return pg_catalog.jsonb_build_object('ok', true);
 end $$;
 

@@ -140,6 +140,44 @@ begin
     end if;
     if exists(select 1 from auth.users u join request_test t on u.id=t.receiver) then raise exception 'account remains'; end if;
 end $$;
+-- Revoke ends a waiting request too: a revoked watcher cannot accept an older request to get back in.
+create temporary table revoke_test(owner uuid, watcher uuid, request_id uuid);
+insert into revoke_test values(pg_catalog.gen_random_uuid(), pg_catalog.gen_random_uuid(), null);
+grant select, update on revoke_test to authenticated;
+insert into auth.users(id,email) select owner,owner::text || '@revoke.test' from revoke_test
+    union all select watcher,watcher::text || '@revoke.test' from revoke_test;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',owner,'role','authenticated')::text,true) from revoke_test;
+set local role authenticated;
+select public.werdy_request_send(watcher::text || '@revoke.test','watch_me') from revoke_test;
+create temporary table revoke_code as select public.werdy_share_create()->>'code' as code;
+grant select on revoke_code to authenticated;
+reset role;
+update revoke_test t set request_id=r.id from werdy_private.watch_requests r where r.sender=t.owner;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from revoke_test;
+set local role authenticated;
+do $$
+begin
+    if not (public.werdy_share_redeem((select code from revoke_code))->>'ok')::boolean then raise exception 'revoke test redeem failed'; end if;
+end $$;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',owner,'role','authenticated')::text,true) from revoke_test;
+set local role authenticated;
+select public.werdy_share_revoke(watcher) from revoke_test;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from revoke_test;
+set local role authenticated;
+do $$
+declare t record; refused boolean := false;
+begin
+    select * into strict t from revoke_test;
+    if public.werdy_request_accept(t.request_id) is distinct from '{"ok":false}'::jsonb then
+        raise exception 'revoked watcher restored access with an old request';
+    end if;
+    begin perform public.werdy_watch_pull(t.owner,0,1); exception when insufficient_privilege then refused := true; end;
+    if not refused then raise exception 'revoked watcher can still read'; end if;
+    if public.werdy_request_incoming() is distinct from '[]'::jsonb then raise exception 'revoked request still listed'; end if;
+end $$;
+reset role;
 -- Both directions must preserve the owner's and watcher's consent.
 do $$
 declare
