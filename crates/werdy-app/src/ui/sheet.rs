@@ -92,6 +92,7 @@ pub fn Sheet() -> Element {
 
     rsx! {
         section { class: "sheet",
+            super::sharing::SheetWatchRequests {}
             if welcome {
                 div { class: "sheet-notice",
                     p { {i18n.t("sheet-welcome-back")} }
