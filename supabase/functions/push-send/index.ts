@@ -1,5 +1,8 @@
 import webpush from "npm:web-push@3.6.7";
-import { buildHeaders, buildPayload, classifyReply } from "./core.ts";
+import { buildHeaders, buildPayload, classifyReply, runLimited, shouldClaimMore } from "./core.ts";
+
+const CLAIM_SIZE = 20;
+const SEND_CONCURRENCY = 10;
 
 type DueReminder = {
   subscription: string;
@@ -42,6 +45,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const startedMs = Date.now();
     const url = requiredEnv("SUPABASE_URL");
     const key = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
     const vapidDetails = {
@@ -49,13 +53,16 @@ Deno.serve(async (request) => {
       publicKey: requiredEnv("VAPID_PUBLIC_KEY"),
       privateKey: requiredEnv("VAPID_PRIVATE_KEY"),
     };
-    const due = await rpc<DueReminder[]>("werdy_push_claim_due", {}, url, key);
-    if (!Array.isArray(due)) throw new Error("Claim returned no array");
-
+    let claimed = 0;
     let sent = 0;
     let dropped = 0;
-    for (const row of due) {
-      try {
+    let claimMore = true;
+    while (claimMore) {
+      const due = await rpc<DueReminder[]>("werdy_push_claim_due", { max_rows: CLAIM_SIZE }, url, key);
+      if (!Array.isArray(due)) throw new Error("Claim returned no array");
+      claimed += due.length;
+
+      const outcomes = await runLimited(due, SEND_CONCURRENCY, async (row) => {
         const details = webpush.generateRequestDetails(
           { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
           buildPayload(row.title, row.body, row.topic),
@@ -68,22 +75,31 @@ Deno.serve(async (request) => {
           headers,
           body: details.body,
           redirect: "error",
+          signal: AbortSignal.timeout(10_000),
         });
         const action = classifyReply(response.status);
-        if (action === "sent") {
-          sent++;
-        } else if (action === "drop_subscription") {
+        if (action === "sent") return "sent";
+        if (action === "drop_subscription") {
           await rpc<unknown>("werdy_push_drop_subscription", { id: row.subscription }, url, key);
-          dropped++;
-        } else {
-          console.error(`Push failed with ${response.status}`);
+          return "dropped";
         }
-      } catch (error) {
-        console.error("Push failed", error instanceof Error ? error.message : "unknown error");
+        console.error(`Push failed with ${response.status}`);
+        return "failed";
+      });
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected") {
+          const error = outcome.reason;
+          console.error("Push failed", error instanceof Error ? error.message : "unknown error");
+        } else if (outcome.value === "sent") {
+          sent++;
+        } else if (outcome.value === "dropped") {
+          dropped++;
+        }
       }
+      claimMore = shouldClaimMore(startedMs, Date.now(), due.length);
     }
 
-    return Response.json({ claimed: due.length, sent, dropped });
+    return Response.json({ claimed, sent, dropped });
   } catch (error) {
     console.error("Push sender failed", error instanceof Error ? error.message : "unknown error");
     return new Response("Push sender failed", { status: 500 });

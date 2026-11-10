@@ -54,7 +54,7 @@ select cron.schedule(
 );
 ```
 
-Supabase must have `pg_cron`, `pg_net`, and Vault enabled. Check their state in the dashboard before running the SQL. The Cron request calls the function each minute. The claim RPC removes due rows before sending. Failed sends do not retry. A 404 or 410 also removes the subscription.
+Supabase must have `pg_cron`, `pg_net`, and Vault enabled. Check their state in the dashboard before running the SQL. The Cron request calls the function each minute. Each claim calls `werdy_push_claim_due` with `{"max_rows":20}` and returns a JSON array. The sender handles up to 10 push requests at once. Each push request has a 10 second timeout. It stops claiming when a batch is empty or 100 seconds have passed since the run began. Unclaimed due rows wait for a later run, subject to the migration's 15 minute expiry. The claim RPC removes claimed rows before sending. Failed sends do not retry. A 404 or 410 also removes the subscription.
 
 ## 5. Check on phones
 
@@ -62,5 +62,5 @@ Owner step. After approval and deployment, turn reminders on and close werdy. Ch
 
 ## Local test
 
-Run `node --test supabase/functions/push-send/core.test.ts` from the repo root. This checks payload, delivery headers, and reply handling without Deno or network access.
+Run `node --test supabase/functions/push-send/core.test.ts` from the repo root. This checks payload, delivery headers, reply handling, send concurrency, and the claim time budget without Deno or network access.
 The `package.json` in that folder exists only for Node tests and declares no dependencies.
