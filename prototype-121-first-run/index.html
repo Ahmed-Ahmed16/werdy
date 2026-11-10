@@ -203,7 +203,7 @@ const T={
     ownSlot:"وقته",add:"أضف",remove:"احذف",
     locHead:"مكانك",locHelp:"يحدد مكانك بداية اليوم عند الفجر. يبقى على هذا الجهاز.",locUse:"استخدم موقعي",locCity:"أو اختر مدينة",
     locCities:["القاهرة","الإسكندرية","الرياض","مكة"],locSkip:"تابع دون مكان",
-    hold:"مكان مؤقت · ينتظر #120",
+    hold:"حسب القرار 0043 (#120)",watchOnly:"جئت لأتابع شخصًا",
     wOwnerHead:"هل لك متابِع؟",wOwnerHelp:"المتابِع يرى تقاريرك ولا يغير شيئًا في صفحتك.",wYes:"نعم، أضيفه ببريده",wNo:"ليس الآن",wEmail:"بريد المتابِع",
     wWatchHead:"سارة (مثال) تطلب أن تتابعها",wWatchHelp:"هل توافق على متابعتها؟ سترى تقاريرها ولا تغير شيئًا في صفحتها.",wAgree:"أوافق",wLater:"ليس الآن",
     doneHead:"صفحتك جاهزة",doneHelp:"يمكنك تغيير الأعمال من «أعمالي» في أي وقت.",ownCount:"أعمالك",noLevel:"دون مستوى",open:"افتح صفحة اليوم",restart:"ابدأ من جديد (للنموذج)"},
@@ -226,7 +226,7 @@ const T={
     ownSlot:"When",add:"Add",remove:"Remove",
     locHead:"Your place",locHelp:"Your place sets the Fajr boundary. It stays on this device.",locUse:"Use my location",locCity:"Or pick a city",
     locCities:["Cairo","Alexandria","Riyadh","Makkah"],locSkip:"Continue without location",
-    hold:"PLACEHOLDER · waits on #120",
+    hold:"PER DECISION 0043 (#120)",watchOnly:"I'm here to watch someone",
     wOwnerHead:"Do you have a watcher?",wOwnerHelp:"A watcher sees your reports and changes nothing on your sheet.",wYes:"Yes, add them by email",wNo:"Not now",wEmail:"Watcher's email",
     wWatchHead:"Sara (example) asks you to watch her",wWatchHelp:"Do you agree to watch? You will see her reports and change nothing on her sheet.",wAgree:"I agree",wLater:"Not now",
     doneHead:"Your sheet is ready",doneHelp:"You can change deeds from My deeds at any time.",ownCount:"Your own deeds",noLevel:"No level",open:"Open today's sheet",restart:"Start over (prototype)"}
@@ -302,7 +302,8 @@ function stepLevel(){
   else{body=st.variant==="cards"?levelCards():levelCompare();ready=st.level!==null;label=ready?L.next:L.pick;}
   return shell(L.lvlHead,L.lvlHelp,body,
     `<button class="primary" data-act="lvlnext" ${ready?"":"disabled"}>${label}</button>
-     <button class="link small" data-act="empty">${L.startEmpty}</button>`);
+     <button class="link small" data-act="empty">${L.startEmpty}</button>
+     <button class="link small" data-act="watchonly">${L.watchOnly}</button>`);
 }
 function stepExtras(){
   const L=t(),name=lvlName(st.level);
@@ -407,6 +408,7 @@ document.addEventListener("click",e=>{
   else if(act==="open"){st.open=st.open===i?null:i;}
   else if(act==="tab"){st.tab=i;st.level=i;}
   else if(act==="lvlnext"){if(st.variant==="day")st.level=st.tab;st.empty=false;applyPretick();nextStep();return;}
+  else if(act==="watchonly"){st.role="watcher";st.empty=true;st.level=null;st.extras.clear();go("watcher");return;}
   else if(act==="empty"){st.empty=true;st.level=null;st.extras.clear();go("own");return;}
   else if(act==="extra"){const k=a.dataset.k;st.extras.has(k)?st.extras.delete(k):st.extras.add(k);}
   else if(act==="next"){nextStep();return;}
