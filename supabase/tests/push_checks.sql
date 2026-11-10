@@ -73,7 +73,7 @@ begin
         raise exception 'replacement kept old reminder';
     end if;
     rejected := false;
-    begin perform public.werdy_push_claim_due();
+    begin perform public.werdy_push_claim_due(2);
         exception when insufficient_privilege then rejected := true; end;
     if not rejected then raise exception 'authenticated claim allowed'; end if;
 end $$;
@@ -101,31 +101,62 @@ end $$;
 
 -- Direct setup reaches the claim boundary without waiting for the clock.
 insert into public.werdy_push_reminders(subscription,reminder,send_at,title,body,topic)
-    select first_id,'due',pg_catalog.clock_timestamp() - interval '1 minute','Due','Send','due_1'
-    from push_test;
+    select first_id, due.reminder, pg_catalog.clock_timestamp() - due.age,
+        'Due', 'Send', 'due_1'
+    from push_test cross join (values
+        ('due_first', interval '3 minutes'),
+        ('due_second', interval '2 minutes'),
+        ('due_third', interval '1 minute')
+    ) as due(reminder, age);
 insert into public.werdy_push_reminders(subscription,reminder,send_at,title,body,topic)
     select first_id,'expired',pg_catalog.clock_timestamp() - interval '16 minutes','Old','Skip','old_1'
     from push_test;
 set local role service_role;
 do $$
-declare claimed record; count_claimed integer := 0;
+declare
+    claimed jsonb;
+    invalid_limit integer;
+    rejected boolean;
 begin
-    for claimed in select * from public.werdy_push_claim_due() loop
-        count_claimed := count_claimed + 1;
-        if claimed.reminder <> 'due' or claimed.endpoint <> 'https://push.example.test/first'
-            or claimed.p256dh <> 'key_1' or claimed.auth <> 'auth_1' then
-            raise exception 'claim returned wrong row';
-        end if;
+    foreach invalid_limit in array array[0, 501, null::integer] loop
+        rejected := false;
+        begin perform public.werdy_push_claim_due(invalid_limit);
+            exception when invalid_parameter_value then rejected := true; end;
+        if not rejected then raise exception 'invalid claim limit accepted'; end if;
     end loop;
-    if count_claimed <> 1 then raise exception 'claim did not return one due row'; end if;
-    if exists(select 1 from public.werdy_push_claim_due()) then
-        raise exception 'claim returned row twice';
+    claimed := public.werdy_push_claim_due(2);
+    if pg_catalog.jsonb_typeof(claimed) is distinct from 'array'
+        or pg_catalog.jsonb_array_length(claimed) is distinct from 2
+        or claimed->0->>'reminder' is distinct from 'due_first'
+        or claimed->1->>'reminder' is distinct from 'due_second'
+        or claimed->0->>'endpoint' is distinct from 'https://push.example.test/first'
+        or claimed->0->>'p256dh' is distinct from 'key_1'
+        or claimed->0->>'auth' is distinct from 'auth_1'
+        or claimed->0->>'title' is distinct from 'Due'
+        or claimed->0->>'body' is distinct from 'Send'
+        or claimed->0->>'topic' is distinct from 'due_1'
+        or pg_catalog.jsonb_typeof(claimed->0->'send_at') is distinct from 'string'
+        or pg_catalog.jsonb_typeof(claimed->0->'subscription') is distinct from 'string' then
+        raise exception 'first claim returned wrong rows';
+    end if;
+    if (select pg_catalog.count(*) from public.werdy_push_reminders
+        where reminder like 'due_%') <> 1 then
+        raise exception 'first claim removed unclaimed row';
+    end if;
+    claimed := public.werdy_push_claim_due(2);
+    if pg_catalog.jsonb_array_length(claimed) is distinct from 1
+        or claimed->0->>'reminder' is distinct from 'due_third' then
+        raise exception 'second claim did not return last row';
+    end if;
+    if public.werdy_push_claim_due(2) is distinct from '[]'::jsonb then
+        raise exception 'empty claim did not return array';
     end if;
 end $$;
 reset role;
 do $$
 begin
-    if exists(select 1 from public.werdy_push_reminders where reminder in ('due','expired')) then
+    if exists(select 1 from public.werdy_push_reminders
+        where reminder in ('due_first','due_second','due_third','expired')) then
         raise exception 'claim kept due or expired row';
     end if;
     if not exists(select 1 from public.werdy_push_reminders where reminder = 'new') then
@@ -201,8 +232,8 @@ begin
         where s.owner = t.second_user) then
         raise exception 'auth deletion removed transferred endpoint';
     end if;
-    if pg_catalog.has_function_privilege('authenticated','public.werdy_push_claim_due()','execute')
-        or pg_catalog.has_function_privilege('anon','public.werdy_push_claim_due()','execute')
+    if pg_catalog.has_function_privilege('authenticated','public.werdy_push_claim_due(integer)','execute')
+        or pg_catalog.has_function_privilege('anon','public.werdy_push_claim_due(integer)','execute')
         or pg_catalog.has_function_privilege('authenticated','public.werdy_push_drop_subscription(uuid)','execute')
         or pg_catalog.has_table_privilege('authenticated','public.werdy_push_subscriptions','insert')
         or pg_catalog.has_table_privilege('authenticated','public.werdy_push_reminders','delete') then

@@ -125,18 +125,38 @@ begin
     delete from public.werdy_push_subscriptions s where s.owner = caller and s.endpoint = $1;
 end $$;
 
-create or replace function public.werdy_push_claim_due()
-returns table(subscription uuid, reminder text, send_at timestamptz, title text, body text,
-    topic text, endpoint text, p256dh text, auth text)
-language plpgsql volatile security definer set search_path = '' as $$
-declare cutoff timestamptz := pg_catalog.clock_timestamp();
+drop function if exists public.werdy_push_claim_due();
+create or replace function public.werdy_push_claim_due(max_rows integer default 100)
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
+declare
+    cutoff timestamptz := pg_catalog.clock_timestamp();
+    claimed jsonb;
 begin
+    if max_rows is null or max_rows not between 1 and 500 then
+        raise exception 'invalid claim limit' using errcode = '22023';
+    end if;
     delete from public.werdy_push_reminders r where r.send_at < cutoff - interval '15 minutes';
-    return query
-        delete from public.werdy_push_reminders r using public.werdy_push_subscriptions s
-        where r.subscription = s.id and r.send_at <= cutoff
+    with picked as (
+        select r.subscription, r.reminder
+        from public.werdy_push_reminders r
+        where r.send_at <= cutoff
+        order by r.send_at, r.subscription, r.reminder
+        limit max_rows for update of r skip locked
+    ), deleted as (
+        delete from public.werdy_push_reminders r
+        using picked p, public.werdy_push_subscriptions s
+        where r.subscription = p.subscription and r.reminder = p.reminder
+            and r.subscription = s.id
         returning r.subscription, r.reminder, r.send_at, r.title, r.body, r.topic,
-            s.endpoint, s.p256dh, s.auth;
+            s.endpoint, s.p256dh, s.auth
+    )
+    select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'subscription', d.subscription, 'reminder', d.reminder, 'send_at', d.send_at,
+        'title', d.title, 'body', d.body, 'topic', d.topic, 'endpoint', d.endpoint,
+        'p256dh', d.p256dh, 'auth', d.auth)
+        order by d.send_at, d.subscription, d.reminder), '[]'::jsonb)
+        into claimed from deleted d;
+    return claimed;
 end $$;
 
 create or replace function public.werdy_push_drop_subscription(id uuid)
@@ -166,11 +186,11 @@ end $$;
 revoke all on function werdy_private.push_valid_subscription(jsonb),
     werdy_private.push_valid_reminder(jsonb,numeric,numeric) from public, anon, authenticated;
 revoke all on function public.werdy_push_replace(jsonb,jsonb), public.werdy_push_forget(text),
-    public.werdy_push_claim_due(), public.werdy_push_drop_subscription(uuid)
+    public.werdy_push_claim_due(integer), public.werdy_push_drop_subscription(uuid)
     from public, anon, authenticated;
 grant execute on function public.werdy_push_replace(jsonb,jsonb), public.werdy_push_forget(text)
     to authenticated;
-grant execute on function public.werdy_push_claim_due(), public.werdy_push_drop_subscription(uuid)
+grant execute on function public.werdy_push_claim_due(integer), public.werdy_push_drop_subscription(uuid)
     to service_role;
 notify pgrst, 'reload schema';
 commit;
