@@ -1,0 +1,433 @@
+<title>werdy First Run Levels</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+<!--
+  PROTOTYPE, throwaway (#121). Not product code. Delete once #121 is settled.
+  Question: what should first run look like when it starts from the three Academy levels?
+  Three versions of the level screen, switchable with the bottom bar or the arrow keys (#cards, #day, #compare).
+  Deed lists come from PR #113 (data/starter-sets.toml and locales/*/starter-sets.ftl on that branch).
+-->
+<style>
+/* Layout: control band on top, a phone frame with the flow, notes beside it (stacked on a phone). */
+:root{
+  --bg:#F4F6F3;--page:#DFE5E0;--surface:#FFFFFF;--muted:#EDF0EC;--border:#E1E6E2;
+  --text:#16201B;--tm:#56625B;--primary:#0F5C45;--onprimary:#FFFFFF;--psoft:#EAF4EE;
+  --hold:#9A4A1E;--holdsoft:#FBEFE6;--bar:#16201B;--onbar:#FFFFFF;
+  --font:"IBM Plex Sans Arabic",system-ui,"Segoe UI",Tahoma,sans-serif;
+  --fs:16px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111815;--page:#0B100E;--surface:#18211D;--muted:#202B26;--border:#2C3833;
+  --text:#E4ECE7;--tm:#9DABA3;--primary:#6CC9A0;--onprimary:#0B100E;--psoft:#1B3A2E;
+  --hold:#F0A877;--holdsoft:#33231A;--bar:#E4ECE7;--onbar:#0B100E;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111815;--page:#0B100E;--surface:#18211D;--muted:#202B26;--border:#2C3833;
+  --text:#E4ECE7;--tm:#9DABA3;--primary:#6CC9A0;--onprimary:#0B100E;--psoft:#1B3A2E;
+  --hold:#F0A877;--holdsoft:#33231A;--bar:#E4ECE7;--onbar:#0B100E;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--text);font-family:var(--font);margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 96px}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* control band (prototype only, English) */
+.band{direction:ltr;font-family:system-ui,"Segoe UI",sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;max-width:1100px;margin:0 auto 14px}
+.band h1{font-size:16px;margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stamp{background:#C2413A;color:#fff;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;letter-spacing:.04em}
+.ctrls{display:flex;flex-wrap:wrap;gap:6px 14px}
+.ctrl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;max-width:100%}
+.ctrl > span{color:var(--tm)}
+.seg{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.band,.stage{min-width:0}
+.band h1{min-width:0}
+.seg button{border:0;background:transparent;padding:4px 9px;font-size:12px}
+.seg button.on{background:var(--primary);color:var(--onprimary)}
+
+.stage{display:flex;gap:24px;justify-content:center;align-items:flex-start;flex-wrap:wrap;max-width:1100px;margin:0 auto}
+.phone{width:380px;max-width:100%;height:740px;border:9px solid #1d2420;border-radius:32px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column;font-size:var(--fs)}
+.notes{direction:ltr;font-family:system-ui,"Segoe UI",sans-serif;font-size:13px;width:340px;max-width:100%;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.notes h2{font-size:14px;margin:0 0 6px}
+.notes ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.notes .now{background:var(--psoft);border-radius:6px;padding:6px 8px;margin:0 0 10px}
+.notes code{font-size:12px}
+@media (max-width:520px){
+  .phone{width:100%;height:auto;min-height:640px;border:0;border-radius:12px;box-shadow:0 0 0 1px var(--border)}
+  .stage{gap:16px}
+}
+
+/* in-phone UI (real copy, Arabic first) */
+.scr{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 4px;gap:8px}
+.brand{font-weight:700;color:var(--primary);font-size:1.0625rem;letter-spacing:.01em}
+.steps{display:flex;gap:5px}
+.steps i{width:7px;height:7px;border-radius:50%;background:var(--border);display:block}
+.steps i.on{background:var(--primary);width:18px;border-radius:4px}
+.head{padding:6px 16px 10px}
+.head h2{font-size:1.375rem;margin:0 0 4px;text-wrap:balance;line-height:1.35}
+.head p{margin:0;color:var(--tm);font-size:.9375rem;line-height:1.6}
+.body{padding:0 16px 12px;display:flex;flex-direction:column;gap:10px;flex:1}
+.foot{padding:10px 16px 14px;border-top:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.primary{background:var(--primary);color:var(--onprimary);border:0;border-radius:12px;padding:.8rem 1rem;font-weight:600;font-size:1rem;min-height:48px}
+.primary:disabled{opacity:.4;cursor:not-allowed}
+.link{background:none;border:0;color:var(--primary);padding:.45rem;font-size:.9375rem;font-weight:500;min-height:40px}
+.link.small{font-size:.875rem;color:var(--tm);text-decoration:underline;text-underline-offset:3px}
+.credit{font-size:.8125rem;color:var(--tm);line-height:1.55;margin:2px 2px 0}
+.count{font-variant-numeric:tabular-nums;color:var(--tm);font-size:.875rem;white-space:nowrap}
+
+/* A: cards */
+.lvl{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.lvl.sel{border-color:var(--primary);background:var(--psoft)}
+.lvl-row{display:flex;align-items:center;gap:10px;background:none;border:0;padding:0;text-align:start;width:100%}
+.radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--tm);flex:none;display:grid;place-items:center}
+.sel .radio{border-color:var(--primary)}
+.sel .radio::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--primary)}
+.lvl-name{font-weight:600;font-size:1.0625rem;flex:1;min-width:0}
+.lvl p{margin:0;font-size:.875rem;line-height:1.6;color:var(--tm)}
+.more{align-self:flex-start;background:none;border:0;color:var(--primary);font-size:.875rem;padding:4px 0}
+.deedlist{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px}
+.slot h4{margin:0 0 2px;font-size:.8125rem;color:var(--primary);font-weight:600}
+.slot ul{margin:0;padding-inline-start:18px;font-size:.875rem;line-height:1.6}
+
+/* B: day preview */
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--muted);padding:4px;border-radius:12px}
+.tabs button{border:0;background:transparent;border-radius:9px;padding:.5rem .25rem;font-size:.875rem;line-height:1.3;min-height:44px}
+.tabs button.on{background:var(--surface);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.daybox{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 12px}
+.dayslot{border-bottom:1px solid var(--border);padding:8px 0}
+.dayslot:last-child{border-bottom:0}
+.dayslot summary{display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;font-weight:600;font-size:.9375rem;min-height:32px}
+.dayslot summary::-webkit-details-marker{display:none}
+.dayslot ul{margin:4px 0 0;padding-inline-start:18px;font-size:.875rem;line-height:1.6;color:var(--tm)}
+.sum{font-size:.875rem;color:var(--tm);line-height:1.6;margin:0}
+
+/* C: compare */
+.cmpwrap{overflow-x:auto}
+table.cmp{width:100%;border-collapse:separate;border-spacing:0;font-size:.875rem;font-variant-numeric:tabular-nums}
+.cmp th,.cmp td{padding:.55rem .35rem;text-align:center;border-bottom:1px solid var(--border)}
+.cmp th:first-child,.cmp td:first-child{text-align:start;color:var(--tm);font-weight:500}
+.cmp thead button{border:1.5px solid var(--border);background:var(--surface);border-radius:10px;padding:.4rem .3rem;width:100%;font-weight:600;font-size:.8125rem;line-height:1.3;min-height:44px}
+.cmp .on{background:var(--psoft)}
+.cmp thead .on button{border-color:var(--primary);color:var(--primary)}
+.cmp tr.total td{font-weight:700;border-bottom:0}
+
+/* extras */
+.extra{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;text-align:start;width:100%}
+.extra.on{border-color:var(--primary);background:var(--psoft)}
+.box{width:22px;height:22px;border-radius:6px;border:2px solid var(--tm);flex:none;display:grid;place-items:center;margin-top:2px;font-size:14px;line-height:1;color:var(--onprimary)}
+.extra.on .box{background:var(--primary);border-color:var(--primary)}
+.extra .t{font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.extra .why{font-size:.8125rem;color:var(--primary);margin-top:2px}
+.extra .d{font-size:.8125rem;color:var(--tm);line-height:1.6;margin-top:2px}
+.extra > div{flex:1;min-width:0}
+.warn{font-size:.8125rem;color:var(--hold);background:var(--holdsoft);border-radius:10px;padding:8px 10px;line-height:1.55;margin:0}
+
+/* own deeds */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.875rem;font-weight:600}
+.input{border:1.5px solid var(--border);background:var(--surface);border-radius:10px;padding:.65rem .75rem;min-height:46px;width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:.3rem .75rem;font-size:.8125rem;min-height:36px}
+.chip.on{background:var(--primary);color:var(--onprimary);border-color:var(--primary)}
+.addbtn{border:1.5px solid var(--primary);color:var(--primary);background:transparent;border-radius:10px;padding:.55rem;font-weight:600;min-height:44px}
+.ownlist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.ownlist li{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.4rem .4rem .4rem .75rem;gap:8px}
+.ownlist li span{min-width:0}
+.ownlist li small{color:var(--tm);margin-inline-start:6px}
+.x{border:0;background:var(--muted);border-radius:8px;min-width:36px;min-height:36px}
+
+/* location (today's step, kept) */
+.today{font-size:.75rem;color:var(--tm);border:1px dashed var(--border);border-radius:8px;padding:6px 8px;direction:ltr;font-family:system-ui,sans-serif;margin:0}
+.ghostbtn{border:1.5px solid var(--border);background:var(--surface);border-radius:10px;padding:.6rem;min-height:44px}
+
+/* watcher placeholder */
+.hold{border:2px dashed var(--hold);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--holdsoft)}
+.holdtag{direction:ltr;font-family:system-ui,sans-serif;font-size:11px;font-weight:700;color:var(--hold);letter-spacing:.05em}
+.hold h3{margin:0;font-size:1.125rem}
+.hold p{margin:0;font-size:.875rem;color:var(--tm);line-height:1.6}
+.hold .row{display:flex;gap:8px;flex-wrap:wrap}
+.hold .row > *{flex:1;min-width:120px}
+
+/* done */
+.recap{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px}
+.recap div{display:flex;justify-content:space-between;gap:10px;padding:.6rem 0;border-bottom:1px solid var(--border);font-size:.9375rem}
+.recap div:last-child{border-bottom:0;font-weight:700}
+
+/* floating switcher (prototype only) */
+.switch{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));background:var(--bar);color:var(--onbar);border-radius:999px;display:flex;align-items:center;gap:4px;padding:5px;box-shadow:0 6px 20px rgba(0,0,0,.25);direction:ltr;font-family:system-ui,sans-serif;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+.switch button{background:transparent;border:0;color:inherit;width:36px;height:36px;border-radius:50%;font-size:16px}
+.switch button:hover{background:rgba(127,127,127,.25)}
+.switch span{padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="band">
+  <h1><span class="stamp">PROTOTYPE · THROWAWAY</span> First run with the Academy levels (#121)</h1>
+  <div class="ctrls" id="ctrls"></div>
+</div>
+
+<div class="stage">
+  <div class="phone" id="phone"><div class="scr" id="scr"></div></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+
+<div class="switch" role="toolbar" aria-label="Level screen version">
+  <button id="prev" aria-label="Previous version">◀</button>
+  <span id="vlabel"></span>
+  <button id="next" aria-label="Next version">▶</button>
+</div>
+
+<script>
+const SETS=[["level_1","المستوى الأول","Level 1",[["السنة القبلية (الصبح)","Sunnah before (Fajr)","fajr","prayer"],["الجماعة الأولى (الصبح)","First congregation (Fajr)","fajr","prayer"],["أذكار بعد الصلاة (الصبح)","Adhkar after the prayer (Fajr)","fajr","adhkar"],["أذكار الصباح","Morning adhkar","morning","adhkar"],["السنة القبلية 4 ركعات (الظهر)","Sunnah before, 4 rakat (Dhuhr)","dhuhr","prayer"],["الجماعة الأولى (الظهر)","First congregation (Dhuhr)","dhuhr","prayer"],["أذكار بعد الصلاة (الظهر)","Adhkar after the prayer (Dhuhr)","dhuhr","adhkar"],["السنة البعدية (الظهر)","Sunnah after (Dhuhr)","dhuhr","prayer"],["الجماعة الأولى (العصر)","First congregation (Asr)","asr","prayer"],["أذكار بعد الصلاة (العصر)","Adhkar after the prayer (Asr)","asr","adhkar"],["أذكار المساء","Evening adhkar","asr","adhkar"],["الجماعة الأولى (المغرب)","First congregation (Maghrib)","maghrib","prayer"],["أذكار بعد الصلاة (المغرب)","Adhkar after the prayer (Maghrib)","maghrib","adhkar"],["السنة البعدية (المغرب)","Sunnah after (Maghrib)","maghrib","prayer"],["الجماعة الأولى (العشاء)","First congregation (Isha)","isha","prayer"],["أذكار بعد الصلاة (العشاء)","Adhkar after the prayer (Isha)","isha","adhkar"],["السنة البعدية (العشاء)","Sunnah after (Isha)","isha","prayer"],["ركعتان قيام","Two rakat of night prayer","night","prayer"],["الورد (ربعين)","Daily portion (two quarters)","night","quran"],["الوتر","Witr","night","prayer"],["حفظ نصف صفحة","Memorise half a page","any_time","quran"],["قراءة ستة أرباع","Read six quarters","any_time","quran"],["الصيام (الاثنين والخميس)","Fasting (Monday and Thursday)","any_time","fasting"],["ذكر الاستيقاظ","Dhikr on waking","any_time","adhkar"],["ذكر الخلاء","Dhikr for the toilet","any_time","adhkar"],["ذكر لبس الثوب وخلعه","Dhikr for dressing and undressing","any_time","adhkar"],["ذكر الوضوء","Dhikr for wudu","any_time","adhkar"],["ذكر دخول المنزل والخروج","Dhikr for entering and leaving home","any_time","adhkar"],["ذكر المسجد (دخول وخروج)","Dhikr for the mosque (entering and leaving)","any_time","adhkar"],["ذكر المشي إلى المسجد","Dhikr walking to the mosque","any_time","adhkar"],["ذكر الأكل والشرب","Dhikr for eating and drinking","any_time","adhkar"],["ذكر الركوب","Dhikr for riding","any_time","adhkar"],["ذكر النوم","Dhikr before sleep","any_time","adhkar"],["حضور دروس العلم (السبت والخميس)","Attending knowledge lessons (Saturday and Thursday)","any_time","study"],["مذاكرة دروس العلم","Reviewing the knowledge lessons","any_time","study"],["بر الوالدين","Kindness to parents","any_time","family"],["مذاكرة الدراسة أو إتقان العمل الدنيوي (خمس ساعات)","Study or doing worldly work well (five hours)","any_time","work"],["سنن الفطرة (الجمعة)","Sunan al fitra (Friday)","morning","other"],["الغسل (الجمعة)","Ghusl (Friday)","morning","other"],["الطيب (الجمعة)","Perfume (Friday)","morning","other"],["السواك (الجمعة)","Siwak (Friday)","morning","other"],["التبكير (الجمعة)","Going early to Jumuah","dhuhr","prayer"],["سورة الكهف (الجمعة)","Surat al Kahf (Friday)","any_time","quran"],["الصلاة على النبي (الجمعة)","Salawat on the Prophet (Friday)","any_time","adhkar"]]],["levels_2_3","المستويان الثاني والثالث","Levels 2 and 3",[["السنة القبلية (الصبح)","Sunnah before (Fajr)","fajr","prayer"],["الدعاء بين الأذانين (الصبح)","Dua between adhan and iqamah (Fajr)","fajr","adhkar"],["تكبيرة الإحرام (الصبح)","Opening takbir (Fajr)","fajr","prayer"],["الجماعة الأولى (الصبح)","First congregation (Fajr)","fajr","prayer"],["أذكار بعد الصلاة (الصبح)","Adhkar after the prayer (Fajr)","fajr","adhkar"],["أذكار الصباح","Morning adhkar","morning","adhkar"],["التهليل","Tahlil","morning","adhkar"],["صلاة الضحى","Duha prayer","morning","prayer"],["السنة القبلية 4 ركعات (الظهر)","Sunnah before, 4 rakat (Dhuhr)","dhuhr","prayer"],["الدعاء بين الأذانين (الظهر)","Dua between adhan and iqamah (Dhuhr)","dhuhr","adhkar"],["تكبيرة الإحرام (الظهر)","Opening takbir (Dhuhr)","dhuhr","prayer"],["الجماعة الأولى (الظهر)","First congregation (Dhuhr)","dhuhr","prayer"],["أذكار بعد الصلاة (الظهر)","Adhkar after the prayer (Dhuhr)","dhuhr","adhkar"],["السنة البعدية (الظهر)","Sunnah after (Dhuhr)","dhuhr","prayer"],["الدعاء بين الأذانين (العصر)","Dua between adhan and iqamah (Asr)","asr","adhkar"],["تكبيرة الإحرام (العصر)","Opening takbir (Asr)","asr","prayer"],["الجماعة الأولى (العصر)","First congregation (Asr)","asr","prayer"],["أذكار بعد الصلاة (العصر)","Adhkar after the prayer (Asr)","asr","adhkar"],["أذكار المساء","Evening adhkar","asr","adhkar"],["الدعاء بين الأذانين (المغرب)","Dua between adhan and iqamah (Maghrib)","maghrib","adhkar"],["تكبيرة الإحرام (المغرب)","Opening takbir (Maghrib)","maghrib","prayer"],["الجماعة الأولى (المغرب)","First congregation (Maghrib)","maghrib","prayer"],["أذكار بعد الصلاة (المغرب)","Adhkar after the prayer (Maghrib)","maghrib","adhkar"],["السنة البعدية (المغرب)","Sunnah after (Maghrib)","maghrib","prayer"],["الدعاء بين الأذانين (العشاء)","Dua between adhan and iqamah (Isha)","isha","adhkar"],["تكبيرة الإحرام (العشاء)","Opening takbir (Isha)","isha","prayer"],["الجماعة الأولى (العشاء)","First congregation (Isha)","isha","prayer"],["أذكار بعد الصلاة (العشاء)","Adhkar after the prayer (Isha)","isha","adhkar"],["السنة البعدية (العشاء)","Sunnah after (Isha)","isha","prayer"],["ركعتان قيام","Two rakat of night prayer","night","prayer"],["الورد (حزب)","Daily portion (one hizb)","night","quran"],["الوتر","Witr","night","prayer"],["حفظ صفحة","Memorise one page","any_time","quran"],["قراءة جزء","Read one juz","any_time","quran"],["الصيام (الاثنين والخميس)","Fasting (Monday and Thursday)","any_time","fasting"],["ذكر الاستيقاظ","Dhikr on waking","any_time","adhkar"],["ذكر الخلاء","Dhikr for the toilet","any_time","adhkar"],["ذكر لبس الثوب وخلعه","Dhikr for dressing and undressing","any_time","adhkar"],["ذكر الوضوء","Dhikr for wudu","any_time","adhkar"],["ذكر دخول المنزل والخروج","Dhikr for entering and leaving home","any_time","adhkar"],["ذكر المسجد (دخول وخروج)","Dhikr for the mosque (entering and leaving)","any_time","adhkar"],["ذكر المشي إلى المسجد","Dhikr walking to the mosque","any_time","adhkar"],["ذكر الأكل والشرب","Dhikr for eating and drinking","any_time","adhkar"],["ذكر الركوب","Dhikr for riding","any_time","adhkar"],["ذكر النوم","Dhikr before sleep","any_time","adhkar"],["الاستغفار","Istighfar","any_time","adhkar"],["حضور دروس العلم (السبت والخميس)","Attending knowledge lessons (Saturday and Thursday)","any_time","study"],["مذاكرة دروس العلم","Reviewing the knowledge lessons","any_time","study"],["بر الوالدين","Kindness to parents","any_time","family"],["مذاكرة الدراسة أو إتقان العمل الدنيوي (خمس ساعات)","Study or doing worldly work well (five hours)","any_time","work"],["الدعوة","Dawah","any_time","other"],["صلاة الاستخارة","Istikhara prayer","any_time","prayer"],["صلاة الحاجة","Salat al hajah (prayer of need)","any_time","prayer"],["سنن الفطرة (الجمعة)","Sunan al fitra (Friday)","morning","other"],["الغسل (الجمعة)","Ghusl (Friday)","morning","other"],["لبس أفضل الثياب (الجمعة)","Wearing your best clothes (Friday)","morning","other"],["الطيب (الجمعة)","Perfume (Friday)","morning","other"],["السواك (الجمعة)","Siwak (Friday)","morning","other"],["التبكير (الجمعة)","Going early to Jumuah","dhuhr","prayer"],["سورة الكهف (الجمعة)","Surat al Kahf (Friday)","any_time","quran"],["الصلاة على النبي (الجمعة)","Salawat on the Prophet (Friday)","any_time","adhkar"],["الدعاء عند صعود الإمام (الجمعة)","Dua when the imam ascends the minbar","dhuhr","adhkar"],["الدعاء قبل المغرب (الجمعة)","Dua before Maghrib (Friday)","asr","adhkar"]]],["level_advanced","المستوى المتقدم","Advanced level",[["التبكير (الصبح)","Going early (Fajr)","fajr","prayer"],["أذكار الأذان (الصبح)","Adhkar of the adhan (Fajr)","fajr","adhkar"],["الدعاء بين الأذانين (الصبح)","Dua between adhan and iqamah (Fajr)","fajr","adhkar"],["السنة القبلية (الصبح)","Sunnah before (Fajr)","fajr","prayer"],["السواك (الصبح)","Siwak (Fajr)","fajr","other"],["الجماعة الأولى (الصبح)","First congregation (Fajr)","fajr","prayer"],["تكبيرة الإحرام (الصبح)","Opening takbir (Fajr)","fajr","prayer"],["الصف الأول (الصبح)","First row (Fajr)","fajr","prayer"],["أذكار بعد الصلاة (الصبح)","Adhkar after the prayer (Fajr)","fajr","adhkar"],["قضاء الفوائت (الصبح)","Making up missed prayers (Fajr)","fajr","prayer"],["أذكار الصباح","Morning adhkar","morning","adhkar"],["التهليل (أذكار الصباح)","Tahlil (morning adhkar)","morning","adhkar"],["الجلوس إلى الشروق","Sitting until sunrise","morning","adhkar"],["صلاة الضحى","Duha prayer","morning","prayer"],["التبكير (الظهر)","Going early (Dhuhr)","dhuhr","prayer"],["أذكار الأذان (الظهر)","Adhkar of the adhan (Dhuhr)","dhuhr","adhkar"],["الدعاء بين الأذانين (الظهر)","Dua between adhan and iqamah (Dhuhr)","dhuhr","adhkar"],["السنة القبلية (الظهر)","Sunnah before (Dhuhr)","dhuhr","prayer"],["السواك (الظهر)","Siwak (Dhuhr)","dhuhr","other"],["الجماعة الأولى (الظهر)","First congregation (Dhuhr)","dhuhr","prayer"],["تكبيرة الإحرام (الظهر)","Opening takbir (Dhuhr)","dhuhr","prayer"],["الصف الأول (الظهر)","First row (Dhuhr)","dhuhr","prayer"],["أذكار بعد الصلاة (الظهر)","Adhkar after the prayer (Dhuhr)","dhuhr","adhkar"],["السنة البعدية (الظهر)","Sunnah after (Dhuhr)","dhuhr","prayer"],["قضاء الفوائت (الظهر)","Making up missed prayers (Dhuhr)","dhuhr","prayer"],["التبكير (العصر)","Going early (Asr)","asr","prayer"],["أذكار الأذان (العصر)","Adhkar of the adhan (Asr)","asr","adhkar"],["الدعاء بين الأذانين (العصر)","Dua between adhan and iqamah (Asr)","asr","adhkar"],["السنة القبلية (العصر)","Sunnah before (Asr)","asr","prayer"],["السواك (العصر)","Siwak (Asr)","asr","other"],["الجماعة الأولى (العصر)","First congregation (Asr)","asr","prayer"],["تكبيرة الإحرام (العصر)","Opening takbir (Asr)","asr","prayer"],["الصف الأول (العصر)","First row (Asr)","asr","prayer"],["أذكار بعد الصلاة (العصر)","Adhkar after the prayer (Asr)","asr","adhkar"],["قضاء الفوائت (العصر)","Making up missed prayers (Asr)","asr","prayer"],["أذكار المساء","Evening adhkar","asr","adhkar"],["التهليل (أذكار المساء)","Tahlil (evening adhkar)","asr","adhkar"],["ذكر الغروب","Dhikr at sunset","asr","adhkar"],["التبكير (المغرب)","Going early (Maghrib)","maghrib","prayer"],["أذكار الأذان (المغرب)","Adhkar of the adhan (Maghrib)","maghrib","adhkar"],["الدعاء بين الأذانين (المغرب)","Dua between adhan and iqamah (Maghrib)","maghrib","adhkar"],["السنة القبلية (المغرب)","Sunnah before (Maghrib)","maghrib","prayer"],["السواك (المغرب)","Siwak (Maghrib)","maghrib","other"],["الجماعة الأولى (المغرب)","First congregation (Maghrib)","maghrib","prayer"],["تكبيرة الإحرام (المغرب)","Opening takbir (Maghrib)","maghrib","prayer"],["الصف الأول (المغرب)","First row (Maghrib)","maghrib","prayer"],["أذكار بعد الصلاة (المغرب)","Adhkar after the prayer (Maghrib)","maghrib","adhkar"],["السنة البعدية (المغرب)","Sunnah after (Maghrib)","maghrib","prayer"],["قضاء الفوائت (المغرب)","Making up missed prayers (Maghrib)","maghrib","prayer"],["التبكير (العشاء)","Going early (Isha)","isha","prayer"],["أذكار الأذان (العشاء)","Adhkar of the adhan (Isha)","isha","adhkar"],["الدعاء بين الأذانين (العشاء)","Dua between adhan and iqamah (Isha)","isha","adhkar"],["السنة القبلية (العشاء)","Sunnah before (Isha)","isha","prayer"],["السواك (العشاء)","Siwak (Isha)","isha","other"],["الجماعة الأولى (العشاء)","First congregation (Isha)","isha","prayer"],["تكبيرة الإحرام (العشاء)","Opening takbir (Isha)","isha","prayer"],["الصف الأول (العشاء)","First row (Isha)","isha","prayer"],["أذكار بعد الصلاة (العشاء)","Adhkar after the prayer (Isha)","isha","adhkar"],["السنة البعدية (العشاء)","Sunnah after (Isha)","isha","prayer"],["قضاء الفوائت (العشاء)","Making up missed prayers (Isha)","isha","prayer"],["عدد الركعات (الليل)","Number of rakat (night)","night","prayer"],["الورد (الليل)","Daily portion (night)","night","quran"],["الوتر","Witr","night","prayer"],["الاستغفار (الليل)","Istighfar (night)","night","adhkar"],["الدعاء للنفس","Dua for yourself","any_time","adhkar"],["الدعاء للمشايخ","Dua for the teachers","any_time","adhkar"],["الدعاء للإخوة","Dua for the brothers","any_time","adhkar"],["الدعاء للمسلمين","Dua for all Muslims","any_time","adhkar"],["تلاوة وتدبر","Recitation and reflection","any_time","quran"],["مراجعة وحفظ","Revision and memorisation","any_time","quran"],["ذكر الاستيقاظ","Dhikr on waking","any_time","adhkar"],["ذكر الخلاء","Dhikr for the toilet","any_time","adhkar"],["ذكر الوضوء","Dhikr for wudu","any_time","adhkar"],["ذكر لبس الثوب وخلعه","Dhikr for dressing and undressing","any_time","adhkar"],["ذكر دخول المنزل والخروج","Dhikr for entering and leaving home","any_time","adhkar"],["ذكر الركوب","Dhikr for riding","any_time","adhkar"],["ذكر المشي إلى المسجد","Dhikr walking to the mosque","any_time","adhkar"],["ذكر دخول المسجد والخروج","Dhikr for entering and leaving the mosque","any_time","adhkar"],["ذكر الأكل والشرب","Dhikr for eating and drinking","any_time","adhkar"],["ذكر النوم","Dhikr before sleep","any_time","adhkar"],["الاستغفار في المجالس","Istighfar in gatherings","any_time","adhkar"],["كفارة المجالس","Dua at the close of a gathering","any_time","adhkar"],["الاستغفار المطلق","General istighfar","any_time","adhkar"],["الصلاة على النبي ﷺ","Salawat on the Prophet","any_time","adhkar"],["بر الوالدين","Kindness to parents","any_time","family"],["صلة الرحم","Keeping family ties","any_time","family"],["أداء الحقوق","Giving people their rights","any_time","other"],["ترك آفات اللسان","Avoiding the faults of the tongue","any_time","other"],["ترك فضول النظر","Lowering the gaze","any_time","other"],["معالجة القلب","Treating the heart","any_time","other"],["الصيام","Fasting","any_time","fasting"],["الصدقة","Charity","any_time","charity"],["صلاة الاستخارة","Istikhara prayer","any_time","prayer"],["المحافظة على الوضوء","Staying in wudu","any_time","other"],["الوضوء للنوم","Wudu before sleep","any_time","other"],["الدعوة","Dawah","any_time","other"],["العلم الدنيوي","Worldly knowledge","any_time","study"],["حضور العلم الشرعي","Attending lessons in sacred knowledge","any_time","study"],["مذاكرة العلم الشرعي","Reviewing sacred knowledge","any_time","study"],["المحاسبة","Self review","any_time","other"],["التوبة","Repentance","any_time","other"],["الغسل (الجمعة)","Ghusl (Friday)","morning","other"],["لبس أفضل الثياب (الجمعة)","Wearing your best clothes (Friday)","morning","other"],["الطيب (الجمعة)","Perfume (Friday)","morning","other"],["السواك (الجمعة)","Siwak (Friday)","morning","other"],["اختيار المسجد الأفضل (الجمعة)","Choosing the best mosque (Friday)","morning","prayer"],["التبكير (الجمعة)","Going early to Jumuah","dhuhr","prayer"],["الدعاء عند صعود الإمام (الجمعة)","Dua when the imam ascends the minbar","dhuhr","adhkar"],["الدعاء بعد العصر (الجمعة)","Dua after Asr (Friday)","asr","adhkar"],["سورة الكهف (الجمعة)","Surat al Kahf (Friday)","any_time","quran"],["الصلاة على النبي ﷺ (الجمعة)","Salawat on the Prophet (Friday)","any_time","adhkar"]]],["five_prayers","الصلوات الخمس","The five prayers",[["صلاة الفجر في وقتها","Fajr on time","fajr","prayer"],["صلاة الظهر في وقتها","Dhuhr on time","dhuhr","prayer"],["صلاة العصر في وقتها","Asr on time","asr","prayer"],["صلاة المغرب في وقتها","Maghrib on time","maghrib","prayer"],["صلاة العشاء في وقتها","Isha on time","isha","prayer"]]],["sunnah_prayers","السنن الرواتب","Sunnah prayers",[["سنة الفجر","Sunnah before Fajr","fajr","prayer"],["سنة الظهر القبلية","Sunnah before Dhuhr","dhuhr","prayer"],["سنة الظهر البعدية","Sunnah after Dhuhr","dhuhr","prayer"],["سنة المغرب","Sunnah after Maghrib","maghrib","prayer"],["سنة العشاء","Sunnah after Isha","isha","prayer"]]],["mosque_prayer","الصلاة في المسجد","Prayer in the mosque",[["الفجر جماعة من أولها","Fajr in congregation from the start","fajr","prayer"],["تكبيرة الإحرام مع الإمام في الفجر","Opening takbir with the imam at Fajr","fajr","prayer"],["الصف الأول في الفجر","First row at Fajr","fajr","prayer"],["الظهر جماعة من أولها","Dhuhr in congregation from the start","dhuhr","prayer"],["تكبيرة الإحرام مع الإمام في الظهر","Opening takbir with the imam at Dhuhr","dhuhr","prayer"],["الصف الأول في الظهر","First row at Dhuhr","dhuhr","prayer"],["العصر جماعة من أولها","Asr in congregation from the start","asr","prayer"],["تكبيرة الإحرام مع الإمام في العصر","Opening takbir with the imam at Asr","asr","prayer"],["الصف الأول في العصر","First row at Asr","asr","prayer"],["المغرب جماعة من أولها","Maghrib in congregation from the start","maghrib","prayer"],["تكبيرة الإحرام مع الإمام في المغرب","Opening takbir with the imam at Maghrib","maghrib","prayer"],["الصف الأول في المغرب","First row at Maghrib","maghrib","prayer"],["العشاء جماعة من أولها","Isha in congregation from the start","isha","prayer"],["تكبيرة الإحرام مع الإمام في العشاء","Opening takbir with the imam at Isha","isha","prayer"],["الصف الأول في العشاء","First row at Isha","isha","prayer"]]],["with_every_prayer","مع كل صلاة","With every prayer",[["الدعاء بين الأذان والإقامة في الفجر","Dua before the iqama of Fajr","fajr","adhkar"],["الأذكار بعد صلاة الفجر","Adhkar after Fajr","fajr","adhkar"],["الدعاء بين الأذان والإقامة في الظهر","Dua before the iqama of Dhuhr","dhuhr","adhkar"],["الأذكار بعد صلاة الظهر","Adhkar after Dhuhr","dhuhr","adhkar"],["الدعاء بين الأذان والإقامة في العصر","Dua before the iqama of Asr","asr","adhkar"],["الأذكار بعد صلاة العصر","Adhkar after Asr","asr","adhkar"],["الدعاء بين الأذان والإقامة في المغرب","Dua before the iqama of Maghrib","maghrib","adhkar"],["الأذكار بعد صلاة المغرب","Adhkar after Maghrib","maghrib","adhkar"],["الدعاء بين الأذان والإقامة في العشاء","Dua before the iqama of Isha","isha","adhkar"],["الأذكار بعد صلاة العشاء","Adhkar after Isha","isha","adhkar"]]],["morning_evening","الصباح والمساء","Morning and evening",[["أذكار الصباح","Morning adhkar","morning","adhkar"],["لا إله إلا الله","La ilaha illa Allah","morning","adhkar"],["الجلوس حتى الشروق","Sitting until sunrise","morning","adhkar"],["صلاة الضحى","Duha prayer","morning","prayer"],["أذكار المساء","Evening adhkar","asr","adhkar"],["الاستغفار","Istighfar","any_time","adhkar"],["أذكار النوم","Adhkar before sleep","night","adhkar"]]],["night_prayer","صلاة الليل","Night prayer",[["قيام الليل","Qiyam","night","prayer"],["الوتر","Witr","night","prayer"]]],["quran","القرآن","Quran",[["قراءة القرآن","Quran reading","any_time","quran"],["حفظ جديد","New memorisation","any_time","quran"],["مراجعة المحفوظ","Review what I memorised","any_time","quran"]]],["daily_adhkar","أذكار اليوم","Everyday adhkar",[["ذكر الاستيقاظ من النوم","On waking up","any_time","adhkar"],["ذكر دخول الخلاء والخروج منه","Entering and leaving the toilet","any_time","adhkar"],["ذكر الوضوء","Wudu","any_time","adhkar"],["ذكر لبس الثوب","Getting dressed","any_time","adhkar"],["ذكر دخول البيت والخروج منه","Entering and leaving home","any_time","adhkar"],["ذكر الطعام والشراب","Eating and drinking","any_time","adhkar"],["ذكر الركوب","Riding","any_time","adhkar"],["ذكر دخول المسجد والخروج منه","Entering and leaving the mosque","any_time","adhkar"],["ذكر الخروج إلى المسجد","Walking to the mosque","any_time","adhkar"],["أذكار النوم","Adhkar before sleep","night","adhkar"]]],["friday","يوم الجمعة","Friday",[["غسل الجمعة","Friday ghusl","morning","other"],["سنن الفطرة","Sunan al fitra","morning","other"],["أحسن الثياب والطيب","Best clothes and perfume","morning","other"],["السواك","Siwak","any_time","other"],["التبكير إلى الجمعة","Going early to Jumuah","dhuhr","prayer"],["سورة الكهف","Surah al Kahf","any_time","quran"],["الصلاة على النبي ﷺ","Salawat on the Prophet","any_time","adhkar"],["الدعاء في آخر ساعة من يوم الجمعة","Dua in the last hour of Friday","asr","adhkar"]]],["knowledge_dawah","العلم والدعوة","Knowledge and dawah",[["حضور درس علم","Attending a lesson","any_time","study"],["مراجعة الدروس","Reviewing lessons","any_time","study"],["الدعوة إلى الله","Dawah","any_time","other"]]],["fasting_seasons","الصيام والمواسم","Fasting and seasons",[["صيام الاثنين والخميس","Fasting Monday and Thursday","any_time","fasting"],["صيام الأيام البيض","Fasting the white days","any_time","fasting"],["صيام تاسوعاء وعاشوراء","Fasting Tasua and Ashura","any_time","fasting"],["الصدقة يوم عاشوراء","Charity on Ashura","any_time","charity"],["التوسعة على الأهل يوم عاشوراء","Generosity to family on Ashura","any_time","family"],["صيام تسع ذي الحجة","Fasting the first nine of Dhul Hijjah","any_time","fasting"],["صيام يوم عرفة","Fasting the Day of Arafah","any_time","fasting"],["التكبير في أيام ذي الحجة","Takbir in the days of Dhul Hijjah","any_time","adhkar"]]],["ramadan","رمضان","Ramadan",[["صيام رمضان","Fasting Ramadan","any_time","fasting"],["صلاة التراويح","Taraweeh","isha","prayer"],["القرآن في رمضان","Quran in Ramadan","any_time","quran"],["الصدقة في رمضان","Charity in Ramadan","any_time","charity"],["قيام العشر الأواخر","Qiyam in the last ten nights","night","prayer"],["الدعاء في ليلة القدر","Dua for Laylat al Qadr","night","adhkar"]]]];
+
+(function(){
+const VARIANTS=[["cards","A","Cards"],["day","B","Day preview"],["compare","C","Compare"]];
+const SLOTS=["fajr","morning","dhuhr","asr","maghrib","isha","night","any_time"];
+const T={
+  ar:{slot:{fajr:"الفجر",morning:"الصباح",dhuhr:"الظهر",asr:"العصر",maghrib:"المغرب",isha:"العشاء",night:"الليل",any_time:"أي وقت"},
+    lvlHead:"اختر مستواك في الأكاديمية",lvlHelp:"نضع لك أعمال ورقة مستواك. يمكنك تغييرها لاحقًا.",
+    lvlNames:{academy:["المستوى الأول","المستوى الثاني","المستوى الثالث"],sheet:["المستوى الأول","المستويان الثاني والثالث","المستوى المتقدم"]},
+    deeds:n=>`${n} عملًا`,highlights:[
+      "الجماعة الأولى مع السنن، أذكار الصباح والمساء، الورد ربعين وحفظ نصف صفحة، أذكار اليوم، وسنن الجمعة.",
+      "يزيد تكبيرة الإحرام، والدعاء بين الأذانين، والضحى، والتهليل، والورد حزبًا، وحفظ صفحة، والدعوة.",
+      "التبكير والصف الأول في كل صلاة، والسواك، وقضاء الفوائت، والدعاء للغير، وأعمال القلب واللسان، والمحاسبة."],
+    seeDeeds:"اعرض الأعمال",hideDeeds:"أخفِ الأعمال",credit:"من أوراق المستويات لمعلمي الأكاديمية، بإذنهم",
+    startEmpty:"لا أتبع الأكاديمية؟ ابدأ صفحة فارغة",next:"التالي",startWith:n=>`ابدأ بـ${n}`,pick:"اختر مستوى",
+    dayHelp:n=>`هكذا يبدو يومك في ${n}. اضغط على وقت لترى أعماله.`,
+    cmpHelp:"عدد الأعمال في كل مستوى. اضغط على عمود لتختاره.",
+    areas:{prayer:"الصلاة",adhkar:"الأذكار",quran:"القرآن",fasting:"الصيام",other:"العلم والأخلاق وغيرها"},total:"المجموع",
+    exHead:"تريد إضافة شيء؟",exHelp:n=>`هذه مجموعات ليست في ${n}. كلها اختيارية.`,
+    why:{five_prayers:"المستويات تتابع الجماعة، وهذه تتابع الصلاة في وقتها.",fasting_seasons:"المستويات فيها صيام الاثنين والخميس فقط.",ramadan:"لا يوجد رمضان في أوراق المستويات."},
+    keysWarn:"كل المجموعات القديمة تظهر هنا لأن أعمال المستويات لها مفاتيح جديدة. بعضها يكرر أعمالًا في مستواك بكلمات أخرى.",
+    skip:"تخطَّ",ownHead:"أضف أعمالك",ownHelp:"عمل ليس في القائمة؟ أضفه هنا، أو تخطَّ وأضفه لاحقًا.",ownName:"اسم العمل",ownPh:"مثلًا: المشي نصف ساعة",
+    ownSlot:"وقته",add:"أضف",remove:"احذف",
+    locHead:"مكانك",locHelp:"يحدد مكانك بداية اليوم عند الفجر. يبقى على هذا الجهاز.",locUse:"استخدم موقعي",locCity:"أو اختر مدينة",
+    locCities:["القاهرة","الإسكندرية","الرياض","مكة"],locSkip:"تابع دون مكان",
+    hold:"مكان مؤقت · ينتظر #120",
+    wOwnerHead:"هل لك متابِع؟",wOwnerHelp:"المتابِع يرى تقاريرك ولا يغير شيئًا في صفحتك.",wYes:"نعم، أضيفه ببريده",wNo:"ليس الآن",wEmail:"بريد المتابِع",
+    wWatchHead:"سارة (مثال) تطلب أن تتابعها",wWatchHelp:"هل توافق على متابعتها؟ سترى تقاريرها ولا تغير شيئًا في صفحتها.",wAgree:"أوافق",wLater:"ليس الآن",
+    doneHead:"صفحتك جاهزة",doneHelp:"يمكنك تغيير الأعمال من «أعمالي» في أي وقت.",ownCount:"أعمالك",noLevel:"دون مستوى",open:"افتح صفحة اليوم",restart:"ابدأ من جديد (للنموذج)"},
+  en:{slot:{fajr:"Fajr",morning:"Morning",dhuhr:"Dhuhr",asr:"Asr",maghrib:"Maghrib",isha:"Isha",night:"Night",any_time:"Any time"},
+    lvlHead:"Pick your Academy level",lvlHelp:"We fill your sheet with your level's deeds. You can change them later.",
+    lvlNames:{academy:["Academy level 1","Academy level 2","Academy level 3"],sheet:["Level 1","Levels 2 and 3","Advanced level"]},
+    deeds:n=>`${n} deeds`,highlights:[
+      "The first congregation with its sunnah, morning and evening adhkar, two quarters a day and half a page to memorise, the adhkar of the day, Friday sunnahs.",
+      "Adds the opening takbir, dua between adhan and iqamah, duha, tahlil, a hizb a day, a page to memorise, dawah.",
+      "Going early and the first row at every prayer, siwak, making up missed prayers, dua for others, deeds of the heart and tongue, self review."],
+    seeDeeds:"Show the deeds",hideDeeds:"Hide the deeds",credit:"From the Academy instructors' level sheets, used with their permission",
+    startEmpty:"Not following the Academy? Start with an empty sheet",next:"Next",startWith:n=>`Start with ${n}`,pick:"Pick a level",
+    dayHelp:n=>`This is your day in ${n}. Tap a time to see its deeds.`,
+    cmpHelp:"Deeds in each level. Tap a column to pick it.",
+    areas:{prayer:"Prayer",adhkar:"Adhkar",quran:"Quran",fasting:"Fasting",other:"Knowledge, character, other"},total:"Total",
+    exHead:"Want to add more?",exHelp:n=>`These sets are not in ${n}. All optional.`,
+    why:{five_prayers:"The levels track congregation; these track praying on time.",fasting_seasons:"The levels only have fasting Monday and Thursday.",ramadan:"The level sheets have no Ramadan deeds."},
+    keysWarn:"Every old set shows here because the level deeds have new keys. Some repeat deeds from your level in other words.",
+    skip:"Skip",ownHead:"Add your own deeds",ownHelp:"A deed that is not on the list? Add it here, or skip and add it later.",ownName:"Deed name",ownPh:"For example: walk half an hour",
+    ownSlot:"When",add:"Add",remove:"Remove",
+    locHead:"Your place",locHelp:"Your place sets the Fajr boundary. It stays on this device.",locUse:"Use my location",locCity:"Or pick a city",
+    locCities:["Cairo","Alexandria","Riyadh","Makkah"],locSkip:"Continue without location",
+    hold:"PLACEHOLDER · waits on #120",
+    wOwnerHead:"Do you have a watcher?",wOwnerHelp:"A watcher sees your reports and changes nothing on your sheet.",wYes:"Yes, add them by email",wNo:"Not now",wEmail:"Watcher's email",
+    wWatchHead:"Sara (example) asks you to watch her",wWatchHelp:"Do you agree to watch? You will see her reports and change nothing on her sheet.",wAgree:"I agree",wLater:"Not now",
+    doneHead:"Your sheet is ready",doneHelp:"You can change deeds from My deeds at any time.",ownCount:"Your own deeds",noLevel:"No level",open:"Open today's sheet",restart:"Start over (prototype)"}
+};
+const LEVELS=SETS.slice(0,3), OLD=SETS.slice(3);
+const MEANING=["five_prayers","fasting_seasons","ramadan"];
+const st={lang:"ar",fs:16,theme:"auto",variant:"cards",naming:"academy",rule:"meaning",pretick:"on",role:"owner",order:"after",
+  step:0,level:null,extras:new Set(),own:[],empty:false,open:null,tab:0,ownSlot:"any_time"};
+const fromHash=()=>{const h=location.hash.slice(1);if(VARIANTS.some(v=>v[0]===h))st.variant=h;};
+fromHash();
+const t=()=>T[st.lang];
+const num=n=>st.lang==="ar"?n.toLocaleString("ar-EG"):String(n);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dn=d=>st.lang==="ar"?d[0]:d[1];
+const lvlName=i=>t().lvlNames[st.naming][i];
+const offered=()=>(st.rule==="meaning"?OLD.filter(s=>MEANING.includes(s[0])):OLD);
+function steps(){
+  const core=st.empty?["level","own"]:["level","extras","own"];
+  return st.order==="first"?["location",...core,"watcher","done"]:[...core,"location","watcher","done"];
+}
+function go(name){st.step=steps().indexOf(name);render();}
+function nextStep(){st.step=Math.min(st.step+1,steps().length-1);render();}
+function bySlot(deeds){
+  return SLOTS.map(s=>[s,deeds.filter(d=>d[2]===s)]).filter(x=>x[1].length);
+}
+function area(c){return ["prayer","adhkar","quran","fasting"].includes(c)?c:"other";}
+function stepDots(){
+  const list=steps().filter(s=>s!=="done");
+  const i=Math.min(st.step,list.length);
+  return `<div class="steps" aria-hidden="true">${list.map((_,k)=>`<i class="${k===i?"on":""}"></i>`).join("")}</div>`;
+}
+function shell(head,help,body,foot){
+  return `<div class="top"><span class="brand">werdy</span>${steps()[st.step]!=="done"?stepDots():""}</div>
+  <div class="head"><h2>${head}</h2>${help?`<p>${help}</p>`:""}</div>
+  <div class="body">${body}</div><div class="foot">${foot}</div>`;
+}
+function deedList(deeds){
+  return `<div class="deedlist">${bySlot(deeds).map(([s,ds])=>`<div class="slot"><h4>${t().slot[s]} · ${num(ds.length)}</h4><ul>${ds.map(d=>`<li>${esc(dn(d))}</li>`).join("")}</ul></div>`).join("")}</div>`;
+}
+
+/* ---------- level step: three versions ---------- */
+function levelCards(){
+  const L=t();
+  return LEVELS.map((s,i)=>`<div class="lvl ${st.level===i?"sel":""}">
+    <button class="lvl-row" data-act="level" data-i="${i}" aria-pressed="${st.level===i}">
+      <span class="radio"></span><span class="lvl-name">${lvlName(i)}</span><span class="count">${L.deeds(num(s[3].length))}</span></button>
+    <p>${L.highlights[i]}</p>
+    <button class="more" data-act="open" data-i="${i}" aria-expanded="${st.open===i}">${st.open===i?L.hideDeeds:L.seeDeeds}</button>
+    ${st.open===i?deedList(s[3]):""}</div>`).join("")+`<p class="credit">${L.credit}</p>`;
+}
+function levelDay(){
+  const L=t(),i=st.tab,s=LEVELS[i];
+  if(st.level!==null&&st.level!==i)st.level=i;
+  return `<div class="tabs" role="tablist">${LEVELS.map((x,k)=>`<button role="tab" data-act="tab" data-i="${k}" class="${k===i?"on":""}" aria-selected="${k===i}">${lvlName(k)}<br><span class="count">${num(x[3].length)}</span></button>`).join("")}</div>
+    <p class="sum">${L.dayHelp(lvlName(i))}</p>
+    <div class="daybox">${bySlot(s[3]).map(([sl,ds])=>`<details class="dayslot"><summary><span>${t().slot[sl]}</span><span class="count">${num(ds.length)}</span></summary><ul>${ds.map(d=>`<li>${esc(dn(d))}</li>`).join("")}</ul></details>`).join("")}</div>
+    <p class="credit">${L.credit}</p>`;
+}
+function levelCompare(){
+  const L=t(),keys=["prayer","adhkar","quran","fasting","other"];
+  const cnt=LEVELS.map(s=>{const c={};s[3].forEach(d=>{const a=area(d[3]);c[a]=(c[a]||0)+1});return c;});
+  const col=i=>st.level===i?"on":"";
+  return `<p class="sum">${L.cmpHelp}</p><div class="cmpwrap"><table class="cmp"><thead><tr><th></th>${LEVELS.map((_,i)=>`<th class="${col(i)}"><button data-act="level" data-i="${i}" aria-pressed="${st.level===i}">${lvlName(i)}</button></th>`).join("")}</tr></thead>
+    <tbody>${keys.map(k=>`<tr><td>${L.areas[k]}</td>${cnt.map((c,i)=>`<td class="${col(i)}">${num(c[k]||0)}</td>`).join("")}</tr>`).join("")}
+    <tr class="total"><td>${L.total}</td>${LEVELS.map((s,i)=>`<td class="${col(i)}">${num(s[3].length)}</td>`).join("")}</tr></tbody></table></div>
+    ${st.level!==null?`<p class="sum">${L.highlights[st.level]}</p><button class="more" data-act="open" data-i="${st.level}">${st.open===st.level?L.hideDeeds:L.seeDeeds}</button>${st.open===st.level?deedList(LEVELS[st.level][3]):""}`:""}
+    <p class="credit">${L.credit}</p>`;
+}
+function stepLevel(){
+  const L=t();
+  let body,label,ready;
+  if(st.variant==="day"){body=levelDay();ready=true;label=L.startWith(lvlName(st.tab));}
+  else{body=st.variant==="cards"?levelCards():levelCompare();ready=st.level!==null;label=ready?L.next:L.pick;}
+  return shell(L.lvlHead,L.lvlHelp,body,
+    `<button class="primary" data-act="lvlnext" ${ready?"":"disabled"}>${label}</button>
+     <button class="link small" data-act="empty">${L.startEmpty}</button>`);
+}
+function stepExtras(){
+  const L=t(),name=lvlName(st.level);
+  const body=(st.rule==="keys"?`<p class="warn">${L.keysWarn}</p>`:"")+offered().map(s=>{
+    const on=st.extras.has(s[0]);
+    return `<button class="extra ${on?"on":""}" data-act="extra" data-k="${s[0]}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><div>
+      <div class="t"><span>${st.lang==="ar"?s[1]:s[2]}</span><span class="count">${num(s[3].length)}</span></div>
+      ${L.why[s[0]]?`<div class="why">${L.why[s[0]]}</div>`:""}
+      <div class="d">${s[3].map(d=>esc(dn(d))).join(st.lang==="ar"?"، ":", ")}</div></div></button>`;}).join("");
+  return shell(L.exHead,L.exHelp(name),body,`<button class="primary" data-act="next">${L.next}</button><button class="link" data-act="next">${L.skip}</button>`);
+}
+function stepOwn(){
+  const L=t();
+  const body=`<div class="field"><label for="ownname">${L.ownName}</label><input id="ownname" class="input" placeholder="${L.ownPh}" autocomplete="off"></div>
+    <div class="field"><label>${L.ownSlot}</label><div class="chips">${SLOTS.map(s=>`<button class="chip ${st.ownSlot===s?"on":""}" data-act="ownslot" data-k="${s}">${L.slot[s]}</button>`).join("")}</div></div>
+    <button class="addbtn" data-act="add">${L.add}</button>
+    <ul class="ownlist">${st.own.map((o,i)=>`<li><span>${esc(o[0])}<small>${L.slot[o[1]]}</small></span><button class="x" data-act="del" data-i="${i}" aria-label="${L.remove}">✕</button></li>`).join("")}</ul>`;
+  return shell(L.ownHead,L.ownHelp,body,`<button class="primary" data-act="next">${L.next}</button>${st.own.length?"":`<button class="link" data-act="next">${L.skip}</button>`}`);
+}
+function stepLocation(){
+  const L=t();
+  return shell(L.locHead,L.locHelp,`<p class="today">Today's location step, unchanged. Only its place in the order is in question.</p>
+    <button class="ghostbtn" data-act="next">${L.locUse}</button>
+    <div class="field"><label for="city">${L.locCity}</label><select id="city" class="input">${L.locCities.map(c=>`<option>${c}</option>`).join("")}</select></div>`,
+    `<button class="primary" data-act="next">${L.next}</button><button class="link" data-act="next">${L.locSkip}</button>`);
+}
+function stepWatcher(){
+  const L=t(),owner=st.role==="owner";
+  const card=owner?`<div class="hold"><span class="holdtag">${L.hold}</span><h3>${L.wOwnerHead}</h3><p>${L.wOwnerHelp}</p>
+      <div class="field"><label for="wemail">${L.wEmail}</label><input id="wemail" class="input" type="email" placeholder="name@example.com" disabled></div>
+      <div class="row"><button class="primary" data-act="next">${L.wYes}</button><button class="ghostbtn" data-act="next">${L.wNo}</button></div></div>`
+    :`<div class="hold"><span class="holdtag">${L.hold}</span><h3>${L.wWatchHead}</h3><p>${L.wWatchHelp}</p>
+      <div class="row"><button class="primary" data-act="next">${L.wAgree}</button><button class="ghostbtn" data-act="next">${L.wLater}</button></div></div>`;
+  return shell(owner?L.wOwnerHead:L.wWatchHead,"",card,`<button class="link" data-act="next">${L.skip}</button>`);
+}
+function stepDone(){
+  const L=t();
+  const rows=[];
+  if(st.level!==null&&!st.empty)rows.push([lvlName(st.level),LEVELS[st.level][3].length]);
+  else rows.push([L.noLevel,0]);
+  OLD.filter(s=>st.extras.has(s[0])&&!st.empty).forEach(s=>rows.push([st.lang==="ar"?s[1]:s[2],s[3].length]));
+  if(st.own.length)rows.push([L.ownCount,st.own.length]);
+  const total=rows.reduce((a,r)=>a+r[1],0);
+  return shell(L.doneHead,L.doneHelp,`<div class="recap">${rows.map(r=>`<div><span>${esc(r[0])}</span><span class="count">${num(r[1])}</span></div>`).join("")}<div><span>${L.total}</span><span>${num(total)}</span></div></div>`,
+    `<button class="primary" data-act="restart">${L.open}</button><button class="link small" data-act="restart">${L.restart}</button>`);
+}
+
+/* ---------- render ---------- */
+function seg(label,key,opts){
+  return `<div class="ctrl"><span>${label}</span><div class="seg">${opts.map(([v,l])=>`<button data-ctl="${key}" data-v="${v}" class="${String(st[key])===String(v)?"on":""}">${l}</button>`).join("")}</div></div>`;
+}
+function render(){
+  if(st.step>=steps().length)st.step=steps().length-1;
+  const phone=document.getElementById("phone");
+  phone.setAttribute("dir",st.lang==="ar"?"rtl":"ltr");phone.setAttribute("lang",st.lang);
+  phone.style.setProperty("--fs",st.fs+"px");
+  const s=steps()[st.step];
+  const html={level:stepLevel,extras:stepExtras,own:stepOwn,location:stepLocation,watcher:stepWatcher,done:stepDone}[s]();
+  const scr=document.getElementById("scr");scr.innerHTML=html;
+  document.getElementById("ctrls").innerHTML=
+    seg("Language","lang",[["ar","العربية"],["en","English"]])+
+    seg("Text","fs",[[14,"S"],[16,"M"],[19,"L"],[22,"XL"]])+
+    seg("Level screen","variant",VARIANTS.map(v=>[v[0],v[1]+" "+v[2]]))+
+    seg("Card titles","naming",[["academy","Academy level 1/2/3"],["sheet","Sheet names (#113)"]])+
+    seg("What the level lacks","rule",[["meaning","By meaning (3 sets)"],["keys","No shared deed (12 sets)"]])+
+    seg("Five prayers ticked","pretick",[["on","Yes"],["off","No"]])+
+    seg("Location step","order",[["after","After deeds"],["first","First, as today"]])+
+    seg("Watcher step for","role",[["owner","An owner"],["watcher","Someone asked to watch"]])+
+    seg("Theme","theme",[["auto","Auto"],["light","Light"],["dark","Dark"]])+
+    `<div class="ctrl"><span>Jump</span><div class="seg">${steps().map((x,i)=>`<button data-ctl="step" data-v="${i}" class="${i===st.step?"on":""}">${x}</button>`).join("")}</div></div>`;
+  const v=VARIANTS.find(x=>x[0]===st.variant);
+  document.getElementById("vlabel").textContent=`Level screen ${v[1]} (${v[2]})`;
+  document.getElementById("notes").innerHTML=`<h2>Questions for you</h2>
+    <p class="now">Now showing: <b>${s}</b> step, level screen <b>${v[1]} ${v[2]}</b>.</p>
+    <ol>
+      <li><b>Level screen:</b> A cards (recommended), B day preview, or C compare?</li>
+      <li><b>What a level lacks:</b> a short list written by hand per level (recommended: five prayers on time, fasting and seasons, Ramadan, with five prayers ticked), or every old set (12, with near duplicates)?</li>
+      <li><b>Location:</b> after the deeds (recommended) or first, as today?</li>
+    </ol>
+    <h2 style="margin-top:10px">Already decided</h2>
+    <ol>
+      <li>Titles "Academy level 1, 2, 3"; the instructors' credit under the cards.</li>
+      <li>"Start empty" skips the level and the extra sets and goes to "Add your own deeds".</li>
+      <li>The watcher step is a placeholder until #120.</li>
+    </ol>`;
+  document.documentElement.toggleAttribute("data-theme",st.theme!=="auto");
+  if(st.theme!=="auto")document.documentElement.setAttribute("data-theme",st.theme);
+}
+document.addEventListener("click",e=>{
+  const c=e.target.closest("[data-ctl]");
+  if(c){const k=c.dataset.ctl,v=c.dataset.v;
+    if(k==="step")st.step=+v;
+    else if(k==="fs")st.fs=+v;
+    else{st[k]=v;
+      if(k==="variant"){history.replaceState(null,"","#"+v);go("level");return;}
+      if(k==="pretick"||k==="rule")applyPretick();
+    }
+    render();return;}
+  const a=e.target.closest("[data-act]");if(!a)return;
+  const act=a.dataset.act,i=+a.dataset.i;
+  if(act==="level"){st.level=i;st.tab=i;}
+  else if(act==="open"){st.open=st.open===i?null:i;}
+  else if(act==="tab"){st.tab=i;st.level=i;}
+  else if(act==="lvlnext"){if(st.variant==="day")st.level=st.tab;st.empty=false;applyPretick();nextStep();return;}
+  else if(act==="empty"){st.empty=true;st.level=null;st.extras.clear();go("own");return;}
+  else if(act==="extra"){const k=a.dataset.k;st.extras.has(k)?st.extras.delete(k):st.extras.add(k);}
+  else if(act==="next"){nextStep();return;}
+  else if(act==="ownslot"){st.ownSlot=a.dataset.k;}
+  else if(act==="add"){const inp=document.getElementById("ownname");const v=inp.value.trim();if(v)st.own.push([v,st.ownSlot]);}
+  else if(act==="del"){st.own.splice(i,1);}
+  else if(act==="restart"){Object.assign(st,{step:0,level:null,extras:new Set(),own:[],empty:false,open:null,tab:0});}
+  render();
+});
+function applyPretick(){st.extras.delete("five_prayers");if(st.pretick==="on")st.extras.add("five_prayers");}
+document.addEventListener("keydown",e=>{
+  if(e.target.matches("input,textarea,select,[contenteditable]"))return;
+  if(e.key==="Enter"&&e.target.id==="ownname")return;
+  if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
+  cycle(e.key==="ArrowRight"?1:-1);
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="ownname"){e.preventDefault();document.querySelector('[data-act="add"]').click();}});
+function cycle(d){const i=VARIANTS.findIndex(v=>v[0]===st.variant);st.variant=VARIANTS[(i+d+VARIANTS.length)%VARIANTS.length][0];history.replaceState(null,"","#"+st.variant);go("level");}
+document.getElementById("prev").onclick=()=>cycle(-1);
+document.getElementById("next").onclick=()=>cycle(1);
+window.addEventListener("hashchange",()=>{fromHash();go("level");});
+applyPretick();render();
+})();
+</script>
