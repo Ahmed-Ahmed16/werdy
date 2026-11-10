@@ -730,13 +730,13 @@ impl AppState {
         Ok(())
     }
 
-    /// Adds the chosen level and opens the location step.
+    /// Adds the chosen level, removes other levels, and keeps other saved sets.
     pub fn continue_first_run_level(&mut self) -> Result<(), EditorError> {
         let key = self.pending_level.clone().ok_or(EditorError::RuleChange)?;
         self.apply_first_run_level(Some(&key))
     }
 
-    /// Opens location with an empty sheet.
+    /// Opens location without a level, keeping other saved sets.
     pub fn start_first_run_empty(&mut self) -> Result<(), EditorError> {
         self.apply_first_run_level(None)
     }
@@ -749,7 +749,9 @@ impl AppState {
         let previous = self.clone();
         let result = (|| {
             for key in self.data.chosen_sets.clone() {
-                if Some(key.as_str()) != chosen {
+                if Some(key.as_str()) != chosen
+                    && catalog.set(&key).is_some_and(|set| set.level.is_some())
+                {
                     self.toggle_set(&key)?;
                 }
             }
@@ -2234,10 +2236,13 @@ mod tests {
         state.show_screen(Screen::FirstRunLevel);
         state.select_first_run_level("level_1")?;
         state.continue_first_run_level()?;
-        assert_eq!(state.data.chosen_sets, BTreeSet::from(["level_1".into()]));
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["level_1".into(), "five_prayers".into()])
+        );
         assert_eq!(
             state.data.deeds.len(),
-            catalog.set("level_1").ok_or("missing level")?.deeds.len()
+            crate::starter::selected_deeds(&catalog, &state.data.chosen_sets).len()
         );
         Ok(())
     }
@@ -2250,6 +2255,119 @@ mod tests {
         assert!(state.data.deeds.is_empty());
         assert!(state.data.chosen_sets.is_empty());
         Ok(())
+    }
+
+    fn resumed_first_run_with_quran(
+        store: &MemoryStore,
+    ) -> Result<AppState, Box<dyn std::error::Error>> {
+        let mut state = AppState::start(store, today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.toggle_set("quran")?;
+        state.save_to(store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
+
+        let resumed = AppState::start(store, today()?, slot_order());
+        assert_eq!(resumed.screen, Screen::FirstRunLevel);
+        assert_eq!(resumed.pending_level, None);
+        Ok(resumed)
+    }
+
+    fn assert_quran_active_on_sheet(state: &AppState) -> TestResult {
+        let catalog = werdy_data::builtin()?;
+        let quran = catalog.set("quran").ok_or("missing Quran set")?;
+        let sheet_ids: BTreeSet<_> = state
+            .sheet()
+            .slots
+            .iter()
+            .flat_map(|slot| slot.rows.iter().map(|row| row.deed_id))
+            .collect();
+        for key in &quran.deeds {
+            let id = *state
+                .data
+                .starter_keys
+                .iter()
+                .find(|(_, saved_key)| *saved_key == key)
+                .map(|(id, _)| id)
+                .ok_or("missing Quran deed")?;
+            assert!(
+                sheet_ids.contains(&id),
+                "Quran deed {key} missing from sheet"
+            );
+            assert!(
+                state
+                    .data
+                    .deeds
+                    .iter()
+                    .any(|deed| { deed.id == id && !deed.is_archived_on(state.today) })
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn resumed_first_run_same_level_keeps_quran_set_and_deeds() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = resumed_first_run_with_quran(&store)?;
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["level_1".into(), "quran".into()])
+        );
+        assert_quran_active_on_sheet(&state)
+    }
+
+    #[test]
+    fn resumed_first_run_new_level_keeps_quran_and_removes_old_level_deeds() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = resumed_first_run_with_quran(&store)?;
+        let catalog = werdy_data::builtin()?;
+        let old_level = catalog.set("level_1").ok_or("missing first level")?;
+        let new_level = catalog.set("levels_2_3").ok_or("missing second level")?;
+        let old_only: BTreeSet<_> = old_level
+            .deeds
+            .iter()
+            .filter(|key| !new_level.deeds.contains(key))
+            .collect();
+        assert!(!old_only.is_empty());
+        state.select_first_run_level("levels_2_3")?;
+        state.continue_first_run_level()?;
+
+        assert_eq!(
+            state.data.chosen_sets,
+            BTreeSet::from(["levels_2_3".into(), "quran".into()])
+        );
+        assert!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .all(|key| !old_only.contains(key))
+        );
+        assert_quran_active_on_sheet(&state)
+    }
+
+    #[test]
+    fn resumed_first_run_empty_keeps_quran_and_removes_level() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = resumed_first_run_with_quran(&store)?;
+        state.start_first_run_empty()?;
+
+        assert_eq!(state.data.chosen_sets, BTreeSet::from(["quran".into()]));
+        let catalog = werdy_data::builtin()?;
+        let quran = catalog.set("quran").ok_or("missing Quran set")?;
+        assert_eq!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            quran.deeds.iter().cloned().collect()
+        );
+        assert_quran_active_on_sheet(&state)
     }
 
     #[test]
