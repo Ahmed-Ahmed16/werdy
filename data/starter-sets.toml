@@ -1,8 +1,11 @@
 # werdy starter sets (ADR 0019, ADR 0024).
 #
-# Our own writing from common practice and the owner's own sheet. Werd's
-# wording, order, sections and points are never copied. Every deed weighs
-# the same (ADR 0008), so there are no points here.
+# Sets 1 to 12 are our own writing from common practice and the owner's own
+# sheet. The three level sets come from the Academy instructors' level
+# sheets, used with their permission and credited (issue #106 has the
+# transcription). Werd's wording, order, sections and points are never
+# copied. Every deed weighs the same (ADR 0008), so there are no points here,
+# not even the level sheets' points.
 #
 # How to edit:
 # * Each deed is written once under [[deeds]]. A set lists deed keys.
@@ -663,7 +666,1196 @@ slot = "night"
 category = "adhkar"
 schedule = { hijri = "last_ten_nights" }
 
-# The sets, in the order they are offered. The first is the default for a new sheet.
+# Level sets: deeds from the instructors' sheets (#106), in sheet order.
+# Keys start with "lv_". A deed shared by two levels has one key when the
+# sheets word it the same (spelling aside), so moving up a level keeps its
+# history. Names add the sheet's group in brackets when the row alone would
+# not say what it is. Groups wait on #107, so group rows use any_time.
+# Left out until weekly schedules exist (#108): the advanced sheet's
+# visiting graves and sunan al fitra, due once a week on any day.
+# Added by the owner, not on the sheets: istikhara and salat al hajah in
+# levels 2 and 3, placed after dawah.
+
+# Level deeds at Fajr.
+
+[[deeds]]
+key = "lv_fajr_early"
+name = "deed-lv-fajr-early"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_adhan_adhkar"
+name = "deed-lv-fajr-adhan-adhkar"
+slot = "fajr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_dua_between"
+name = "deed-lv-fajr-dua-between"
+slot = "fajr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_sunnah_before"
+name = "deed-lv-fajr-sunnah-before"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_siwak"
+name = "deed-lv-fajr-siwak"
+slot = "fajr"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_congregation"
+name = "deed-lv-fajr-congregation"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_opening_takbir"
+name = "deed-lv-fajr-opening-takbir"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_first_row"
+name = "deed-lv-fajr-first-row"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_adhkar_after"
+name = "deed-lv-fajr-adhkar-after"
+slot = "fajr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_fajr_makeup"
+name = "deed-lv-fajr-makeup"
+slot = "fajr"
+category = "prayer"
+schedule = "every_day"
+
+# Level deeds in the morning.
+
+[[deeds]]
+key = "lv_morning_adhkar"
+name = "deed-lv-morning-adhkar"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_tahlil_100"
+name = "deed-lv-tahlil-100"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+target = { amount = 100, unit = "times" }
+
+[[deeds]]
+key = "lv_morning_tahlil"
+name = "deed-lv-morning-tahlil"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_sitting_until_sunrise"
+name = "deed-lv-sitting-until-sunrise"
+slot = "morning"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_duha"
+name = "deed-lv-duha"
+slot = "morning"
+category = "prayer"
+schedule = "every_day"
+
+# Level deeds at Dhuhr.
+
+[[deeds]]
+key = "lv_dhuhr_early"
+name = "deed-lv-dhuhr-early"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_adhan_adhkar"
+name = "deed-lv-dhuhr-adhan-adhkar"
+slot = "dhuhr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_dua_between"
+name = "deed-lv-dhuhr-dua-between"
+slot = "dhuhr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_sunnah_before_four"
+name = "deed-lv-dhuhr-sunnah-before-four"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_sunnah_before"
+name = "deed-lv-dhuhr-sunnah-before"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_siwak"
+name = "deed-lv-dhuhr-siwak"
+slot = "dhuhr"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_congregation"
+name = "deed-lv-dhuhr-congregation"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_opening_takbir"
+name = "deed-lv-dhuhr-opening-takbir"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_first_row"
+name = "deed-lv-dhuhr-first-row"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_adhkar_after"
+name = "deed-lv-dhuhr-adhkar-after"
+slot = "dhuhr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_sunnah_after"
+name = "deed-lv-dhuhr-sunnah-after"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dhuhr_makeup"
+name = "deed-lv-dhuhr-makeup"
+slot = "dhuhr"
+category = "prayer"
+schedule = "every_day"
+
+# Level deeds at Asr, and the evening adhkar (Asr slot, like set 5).
+
+[[deeds]]
+key = "lv_asr_early"
+name = "deed-lv-asr-early"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_adhan_adhkar"
+name = "deed-lv-asr-adhan-adhkar"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_dua_between"
+name = "deed-lv-asr-dua-between"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_sunnah_before"
+name = "deed-lv-asr-sunnah-before"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_siwak"
+name = "deed-lv-asr-siwak"
+slot = "asr"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_congregation"
+name = "deed-lv-asr-congregation"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_opening_takbir"
+name = "deed-lv-asr-opening-takbir"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_first_row"
+name = "deed-lv-asr-first-row"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_adhkar_after"
+name = "deed-lv-asr-adhkar-after"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_asr_makeup"
+name = "deed-lv-asr-makeup"
+slot = "asr"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_evening_adhkar"
+name = "deed-lv-evening-adhkar"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_evening_tahlil"
+name = "deed-lv-evening-tahlil"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_sunset_dhikr"
+name = "deed-lv-sunset-dhikr"
+slot = "asr"
+category = "adhkar"
+schedule = "every_day"
+
+# Level deeds at Maghrib.
+
+[[deeds]]
+key = "lv_maghrib_early"
+name = "deed-lv-maghrib-early"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_adhan_adhkar"
+name = "deed-lv-maghrib-adhan-adhkar"
+slot = "maghrib"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_dua_between"
+name = "deed-lv-maghrib-dua-between"
+slot = "maghrib"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_sunnah_before"
+name = "deed-lv-maghrib-sunnah-before"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_siwak"
+name = "deed-lv-maghrib-siwak"
+slot = "maghrib"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_congregation"
+name = "deed-lv-maghrib-congregation"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_opening_takbir"
+name = "deed-lv-maghrib-opening-takbir"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_first_row"
+name = "deed-lv-maghrib-first-row"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_adhkar_after"
+name = "deed-lv-maghrib-adhkar-after"
+slot = "maghrib"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_sunnah_after"
+name = "deed-lv-maghrib-sunnah-after"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_maghrib_makeup"
+name = "deed-lv-maghrib-makeup"
+slot = "maghrib"
+category = "prayer"
+schedule = "every_day"
+
+# Level deeds at Isha.
+
+[[deeds]]
+key = "lv_isha_early"
+name = "deed-lv-isha-early"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_adhan_adhkar"
+name = "deed-lv-isha-adhan-adhkar"
+slot = "isha"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_dua_between"
+name = "deed-lv-isha-dua-between"
+slot = "isha"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_sunnah_before"
+name = "deed-lv-isha-sunnah-before"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_siwak"
+name = "deed-lv-isha-siwak"
+slot = "isha"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_congregation"
+name = "deed-lv-isha-congregation"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_opening_takbir"
+name = "deed-lv-isha-opening-takbir"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_first_row"
+name = "deed-lv-isha-first-row"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_adhkar_after"
+name = "deed-lv-isha-adhkar-after"
+slot = "isha"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_sunnah_after"
+name = "deed-lv-isha-sunnah-after"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_isha_makeup"
+name = "deed-lv-isha-makeup"
+slot = "isha"
+category = "prayer"
+schedule = "every_day"
+
+# Level deeds at night.
+
+[[deeds]]
+key = "lv_two_rakat_qiyam"
+name = "deed-lv-two-rakat-qiyam"
+slot = "night"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_wird_two_quarters"
+name = "deed-lv-wird-two-quarters"
+slot = "night"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_wird_hizb"
+name = "deed-lv-wird-hizb"
+slot = "night"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_witr"
+name = "deed-lv-witr"
+slot = "night"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_night_rakat"
+name = "deed-lv-night-rakat"
+slot = "night"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_night_wird"
+name = "deed-lv-night-wird"
+slot = "night"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_night_istighfar"
+name = "deed-lv-night-istighfar"
+slot = "night"
+category = "adhkar"
+schedule = "every_day"
+
+# Level deeds for the Quran.
+
+[[deeds]]
+key = "lv_memorise_half_page"
+name = "deed-lv-memorise-half-page"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_read_six_quarters"
+name = "deed-lv-read-six-quarters"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_memorise_page"
+name = "deed-lv-memorise-page"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_read_juz"
+name = "deed-lv-read-juz"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_recite_reflect"
+name = "deed-lv-recite-reflect"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_review_memorise"
+name = "deed-lv-review-memorise"
+slot = "any_time"
+category = "quran"
+schedule = "every_day"
+
+# Level deeds for dua (advanced).
+
+[[deeds]]
+key = "lv_dua_self"
+name = "deed-lv-dua-self"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dua_teachers"
+name = "deed-lv-dua-teachers"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dua_brothers"
+name = "deed-lv-dua-brothers"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dua_muslims"
+name = "deed-lv-dua-muslims"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+# Level deeds for fasting. The advanced sheet names no days for its fast,
+# so it is every day as printed (#106, flag 3).
+
+[[deeds]]
+key = "lv_fasting_monday_thursday"
+name = "deed-lv-fasting-monday-thursday"
+slot = "any_time"
+category = "fasting"
+schedule = { weekdays = ["monday", "thursday"] }
+
+[[deeds]]
+key = "lv_fasting"
+name = "deed-lv-fasting"
+slot = "any_time"
+category = "fasting"
+schedule = "every_day"
+
+# Level deeds: situational adhkar (الأذكار المقيدة).
+
+[[deeds]]
+key = "lv_waking_adhkar"
+name = "deed-lv-waking-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_toilet_adhkar"
+name = "deed-lv-toilet-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dressing_adhkar"
+name = "deed-lv-dressing-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_wudu_adhkar"
+name = "deed-lv-wudu-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_home_adhkar"
+name = "deed-lv-home-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_mosque_adhkar"
+name = "deed-lv-mosque-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_mosque_enter_leave_adhkar"
+name = "deed-lv-mosque-enter-leave-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_walking_to_mosque_adhkar"
+name = "deed-lv-walking-to-mosque-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_food_adhkar"
+name = "deed-lv-food-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_riding_adhkar"
+name = "deed-lv-riding-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_sleep_adhkar"
+name = "deed-lv-sleep-adhkar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_istighfar_100"
+name = "deed-lv-istighfar-100"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+target = { amount = 100, unit = "times" }
+
+[[deeds]]
+key = "lv_gathering_istighfar"
+name = "deed-lv-gathering-istighfar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_gathering_kaffara"
+name = "deed-lv-gathering-kaffara"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_general_istighfar"
+name = "deed-lv-general-istighfar"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_salawat"
+name = "deed-lv-salawat"
+slot = "any_time"
+category = "adhkar"
+schedule = "every_day"
+
+# Level deeds: knowledge, family, work, heart and character, self review.
+
+[[deeds]]
+key = "lv_attend_lessons"
+name = "deed-lv-attend-lessons"
+slot = "any_time"
+category = "study"
+schedule = { weekdays = ["saturday", "thursday"] }
+
+[[deeds]]
+key = "lv_review_lessons"
+name = "deed-lv-review-lessons"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_parents"
+name = "deed-lv-parents"
+slot = "any_time"
+category = "family"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_study_or_work"
+name = "deed-lv-study-or-work"
+slot = "any_time"
+category = "work"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_dawah"
+name = "deed-lv-dawah"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_kinship"
+name = "deed-lv-kinship"
+slot = "any_time"
+category = "family"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_rights"
+name = "deed-lv-rights"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_tongue"
+name = "deed-lv-tongue"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_gaze"
+name = "deed-lv-gaze"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_heart"
+name = "deed-lv-heart"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_charity"
+name = "deed-lv-charity"
+slot = "any_time"
+category = "charity"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_istikhara"
+name = "deed-lv-istikhara"
+slot = "any_time"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_hajah"
+name = "deed-lv-hajah"
+slot = "any_time"
+category = "prayer"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_keep_wudu"
+name = "deed-lv-keep-wudu"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_wudu_before_sleep"
+name = "deed-lv-wudu-before-sleep"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_worldly_knowledge"
+name = "deed-lv-worldly-knowledge"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_attend_sharia"
+name = "deed-lv-attend-sharia"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_review_sharia"
+name = "deed-lv-review-sharia"
+slot = "any_time"
+category = "study"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_self_review"
+name = "deed-lv-self-review"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+[[deeds]]
+key = "lv_repentance"
+name = "deed-lv-repentance"
+slot = "any_time"
+category = "other"
+schedule = "every_day"
+
+# Level deeds on Fridays (وظائف الجمعة).
+
+[[deeds]]
+key = "lv_friday_fitra"
+name = "deed-lv-friday-fitra"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_ghusl"
+name = "deed-lv-friday-ghusl"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_best_clothes"
+name = "deed-lv-friday-best-clothes"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_perfume"
+name = "deed-lv-friday-perfume"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_siwak"
+name = "deed-lv-friday-siwak"
+slot = "morning"
+category = "other"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_best_mosque"
+name = "deed-lv-friday-best-mosque"
+slot = "morning"
+category = "prayer"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_early"
+name = "deed-lv-friday-early"
+slot = "dhuhr"
+category = "prayer"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_dua_imam"
+name = "deed-lv-friday-dua-imam"
+slot = "dhuhr"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_dua_before_maghrib"
+name = "deed-lv-friday-dua-before-maghrib"
+slot = "asr"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_dua_after_asr"
+name = "deed-lv-friday-dua-after-asr"
+slot = "asr"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_kahf"
+name = "deed-lv-friday-kahf"
+slot = "any_time"
+category = "quran"
+schedule = { weekdays = ["friday"] }
+
+[[deeds]]
+key = "lv_friday_salawat_100"
+name = "deed-lv-friday-salawat-100"
+slot = "any_time"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+target = { amount = 100, unit = "times" }
+
+[[deeds]]
+key = "lv_friday_salawat"
+name = "deed-lv-friday-salawat"
+slot = "any_time"
+category = "adhkar"
+schedule = { weekdays = ["friday"] }
+
+# The sets, in the order they are offered. The three levels come first.
+
+[[sets]]
+key = "level_1"
+name = "set-level-1"
+credit = "set-credit-instructors"
+deeds = [
+    "lv_fajr_sunnah_before",
+    "lv_fajr_congregation",
+    "lv_fajr_adhkar_after",
+    "lv_morning_adhkar",
+    "lv_dhuhr_sunnah_before_four",
+    "lv_dhuhr_congregation",
+    "lv_dhuhr_adhkar_after",
+    "lv_dhuhr_sunnah_after",
+    "lv_asr_congregation",
+    "lv_asr_adhkar_after",
+    "lv_evening_adhkar",
+    "lv_maghrib_congregation",
+    "lv_maghrib_adhkar_after",
+    "lv_maghrib_sunnah_after",
+    "lv_isha_congregation",
+    "lv_isha_adhkar_after",
+    "lv_isha_sunnah_after",
+    "lv_two_rakat_qiyam",
+    "lv_wird_two_quarters",
+    "lv_witr",
+    "lv_memorise_half_page",
+    "lv_read_six_quarters",
+    "lv_fasting_monday_thursday",
+    "lv_waking_adhkar",
+    "lv_toilet_adhkar",
+    "lv_dressing_adhkar",
+    "lv_wudu_adhkar",
+    "lv_home_adhkar",
+    "lv_mosque_adhkar",
+    "lv_walking_to_mosque_adhkar",
+    "lv_food_adhkar",
+    "lv_riding_adhkar",
+    "lv_sleep_adhkar",
+    "lv_attend_lessons",
+    "lv_review_lessons",
+    "lv_parents",
+    "lv_study_or_work",
+    "lv_friday_fitra",
+    "lv_friday_ghusl",
+    "lv_friday_perfume",
+    "lv_friday_siwak",
+    "lv_friday_early",
+    "lv_friday_kahf",
+    "lv_friday_salawat_100",
+]
+
+[[sets]]
+key = "levels_2_3"
+name = "set-levels-2-3"
+credit = "set-credit-instructors"
+deeds = [
+    "lv_fajr_sunnah_before",
+    "lv_fajr_dua_between",
+    "lv_fajr_opening_takbir",
+    "lv_fajr_congregation",
+    "lv_fajr_adhkar_after",
+    "lv_morning_adhkar",
+    "lv_tahlil_100",
+    "lv_duha",
+    "lv_dhuhr_sunnah_before_four",
+    "lv_dhuhr_dua_between",
+    "lv_dhuhr_opening_takbir",
+    "lv_dhuhr_congregation",
+    "lv_dhuhr_adhkar_after",
+    "lv_dhuhr_sunnah_after",
+    "lv_asr_dua_between",
+    "lv_asr_opening_takbir",
+    "lv_asr_congregation",
+    "lv_asr_adhkar_after",
+    "lv_evening_adhkar",
+    "lv_maghrib_dua_between",
+    "lv_maghrib_opening_takbir",
+    "lv_maghrib_congregation",
+    "lv_maghrib_adhkar_after",
+    "lv_maghrib_sunnah_after",
+    "lv_isha_dua_between",
+    "lv_isha_opening_takbir",
+    "lv_isha_congregation",
+    "lv_isha_adhkar_after",
+    "lv_isha_sunnah_after",
+    "lv_two_rakat_qiyam",
+    "lv_wird_hizb",
+    "lv_witr",
+    "lv_memorise_page",
+    "lv_read_juz",
+    "lv_fasting_monday_thursday",
+    "lv_waking_adhkar",
+    "lv_toilet_adhkar",
+    "lv_dressing_adhkar",
+    "lv_wudu_adhkar",
+    "lv_home_adhkar",
+    "lv_mosque_adhkar",
+    "lv_walking_to_mosque_adhkar",
+    "lv_food_adhkar",
+    "lv_riding_adhkar",
+    "lv_sleep_adhkar",
+    "lv_istighfar_100",
+    "lv_attend_lessons",
+    "lv_review_lessons",
+    "lv_parents",
+    "lv_study_or_work",
+    "lv_dawah",
+    "lv_istikhara",
+    "lv_hajah",
+    "lv_friday_fitra",
+    "lv_friday_ghusl",
+    "lv_friday_best_clothes",
+    "lv_friday_perfume",
+    "lv_friday_siwak",
+    "lv_friday_early",
+    "lv_friday_kahf",
+    "lv_friday_salawat_100",
+    "lv_friday_dua_imam",
+    "lv_friday_dua_before_maghrib",
+]
+
+[[sets]]
+key = "level_advanced"
+name = "set-level-advanced"
+credit = "set-credit-instructors"
+deeds = [
+    "lv_fajr_early",
+    "lv_fajr_adhan_adhkar",
+    "lv_fajr_dua_between",
+    "lv_fajr_sunnah_before",
+    "lv_fajr_siwak",
+    "lv_fajr_congregation",
+    "lv_fajr_opening_takbir",
+    "lv_fajr_first_row",
+    "lv_fajr_adhkar_after",
+    "lv_fajr_makeup",
+    "lv_morning_adhkar",
+    "lv_morning_tahlil",
+    "lv_sitting_until_sunrise",
+    "lv_duha",
+    "lv_dhuhr_early",
+    "lv_dhuhr_adhan_adhkar",
+    "lv_dhuhr_dua_between",
+    "lv_dhuhr_sunnah_before",
+    "lv_dhuhr_siwak",
+    "lv_dhuhr_congregation",
+    "lv_dhuhr_opening_takbir",
+    "lv_dhuhr_first_row",
+    "lv_dhuhr_adhkar_after",
+    "lv_dhuhr_sunnah_after",
+    "lv_dhuhr_makeup",
+    "lv_asr_early",
+    "lv_asr_adhan_adhkar",
+    "lv_asr_dua_between",
+    "lv_asr_sunnah_before",
+    "lv_asr_siwak",
+    "lv_asr_congregation",
+    "lv_asr_opening_takbir",
+    "lv_asr_first_row",
+    "lv_asr_adhkar_after",
+    "lv_asr_makeup",
+    "lv_evening_adhkar",
+    "lv_evening_tahlil",
+    "lv_sunset_dhikr",
+    "lv_maghrib_early",
+    "lv_maghrib_adhan_adhkar",
+    "lv_maghrib_dua_between",
+    "lv_maghrib_sunnah_before",
+    "lv_maghrib_siwak",
+    "lv_maghrib_congregation",
+    "lv_maghrib_opening_takbir",
+    "lv_maghrib_first_row",
+    "lv_maghrib_adhkar_after",
+    "lv_maghrib_sunnah_after",
+    "lv_maghrib_makeup",
+    "lv_isha_early",
+    "lv_isha_adhan_adhkar",
+    "lv_isha_dua_between",
+    "lv_isha_sunnah_before",
+    "lv_isha_siwak",
+    "lv_isha_congregation",
+    "lv_isha_opening_takbir",
+    "lv_isha_first_row",
+    "lv_isha_adhkar_after",
+    "lv_isha_sunnah_after",
+    "lv_isha_makeup",
+    "lv_night_rakat",
+    "lv_night_wird",
+    "lv_witr",
+    "lv_night_istighfar",
+    "lv_dua_self",
+    "lv_dua_teachers",
+    "lv_dua_brothers",
+    "lv_dua_muslims",
+    "lv_recite_reflect",
+    "lv_review_memorise",
+    "lv_waking_adhkar",
+    "lv_toilet_adhkar",
+    "lv_wudu_adhkar",
+    "lv_dressing_adhkar",
+    "lv_home_adhkar",
+    "lv_riding_adhkar",
+    "lv_walking_to_mosque_adhkar",
+    "lv_mosque_enter_leave_adhkar",
+    "lv_food_adhkar",
+    "lv_sleep_adhkar",
+    "lv_gathering_istighfar",
+    "lv_gathering_kaffara",
+    "lv_general_istighfar",
+    "lv_salawat",
+    "lv_parents",
+    "lv_kinship",
+    "lv_rights",
+    "lv_tongue",
+    "lv_gaze",
+    "lv_heart",
+    "lv_fasting",
+    "lv_charity",
+    "lv_istikhara",
+    "lv_keep_wudu",
+    "lv_wudu_before_sleep",
+    "lv_dawah",
+    "lv_worldly_knowledge",
+    "lv_attend_sharia",
+    "lv_review_sharia",
+    "lv_self_review",
+    "lv_repentance",
+    "lv_friday_ghusl",
+    "lv_friday_best_clothes",
+    "lv_friday_perfume",
+    "lv_friday_siwak",
+    "lv_friday_best_mosque",
+    "lv_friday_early",
+    "lv_friday_dua_imam",
+    "lv_friday_dua_after_asr",
+    "lv_friday_kahf",
+    "lv_friday_salawat",
+]
 
 [[sets]]
 key = "five_prayers"
