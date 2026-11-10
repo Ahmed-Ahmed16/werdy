@@ -30,12 +30,13 @@ werdy is a tracker for daily Islamic deeds and life work, for one person (the **
 
 ### 4.1 First run
 
-Shown when the browser has no saved data.
+Shown until first run is complete.
 
-1. Title "Welcome. Set up your page". The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
-2. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
-3. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added.
-4. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens an empty sheet.
+1. "Pick your Academy level" opens first. Three cards show the level title, deed count and summary. "Show the deeds" opens a list grouped by prayer time. The instructors' credit appears once below the cards. Choosing a card does not add deeds until "Next". "Not following the Academy? Start with an empty sheet" continues without deeds.
+2. The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
+3. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
+4. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added. The Academy level sets keep their sheet names here.
+5. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens the deed editor.
 
 Expected: after first run, reloading the page opens Today, not first run.
 
@@ -126,7 +127,7 @@ Limits of a fresh browser profile, which every automated test starts from:
 * "Delete deed and all marks" removes a deed for good; it does not move it to Archived. Only "Archive deed" does that.
 * Layout checks need the test browser to resize its window.
 
-1. Fresh browser: first run appears; choose Cairo; the Fajr time line appears; add "The five prayers"; Start my page; Today shows 5 prayer deeds and "Today so far" with 5 open.
+1. Fresh browser: choose Academy level 1; Next adds its deeds; choose Cairo; the Fajr time line appears; Start my page opens Today with the level deeds. The empty sheet link instead reaches the place step without deeds.
 2. Mark Fajr Done: the Done count becomes 1 and Open drops by 1. Tap Done again: the mark clears.
 3. Switch to English and back: all labels change language and direction; marks are kept.
 4. Reload the page: the sheet, marks and language are kept.
