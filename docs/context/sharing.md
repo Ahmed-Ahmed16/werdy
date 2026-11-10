@@ -81,7 +81,7 @@ Sign out drops sharing state. Network failures keep the view and offer retry.
 
 ## Watch requests
 
-Apply `supabase/migrations/20261111000000_watch_requests.sql` after the sharing
+Apply `supabase/migrations/20261111000100_watch_requests.sql` after the sharing
 and account deletion migrations. Run `supabase/tests/watch_request_checks.sql`
 separately as database owner. These checks roll back. If a check fails, issue
 `rollback` before trying again. These SQL checks still need a Supabase run.
