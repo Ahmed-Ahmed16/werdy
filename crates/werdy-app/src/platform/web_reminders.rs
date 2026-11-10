@@ -106,6 +106,9 @@ async fn current() -> Result<Option<PushSubscription>, String> {
 }
 
 pub async fn forget(store: &AccountStore) -> Result<(), String> {
+    if config::VAPID_PUBLIC_KEY.is_empty() || !status().await.supported {
+        return Ok(());
+    }
     let was_enabled = enabled();
     set_enabled(false)?;
     let result = async {

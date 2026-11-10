@@ -14,10 +14,6 @@ pub fn AccountSection() -> Element {
     let status = use_context::<Signal<AccountView>>();
     let state = use_context::<Signal<AppState>>();
     let mut local_error = use_signal(|| false);
-    #[cfg(target_arch = "wasm32")]
-    let mut push_error = use_signal(|| false);
-    #[cfg(not(target_arch = "wasm32"))]
-    let push_error = use_signal(|| false);
     let mut confirm_delete = use_signal(|| false);
     let sharing = try_use_context::<Signal<super::sharing::Sharing>>();
     if !handle.0.enabled {
@@ -51,14 +47,20 @@ pub fn AccountSection() -> Element {
                     {
                         let store = signout_store.clone();
                         spawn(async move {
-                            if let Err(error) = crate::platform::web_reminders::forget(&store).await {
-                                warn!("Push reminder removal failed: {error}");
-                                push_error.set(true);
-                                return;
+                            let cleanup = crate::platform::web_reminders::forget(&store);
+                            let timeout = gloo_timers::future::TimeoutFuture::new(10_000);
+                            futures_util::pin_mut!(cleanup, timeout);
+                            match futures_util::future::select(cleanup, timeout).await {
+                                futures_util::future::Either::Left((Err(error), _)) => {
+                                    warn!("Push reminder removal failed: {error}");
+                                }
+                                futures_util::future::Either::Right(_) => {
+                                    warn!("Push reminder removal timed out after 10 seconds");
+                                }
+                                futures_util::future::Either::Left((Ok(()), _)) => {}
                             }
                             let records = state.read().data.clone();
                             let signed_out = store.sign_out(&records).is_ok();
-                            push_error.set(false);
                             local_error.set(!signed_out);
                             if let (true, Some(mut sharing)) = (signed_out, sharing) {
                                 sharing.set(super::sharing::Sharing::default());
@@ -99,7 +101,6 @@ pub fn AccountSection() -> Element {
                 if let Some(error) = account.error { p { role: "status", {i18n.t(error)} } }
             }
             if *local_error.read() { p { role: "alert", {i18n.t("account-storage-error")} } }
-            if *push_error.read() { p { role: "alert", {i18n.t("account-sync-error")} } }
         }
     }
 }

@@ -33,6 +33,7 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console", "Performance", "Coordinates", "Document", "Element", "Event", "Geolocation", "HtmlDialogElement", "HtmlElement", "Navigator", "Position", "PositionError", "PositionOptions", "Storage", "StorageEvent", "Window"] }
 wasm-bindgen = "0.2"
 gloo-timers = { version = "0.3", features = ["futures"] }
+futures-util = "0.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["time", "rt"] }
