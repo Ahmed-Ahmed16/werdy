@@ -45,7 +45,7 @@ textarea:focus-visible {
   display: block;
 }
 
-[dir="rtl"] .chevron {
+.chevron:dir(rtl) {
   transform: scaleX(-1);
 }
 
@@ -640,6 +640,7 @@ textarea:focus-visible {
 .sheet-tools {
   display: flex;
   justify-content: flex-end;
+  gap: var(--gap-s);
 }
 
 .sheet-surface {
@@ -697,7 +698,7 @@ textarea:focus-visible {
   transform: rotate(-90deg);
 }
 
-[dir="rtl"] .slot[data-open="false"] .fold-chevron {
+.slot[data-open="false"] .fold-chevron:dir(rtl) {
   transform: rotate(90deg);
 }
 

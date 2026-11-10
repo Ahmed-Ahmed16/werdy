@@ -398,6 +398,21 @@ fn reminder_switch_thumb_moves_from_inline_start_in_both_directions() {
     }
 }
 
+/// `index.html` starts as `<html dir="rtl">` and the app root sets the real
+/// direction, so an ancestor `[dir="rtl"]` selector matches in English too.
+/// Direction flips use `:dir(rtl)`, which reads the nearest `dir`.
+#[test]
+fn direction_flips_follow_the_app_language_not_the_html_tag() {
+    assert!(!APP_CSS.contains("[dir=\"rtl\"]"));
+    assert!(!APP_CSS.contains("[dir=rtl]"));
+    for selector in [
+        ".chevron:dir(rtl)",
+        ".slot[data-open=\"false\"] .fold-chevron:dir(rtl)",
+    ] {
+        assert!(rule_body(APP_CSS, selector).is_some(), "missing {selector}");
+    }
+}
+
 #[test]
 fn compact_week_keeps_note_signs_and_short_today_label() {
     assert!(!APP_CSS.contains(".week-card .report-day-cell small {"));
