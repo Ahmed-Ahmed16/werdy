@@ -108,8 +108,23 @@ pub struct StarterSet {
     /// Optional Fluent key for a line that credits the set's authors.
     #[serde(default)]
     pub credit: Option<String>,
+    /// Optional card details for an Academy level.
+    #[serde(default)]
+    pub level: Option<Level>,
     /// Deed keys in the order they are added.
     pub deeds: Vec<String>,
+}
+
+/// Card details for an Academy level.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Level {
+    /// Card order, starting at one.
+    pub order: u32,
+    /// Fluent key for the card title.
+    pub title: String,
+    /// Fluent key for the card summary.
+    pub summary: String,
 }
 
 /// What can be wrong with a starter sets file or its names.
@@ -234,12 +249,19 @@ impl Catalog {
         self.sets.iter().find(|set| set.key == key)
     }
 
+    /// Academy level sets in card order.
+    pub fn level_sets(&self) -> Vec<&StarterSet> {
+        let mut levels: Vec<_> = self.sets.iter().filter(|set| set.level.is_some()).collect();
+        levels.sort_by_key(|set| set.level.as_ref().map(|level| level.order));
+        levels
+    }
+
     /// Returns the deeds of a set, in set order. A checked catalog knows them all.
     pub fn deeds_in(&self, set: &StarterSet) -> Vec<&Deed> {
         set.deeds.iter().filter_map(|key| self.deed(key)).collect()
     }
 
-    /// Every Fluent key the file uses: names, then credits.
+    /// Every Fluent key the file uses: names, level text, then credits.
     pub fn name_keys(&self) -> impl Iterator<Item = &str> {
         let credits = self.sets.iter().filter_map(|set| set.credit.as_deref());
         self.own_name_keys().chain(credits)
@@ -251,7 +273,12 @@ impl Catalog {
         let units = self.units.iter().map(|unit| unit.name.as_str());
         let deeds = self.deeds.iter().map(|deed| deed.name.as_str());
         let sets = self.sets.iter().map(|set| set.name.as_str());
-        units.chain(deeds).chain(sets)
+        let level_text = self
+            .sets
+            .iter()
+            .filter_map(|set| set.level.as_ref())
+            .flat_map(|level| [level.title.as_str(), level.summary.as_str()]);
+        units.chain(deeds).chain(sets).chain(level_text)
     }
 }
 
@@ -285,6 +312,16 @@ fn check_keys(catalog: &Catalog) -> Result<(), Error> {
     unique("unit", catalog.units.iter().map(|unit| unit.key.as_str()))?;
     unique("deed", catalog.deeds.iter().map(|deed| deed.key.as_str()))?;
     unique("set", catalog.sets.iter().map(|set| set.key.as_str()))?;
+
+    let mut level_orders = BTreeSet::new();
+    for level in catalog.sets.iter().filter_map(|set| set.level.as_ref()) {
+        if !level_orders.insert(level.order) {
+            return Err(Error::DuplicateKey {
+                kind: "level order",
+                key: level.order.to_string(),
+            });
+        }
+    }
 
     let mut names = BTreeSet::new();
     for name in catalog.own_name_keys() {

@@ -16,6 +16,16 @@ create index if not exists watch_requests_sender on werdy_private.watch_requests
 alter table werdy_private.watch_requests enable row level security;
 revoke all on werdy_private.watch_requests from public, anon, authenticated;
 
+-- One transaction lock per pair of people, by lowercased email. Taken after
+-- the caller's head lock by send, revoke and leave, always in that order.
+create or replace function werdy_private.watch_pair_lock(first_email text, second_email text)
+returns void language plpgsql volatile security definer set search_path = '' as $$
+begin
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+        pg_catalog.lower(least(first_email, second_email)) || ':' || pg_catalog.lower(greatest(first_email, second_email)), 130));
+end $$;
+revoke all on function werdy_private.watch_pair_lock(text,text) from public, anon, authenticated;
+
 create or replace function public.werdy_request_send(email text, direction text)
 returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -37,9 +47,9 @@ begin
     if normalized = own_email then
         raise exception 'cannot request own email' using errcode = '22023';
     end if;
-    -- Both senders must use the same lock so simultaneous requests can cross.
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
-        least(own_email, normalized) || ':' || greatest(own_email, normalized), 130));
+    -- Sends, revoke and leave for the same two people take this lock, so a
+    -- crossing send and a revoke cannot interleave.
+    perform werdy_private.watch_pair_lock(own_email, normalized);
     if exists(select 1 from public.werdy_shares s join auth.users u
         on u.id = case when direction = 'watch_me' then s.watcher else s.owner end
         where pg_catalog.lower(u.email) = normalized
@@ -154,12 +164,30 @@ declare caller uuid := werdy_private.share_caller();
 begin
     insert into public.werdy_sync_heads(owner) values(caller) on conflict do nothing;
     perform 1 from public.werdy_sync_heads h where h.owner = caller for update;
+    perform werdy_private.watch_pair_lock(
+        (select u.email from auth.users u where u.id = caller),
+        (select u.email from auth.users u where u.id = watcher_id));
     delete from public.werdy_shares s where s.owner = caller and s.watcher = watcher_id;
     delete from werdy_private.watch_requests r
         where (r.sender = caller and r.direction = 'watch_me'
             and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = watcher_id))
         or (r.sender = watcher_id and r.direction = 'watch_them'
             and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = caller));
+    return pg_catalog.jsonb_build_object('ok', true);
+end $$;
+
+-- Leave takes the same pair lock as revoke, so it cannot interleave with a
+-- crossing send either.
+create or replace function public.werdy_share_leave(owner_id uuid)
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
+declare caller uuid := werdy_private.share_caller();
+begin
+    insert into public.werdy_sync_heads(owner) values(caller) on conflict do nothing;
+    perform 1 from public.werdy_sync_heads h where h.owner = caller for update;
+    perform werdy_private.watch_pair_lock(
+        (select u.email from auth.users u where u.id = caller),
+        (select u.email from auth.users u where u.id = owner_id));
+    delete from public.werdy_shares s where s.owner = owner_id and s.watcher = caller;
     return pg_catalog.jsonb_build_object('ok', true);
 end $$;
 
