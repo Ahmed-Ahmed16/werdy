@@ -23,11 +23,11 @@ mod supabase;
 pub use fake::FakeBackend;
 pub use rows::{Change, DeedKey, DeedRow, MAX_NAME_BYTES, MAX_NOTE_BYTES, Setting};
 #[cfg(feature = "supabase")]
-pub use supabase::SupabaseBackend;
-#[cfg(feature = "supabase")]
 pub use supabase::auth::{Session, SupabaseAuth};
 #[cfg(feature = "supabase")]
 pub use supabase::sharing::{ShareCode, SharePerson, WatchPage};
+#[cfg(feature = "supabase")]
+pub use supabase::{PushSubscription, SupabaseBackend};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;

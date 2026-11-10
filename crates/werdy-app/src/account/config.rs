@@ -6,3 +6,6 @@ pub const SUPABASE_URL: &str = "https://ysrvszrhkwgsqrrvvdhj.supabase.co";
 pub const SUPABASE_KEY: &str = "sb_publishable_4-gZvoma1DWo2GljgV2T0w_q6D1NivV";
 /// Public web app address. Share links and QR codes open it.
 pub const APP_URL: &str = "https://ahmed-ahmed16.github.io/werdy/";
+/// Public browser push key. Empty until push is configured.
+#[cfg(target_arch = "wasm32")]
+pub const VAPID_PUBLIC_KEY: &str = "";

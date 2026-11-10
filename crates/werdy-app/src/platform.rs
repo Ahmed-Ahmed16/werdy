@@ -15,12 +15,16 @@ mod android;
 pub(crate) mod android_bridge;
 #[cfg(target_os = "android")]
 mod android_reminders;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod web_reminders;
 
-/// Queues Android delivery after a successful save. Other platforms keep settings only.
+/// Queues delivery after a successful save.
 pub fn reschedule_reminders(owner: &werdy_store::OwnerData) {
     #[cfg(target_os = "android")]
     android_reminders::enqueue(owner);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_arch = "wasm32")]
+    web_reminders::enqueue(owner);
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     let _ = owner;
 }
 
@@ -55,6 +59,11 @@ const DEMO_RECORDS_KEY: &str = "werdy.demo.records";
 pub enum DataMode {
     Normal,
     Demo,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn push_upload_allowed(mode: DataMode) -> bool {
+    mode == DataMode::Normal
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
@@ -703,6 +712,15 @@ mod tests {
             "werdy.records"
         );
         assert_eq!(super::mode_from_query("").key(), "werdy.records");
+    }
+
+    #[test]
+    fn demo_query_never_allows_push_upload() {
+        assert!(!super::push_upload_allowed(super::mode_from_query("?demo")));
+        assert!(!super::push_upload_allowed(super::mode_from_query(
+            "?demo=1"
+        )));
+        assert!(super::push_upload_allowed(super::mode_from_query("")));
     }
 
     #[test]

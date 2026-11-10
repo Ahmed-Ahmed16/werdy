@@ -11,7 +11,7 @@ mod location;
 mod platform;
 #[cfg(test)]
 mod pwa_check;
-#[cfg(any(test, target_os = "android"))]
+#[cfg(any(test, target_os = "android", target_arch = "wasm32"))]
 mod reminders;
 mod starter;
 mod state;

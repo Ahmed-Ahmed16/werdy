@@ -1,9 +1,12 @@
-//! Android reminder controls. Saving follows the same path as other settings.
+//! Reminder controls. Saving follows the same path as other settings.
 use super::context::{use_actions, use_i18n};
+#[cfg(target_os = "android")]
+use crate::platform;
+#[cfg(target_os = "android")]
+use crate::state::EditorDraft;
 use crate::{
-    platform,
     reminders::{parse_time, time_value},
-    state::{AppState, EditorDraft},
+    state::AppState,
 };
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
@@ -11,6 +14,7 @@ use werdy_core::SlotKey;
 use werdy_store::{PrayerDelay, SlotReminder};
 
 #[component]
+#[cfg(target_os = "android")]
 pub fn ReminderSettings() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
@@ -50,6 +54,95 @@ pub fn ReminderSettings() -> Element {
                 button { class: "settings-location", onclick: move |_| actions.view(|app| app.show_screen(crate::state::Screen::FirstRunLocation)), {i18n.t("reminders-location")} }
             }
             for slot in ["fajr", "dhuhr", "asr", "maghrib", "isha", "morning", "night", "any_time"] {
+                SlotReminderRow { key: "{slot}", slot }
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[component]
+pub fn WebReminderSettings() -> Element {
+    use crate::{
+        account::{
+            config,
+            runtime::{AccountHandle, AccountView},
+        },
+        platform::web_reminders::{self, Permission},
+    };
+    let i18n = use_i18n();
+    let state = use_context::<Signal<AppState>>();
+    let account = use_context::<Signal<AccountView>>();
+    let handle = use_context::<AccountHandle>();
+    let actions = use_actions();
+    let mut on = use_signal(web_reminders::enabled);
+    let mut browser = use_signal(web_reminders::BrowserStatus::default);
+    use_future(move || async move {
+        browser.set(web_reminders::status().await);
+    });
+    let saved_location = state.read().data.settings.location.is_some();
+    let signed_in = account.read().signed_in;
+    let status = browser();
+    let available = !config::VAPID_PUBLIC_KEY.is_empty()
+        && signed_in
+        && (on()
+            || (saved_location
+                && status.supported
+                && (!status.ios || status.standalone)
+                && status.permission != Permission::Denied));
+    rsx! {
+        section { class: "settings-card",
+            h2 { class: "slot-title", {i18n.t("reminders-title")} }
+            p { class: "settings-help", {i18n.t("reminders-push-privacy")} }
+            if config::VAPID_PUBLIC_KEY.is_empty() {
+                p { role: "status", {i18n.t("reminders-push-unavailable")} }
+            } else if !signed_in {
+                p { role: "status", {i18n.t("reminders-push-signed-out")} }
+            } else if !saved_location {
+                button { class: "settings-location", onclick: move |_| actions.view(|app| app.show_screen(crate::state::Screen::FirstRunLocation)), {i18n.t("reminders-location")} }
+            } else if status.ios && !status.standalone {
+                p { role: "status", {i18n.t("reminders-push-iphone")} }
+            } else if !status.supported {
+                p { role: "status", {i18n.t("reminders-push-unsupported")} }
+            } else if status.permission == Permission::Denied {
+                p { role: "status", {i18n.t("reminders-push-blocked")} }
+            }
+            if available {
+                label { class: "reminder-switch",
+                    input { r#type: "checkbox", checked: on(), onchange: move |event| {
+                        if event.checked() {
+                            let request = web_reminders::subscribe_from_tap();
+                            spawn(async move {
+                                match web_reminders::finish_subscribe(request).await {
+                                    Ok(true) => {
+                                        on.set(true);
+                                        web_reminders::enqueue(&state.read().data);
+                                    }
+                                    Ok(false) => on.set(false),
+                                    Err(error) => {
+                                        on.set(false);
+                                        warn!("Push subscription failed: {error}");
+                                    }
+                                }
+                                browser.set(web_reminders::status().await);
+                            });
+                        } else {
+                            let store = handle.0.clone();
+                            spawn(async move {
+                                match web_reminders::forget(&store).await {
+                                    Ok(()) => on.set(false),
+                                    Err(error) => {
+                                        on.set(true);
+                                        warn!("Push reminder removal failed: {error}");
+                                    }
+                                }
+                            });
+                        }
+                    } }
+                    span { {i18n.t("reminders-push-switch")} }
+                }
+            }
+            for slot in ["fajr", "dhuhr", "asr", "maghrib", "isha"] {
                 SlotReminderRow { key: "{slot}", slot }
             }
         }
@@ -122,6 +215,7 @@ fn SlotReminderRow(slot: &'static str) -> Element {
 }
 
 #[component]
+#[cfg(target_os = "android")]
 pub fn DeedReminder(mut draft: Signal<EditorDraft>) -> Element {
     let i18n = use_i18n();
     let reminder = draft.read().reminder;

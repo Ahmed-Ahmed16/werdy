@@ -78,6 +78,52 @@ fn rpc_requests_use_correct_routes_arguments_and_refreshed_credentials() {
 }
 
 #[test]
+fn push_rpc_requests_match_the_server_contract() {
+    let backend = backend();
+    let subscription = PushSubscription {
+        endpoint: "https://push.example.invalid/device".into(),
+        p256dh: "public".into(),
+        auth: "secret".into(),
+    };
+    let reminders = [serde_json::json!({
+        "id":"slot:fajr", "send_at_ms":1793145600000_i64,
+        "title":"werdy", "body":"Fajr deeds are waiting", "topic":"abc"
+    })];
+    let request = backend
+        .request(
+            "werdy_push_replace",
+            &PushReplace {
+                subscription: &subscription,
+                reminders: &reminders,
+            },
+        )
+        .unwrap();
+    assert_eq!(request.url().path(), "/rest/v1/rpc/werdy_push_replace");
+    assert_eq!(request.headers()[AUTHORIZATION], "Bearer test_token");
+    let body: serde_json::Value =
+        serde_json::from_slice(request.body().unwrap().as_bytes().unwrap()).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"subscription":{
+        "endpoint":"https://push.example.invalid/device", "p256dh":"public", "auth":"secret"
+    },"reminders":reminders})
+    );
+    let request = backend
+        .request(
+            "werdy_push_forget",
+            &PushForget {
+                endpoint: &subscription.endpoint,
+            },
+        )
+        .unwrap();
+    assert_eq!(request.url().path(), "/rest/v1/rpc/werdy_push_forget");
+    assert_eq!(
+        request.body().unwrap().as_bytes().unwrap(),
+        br#"{"endpoint":"https://push.example.invalid/device"}"#
+    );
+}
+
+#[test]
 fn full_width_fraction_serializes_without_value_conversion_or_rounding() {
     let day = WerdyDay::new(2026, 10, 28).unwrap();
     let pending = Pending {

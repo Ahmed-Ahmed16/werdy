@@ -14,6 +14,10 @@ pub fn AccountSection() -> Element {
     let status = use_context::<Signal<AccountView>>();
     let state = use_context::<Signal<AppState>>();
     let mut local_error = use_signal(|| false);
+    #[cfg(target_arch = "wasm32")]
+    let mut push_error = use_signal(|| false);
+    #[cfg(not(target_arch = "wasm32"))]
+    let push_error = use_signal(|| false);
     let mut confirm_delete = use_signal(|| false);
     let sharing = try_use_context::<Signal<super::sharing::Sharing>>();
     if !handle.0.enabled {
@@ -43,12 +47,33 @@ pub fn AccountSection() -> Element {
                     p { role: "status", {i18n.t_with("account-last-sync",&[("time",FluentValue::from(time))])} }
                 } else { p { role: "status", {i18n.t("account-waiting")} } }
                 button { class: "secondary-button", onclick: move |_| {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let store = signout_store.clone();
+                        spawn(async move {
+                            if let Err(error) = crate::platform::web_reminders::forget(&store).await {
+                                warn!("Push reminder removal failed: {error}");
+                                push_error.set(true);
+                                return;
+                            }
+                            let records = state.read().data.clone();
+                            let signed_out = store.sign_out(&records).is_ok();
+                            push_error.set(false);
+                            local_error.set(!signed_out);
+                            if let (true, Some(mut sharing)) = (signed_out, sharing) {
+                                sharing.set(super::sharing::Sharing::default());
+                            }
+                        });
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
                     let records = state.read().data.clone();
                     let signed_out = signout_store.sign_out(&records).is_ok();
                     local_error.set(!signed_out);
                     // Drop the old account's codes and watchers now, not at the next poll.
                     if let (true, Some(mut sharing)) = (signed_out, sharing) {
                         sharing.set(super::sharing::Sharing::default());
+                    }
                     }
                 },{i18n.t("account-signout")} }
                 if let Some(sharing) = sharing {
@@ -74,6 +99,7 @@ pub fn AccountSection() -> Element {
                 if let Some(error) = account.error { p { role: "status", {i18n.t(error)} } }
             }
             if *local_error.read() { p { role: "alert", {i18n.t("account-storage-error")} } }
+            if *push_error.read() { p { role: "alert", {i18n.t("account-sync-error")} } }
         }
     }
 }
