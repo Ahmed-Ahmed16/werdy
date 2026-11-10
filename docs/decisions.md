@@ -34,6 +34,8 @@ Settings live in the shared JSON, default to empty maps, and survive a round tri
 
 Delivery is Android only for now, through offline local notifications with no server. The web cannot schedule these offline without a server. Stage B adds settings and planning only. Stage C adds UI and Android delivery. Why: one pure planner makes timing and dueness testable without a device. Decided by the orchestrator while the owner was out. The owner reviews this decision in the PR. Revisit: owner feedback, web delivery support, or rules for places where a prayer does not occur.
 
+Revised by 0042 (2026-11-11): prayer reminders now also reach the web app by push, and new prayer reminders start at Fajr 45, Maghrib 20, and Dhuhr, Asr and Isha 30 minutes. The rest of 0038 stands.
+
 ## 0037 (2026-10-28): All five prayer times, for reminders
 `werdy-calendar` now computes sunrise, Dhuhr, Asr, Maghrib and Isha beside Fajr, using the same NOAA solar equations with no dependencies. This revisits 0030 because slot reminders in #22 need all five prayers and sunrise. Asr defaults to Shafi, with a Hanafi option. Dhuhr is solar noon with no extra minutes. Isha follows the method's angle or interval after Maghrib. The caller selects the Ramadan interval and supplies the UTC offset for each date. Missing times return errors. Tests compare Cairo and Makkah with AlAdhan methods 5 and 4 on four dates across the year within 2 minutes, plus Hanafi Asr and Ramadan Isha. Revisit: if published times differ by more than 2 minutes, or reminders need rules for places where a time does not occur.
 
