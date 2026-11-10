@@ -86,7 +86,7 @@ pub fn Sheet() -> Element {
         last_scroll_day.set(Some(day));
         let (hour, minute) = platform::local_time();
         let shown: Vec<SlotKey> = app
-            .sheet()
+            .sheet_on_screen()
             .slots
             .into_iter()
             .map(|slot| slot.slot)
@@ -125,11 +125,7 @@ pub fn Sheet() -> Element {
             if showing_unmarked {
                 div { class: "sheet-notice sheet-filter", role: "status",
                     p {
-                        if sheet.slots.is_empty() {
-                            {i18n.t("sheet-unmarked-none")}
-                        } else {
-                            {i18n.t("sheet-unmarked-only")}
-                        }
+                        {i18n.t(unmarked_notice(sheet.slots.len(), state.read().sheet().slots.len()))}
                     }
                     button { class: "notice-dismiss",
                         onclick: move |_| actions.view(AppState::toggle_unmarked),
@@ -184,6 +180,18 @@ pub fn Sheet() -> Element {
                 }
             }
         }
+    }
+}
+
+/// Text key for the notice above a sheet filtered to open deeds. A day with
+/// no due deeds says so, rather than claiming every deed has a mark.
+fn unmarked_notice(shown_slots: usize, due_slots: usize) -> &'static str {
+    if due_slots == 0 {
+        "sheet-empty"
+    } else if shown_slots == 0 {
+        "sheet-unmarked-none"
+    } else {
+        "sheet-unmarked-only"
     }
 }
 
@@ -355,7 +363,22 @@ fn DeedRow(row: SheetRow) -> Element {
 mod tests {
     use werdy_core::{DeedId, Mark, SheetRow, SlotKey};
 
-    use super::{fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress};
+    use super::{
+        fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress,
+        unmarked_notice,
+    };
+
+    #[test]
+    fn unmarked_notice_distinguishes_no_due_deeds_from_all_marked() {
+        // Cases: no due deeds, all marked, some open.
+        for (shown, due, expected) in [
+            (0, 0, "sheet-empty"),
+            (0, 3, "sheet-unmarked-none"),
+            (2, 3, "sheet-unmarked-only"),
+        ] {
+            assert_eq!(unmarked_notice(shown, due), expected);
+        }
+    }
 
     #[test]
     fn notices_keep_sheet_at_the_top_until_they_are_gone() {

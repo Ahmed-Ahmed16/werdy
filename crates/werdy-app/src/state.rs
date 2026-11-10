@@ -1088,6 +1088,7 @@ impl AppState {
         self.viewing = viewing_after_today_change(self.today, today, self.viewing);
         self.today = today;
         if moved {
+            self.unmarked_day = None;
             self.invalidate_kept_days();
         }
         if moved && !self.data.first_run_complete {
@@ -1611,6 +1612,19 @@ mod tests {
         state.toggle_unmarked();
         assert!(!state.showing_unmarked());
         assert_eq!(sheet_ids(&state), all);
+        Ok(())
+    }
+
+    #[test]
+    fn unmarked_filter_stays_off_when_today_moves_forward_and_back() -> TestResult {
+        let mut state = started(&MemoryStore::default())?;
+        state.toggle_unmarked();
+        assert!(state.showing_unmarked());
+
+        state.update_today(today()?.next()?);
+        state.update_today(today()?);
+
+        assert!(!state.showing_unmarked());
         Ok(())
     }
 
