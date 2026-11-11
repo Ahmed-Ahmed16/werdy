@@ -35,6 +35,25 @@ struct PullRequest {
 #[derive(Serialize)]
 struct TimeRequest {}
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PushSubscription {
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+}
+
+#[derive(Serialize)]
+struct PushReplace<'a, T> {
+    subscription: &'a PushSubscription,
+    reminders: &'a [T],
+}
+
+#[derive(Serialize)]
+struct PushForget<'a> {
+    endpoint: &'a str,
+}
+
 const DELETE_ACCOUNT: &str = "werdy_account_delete";
 
 #[derive(Deserialize)]
@@ -104,6 +123,26 @@ impl SupabaseBackend {
         deleted(self.rpc(DELETE_ACCOUNT, &TimeRequest {}).await?)
     }
 
+    pub async fn push_replace<T: Serialize + Sync>(
+        &self,
+        subscription: &PushSubscription,
+        reminders: &[T],
+    ) -> Result<(), SyncError> {
+        self.rpc_void(
+            "werdy_push_replace",
+            &PushReplace {
+                subscription,
+                reminders,
+            },
+        )
+        .await
+    }
+
+    pub async fn push_forget(&self, endpoint: &str) -> Result<(), SyncError> {
+        self.rpc_void("werdy_push_forget", &PushForget { endpoint })
+            .await
+    }
+
     fn request(&self, function: &str, arguments: &impl Serialize) -> Result<Request, SyncError> {
         let url = self
             .rpc_url
@@ -133,6 +172,19 @@ impl SupabaseBackend {
         check_status(response.status())?;
         let body = response.bytes().await.map_err(|_| transport_error())?;
         parse_response(&body)
+    }
+
+    async fn rpc_void(
+        &self,
+        function: &str,
+        arguments: &(impl Serialize + Sync),
+    ) -> Result<(), SyncError> {
+        let response = self
+            .client
+            .execute(self.request(function, arguments)?)
+            .await
+            .map_err(|_| transport_error())?;
+        check_status(response.status())
     }
 }
 

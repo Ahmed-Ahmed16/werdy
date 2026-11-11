@@ -15,12 +15,39 @@ mod android;
 pub(crate) mod android_bridge;
 #[cfg(target_os = "android")]
 mod android_reminders;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod web_reminders;
 
-/// Queues Android delivery after a successful save. Other platforms keep settings only.
+#[cfg(any(test, target_arch = "wasm32"))]
+async fn unsubscribe_then_forget<U, F, T>(unsubscribe: U, forget: F) -> Result<(), String>
+where
+    U: std::future::Future<Output = Result<(), String>>,
+    F: FnOnce() -> T,
+    T: std::future::Future<Output = Result<(), String>>,
+{
+    unsubscribe.await?;
+    forget().await
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+#[derive(Clone, Copy)]
+enum ForgetIntent {
+    Settings,
+    SignOut,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn restore_push_flag_after_failure(intent: ForgetIntent, unsubscribed: bool) -> bool {
+    matches!(intent, ForgetIntent::Settings) && !unsubscribed
+}
+
+/// Queues delivery after a successful save.
 pub fn reschedule_reminders(owner: &werdy_store::OwnerData) {
     #[cfg(target_os = "android")]
     android_reminders::enqueue(owner);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_arch = "wasm32")]
+    web_reminders::enqueue(owner);
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     let _ = owner;
 }
 
@@ -55,6 +82,11 @@ const DEMO_RECORDS_KEY: &str = "werdy.demo.records";
 pub enum DataMode {
     Normal,
     Demo,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn push_upload_allowed(mode: DataMode) -> bool {
+    mode == DataMode::Normal
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
@@ -703,6 +735,50 @@ mod tests {
             "werdy.records"
         );
         assert_eq!(super::mode_from_query("").key(), "werdy.records");
+    }
+
+    #[test]
+    fn demo_query_never_allows_push_upload() {
+        assert!(!super::push_upload_allowed(super::mode_from_query("?demo")));
+        assert!(!super::push_upload_allowed(super::mode_from_query(
+            "?demo=1"
+        )));
+        assert!(super::push_upload_allowed(super::mode_from_query("")));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn browser_unsubscribes_before_failed_server_forget() {
+        let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let browser_calls = calls.clone();
+        let server_calls = calls.clone();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime")
+            .block_on(super::unsubscribe_then_forget(
+                async move {
+                    browser_calls.borrow_mut().push("browser unsubscribe");
+                    Ok(())
+                },
+                move || async move {
+                    server_calls.borrow_mut().push("server forget");
+                    Err("server failed".to_owned())
+                },
+            ));
+        assert_eq!(result, Err("server failed".to_owned()));
+        assert_eq!(*calls.borrow(), ["browser unsubscribe", "server forget"]);
+    }
+
+    #[test]
+    fn failed_unsubscribe_on_sign_out_does_not_restore_push_flag() {
+        assert!(!super::restore_push_flag_after_failure(
+            super::ForgetIntent::SignOut,
+            false
+        ));
+        assert!(super::restore_push_flag_after_failure(
+            super::ForgetIntent::Settings,
+            false
+        ));
     }
 
     #[test]

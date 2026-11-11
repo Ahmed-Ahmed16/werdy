@@ -12,7 +12,7 @@ mod install;
 mod marks;
 mod note;
 mod rail;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
 mod reminders;
 mod reports;
 mod settings;

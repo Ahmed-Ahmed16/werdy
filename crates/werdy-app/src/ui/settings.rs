@@ -55,7 +55,9 @@ pub fn SettingsScreen() -> Element {
 
     #[cfg(target_os = "android")]
     let reminders = rsx! { super::reminders::ReminderSettings {} };
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_arch = "wasm32")]
+    let reminders = rsx! { super::reminders::WebReminderSettings {} };
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     let reminders = rsx! {};
 
     #[cfg(target_arch = "wasm32")]

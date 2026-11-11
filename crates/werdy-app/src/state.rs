@@ -1338,7 +1338,7 @@ impl AppState {
         self.pending_settings.theme = Some(theme);
     }
 
-    #[cfg(any(test, target_os = "android"))]
+    #[cfg(any(test, target_os = "android", target_arch = "wasm32"))]
     pub fn set_slot_reminder(&mut self, slot: SlotKey, reminder: Option<SlotReminder>) {
         match &reminder {
             Some(reminder) => {
