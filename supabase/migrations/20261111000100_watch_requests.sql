@@ -16,13 +16,23 @@ create index if not exists watch_requests_sender on werdy_private.watch_requests
 alter table werdy_private.watch_requests enable row level security;
 revoke all on werdy_private.watch_requests from public, anon, authenticated;
 
--- One transaction lock per pair of people, by lowercased email. Taken after
--- the caller's head lock by send, revoke and leave, always in that order.
+-- The key for one pair of people: both emails lowercased first, then put in
+-- byte order, so the same two people give the same key whatever the letter
+-- case and whatever the database collation.
+create or replace function werdy_private.watch_pair_key(first_email text, second_email text)
+returns text language sql immutable set search_path = '' as $$
+    select least(pg_catalog.lower(first_email) collate "C", pg_catalog.lower(second_email) collate "C")
+        || ':' || greatest(pg_catalog.lower(first_email) collate "C", pg_catalog.lower(second_email) collate "C")
+$$;
+revoke all on function werdy_private.watch_pair_key(text,text) from public, anon, authenticated;
+
+-- One transaction lock per pair of people. Taken after the caller's head
+-- lock by send, revoke and leave, always in that order.
 create or replace function werdy_private.watch_pair_lock(first_email text, second_email text)
 returns void language plpgsql volatile security definer set search_path = '' as $$
 begin
     perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
-        pg_catalog.lower(least(first_email, second_email)) || ':' || pg_catalog.lower(greatest(first_email, second_email)), 130));
+        werdy_private.watch_pair_key(first_email, second_email), 130));
 end $$;
 revoke all on function werdy_private.watch_pair_lock(text,text) from public, anon, authenticated;
 

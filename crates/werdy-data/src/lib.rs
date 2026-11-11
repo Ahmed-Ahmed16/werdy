@@ -125,6 +125,22 @@ pub struct Level {
     pub title: String,
     /// Fluent key for the card summary.
     pub summary: String,
+    /// Extra sets offered in card order.
+    #[serde(default)]
+    pub offers: Vec<LevelOffer>,
+}
+
+/// Extra set offered after a person chooses a level.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOffer {
+    /// Key of the offered set.
+    pub set: String,
+    /// Fluent key explaining the offer.
+    pub why: String,
+    /// Whether the offer starts selected.
+    #[serde(default)]
+    pub ticked: bool,
 }
 
 /// What can be wrong with a starter sets file or its names.
@@ -201,6 +217,12 @@ pub enum Error {
         /// The repeated deed key.
         deed: String,
     },
+    /// A level offers a set that is not in the catalog.
+    UnknownOfferedSet { level: String, set: String },
+    /// A level offers another level set.
+    LevelOfferedAsExtra { level: String, set: String },
+    /// A level offers the same set twice.
+    DuplicateOffer { level: String, set: String },
     /// A name key has no message in one locale file.
     MissingName {
         /// The locale, such as "ar" or "en".
@@ -231,6 +253,15 @@ impl fmt::Display for Error {
                 write!(f, "set {set} lists unknown deed {deed}")
             }
             Self::DeedTwiceInSet { set, deed } => write!(f, "set {set} lists deed {deed} twice"),
+            Self::UnknownOfferedSet { level, set } => {
+                write!(f, "level {level} offers unknown set {set}")
+            }
+            Self::LevelOfferedAsExtra { level, set } => {
+                write!(f, "level {level} offers level set {set}")
+            }
+            Self::DuplicateOffer { level, set } => {
+                write!(f, "level {level} offers set {set} twice")
+            }
             Self::MissingName { locale, name } => write!(f, "locale {locale} has no {name}"),
         }
     }
@@ -261,10 +292,15 @@ impl Catalog {
         set.deeds.iter().filter_map(|key| self.deed(key)).collect()
     }
 
-    /// Every Fluent key the file uses: names, level text, then credits.
+    /// Every Fluent key the file uses: names, level text, credits and offer reasons.
     pub fn name_keys(&self) -> impl Iterator<Item = &str> {
         let credits = self.sets.iter().filter_map(|set| set.credit.as_deref());
-        self.own_name_keys().chain(credits)
+        let reasons = self
+            .sets
+            .iter()
+            .filter_map(|set| set.level.as_ref())
+            .flat_map(|level| level.offers.iter().map(|offer| offer.why.as_str()));
+        self.own_name_keys().chain(credits).chain(reasons)
     }
 
     /// Keys that name one thing each, so each may appear only once.
@@ -342,6 +378,32 @@ fn check_keys(catalog: &Catalog) -> Result<(), Error> {
     }
     for set in &catalog.sets {
         check_set(catalog, set)?;
+        if let Some(level) = &set.level {
+            let mut offered = BTreeSet::new();
+            for offer in &level.offers {
+                if !offered.insert(&offer.set) {
+                    return Err(Error::DuplicateOffer {
+                        level: set.key.clone(),
+                        set: offer.set.clone(),
+                    });
+                }
+                match catalog.set(&offer.set) {
+                    None => {
+                        return Err(Error::UnknownOfferedSet {
+                            level: set.key.clone(),
+                            set: offer.set.clone(),
+                        });
+                    }
+                    Some(extra) if extra.level.is_some() => {
+                        return Err(Error::LevelOfferedAsExtra {
+                            level: set.key.clone(),
+                            set: offer.set.clone(),
+                        });
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
     }
     Ok(())
 }
