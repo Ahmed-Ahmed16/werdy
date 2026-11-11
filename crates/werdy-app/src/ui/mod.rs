@@ -281,6 +281,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                 Screen::Reports => "report-panes",
                 Screen::Deeds | Screen::Editor(_) | Screen::Settings => "page-content",
             },
+                sharing::WatchRequestPrompt {}
                 if mode == platform::DataMode::Demo {
                     div { class: "demo-banner", role: "note",
                         span { {demo_banner} }
