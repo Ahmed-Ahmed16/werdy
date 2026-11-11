@@ -142,16 +142,21 @@ declare
     now_ms bigint := public.werdy_sync_server_time();
     request werdy_private.watch_requests%rowtype;
     owner_id uuid;
+    sender_id uuid;
 begin
-    delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
-    select case when r.direction = 'watch_me' then r.sender else caller end into owner_id
+    select case when r.direction = 'watch_me' then r.sender else caller end, r.sender into owner_id, sender_id
         from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email);
     if owner_id is null then return pg_catalog.jsonb_build_object('ok', false); end if;
-    -- Take the owner head lock first, as revoke does, so a revoke and an
-    -- accept of the same share run one after the other.
+    -- Lock order, the same everywhere: one head lock, then the pair lock, then
+    -- request rows. So accept cannot interleave or deadlock with revoke,
+    -- leave or a crossing send for the same two people.
     insert into public.werdy_sync_heads(owner) values(owner_id) on conflict do nothing;
     perform 1 from public.werdy_sync_heads h where h.owner = owner_id for update;
+    perform werdy_private.watch_pair_lock(
+        (select u.email from auth.users u where u.id = caller),
+        (select u.email from auth.users u where u.id = sender_id));
+    delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
     select r.* into request from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email)
         and r.expires_at > now_ms for update of r;
