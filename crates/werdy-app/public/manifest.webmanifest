@@ -1,6 +1,7 @@
 {
   "name": "werdy",
   "short_name": "werdy",
+  "id": "/werdy/",
   "start_url": "/werdy/",
   "scope": "/werdy/",
   "display": "standalone",
