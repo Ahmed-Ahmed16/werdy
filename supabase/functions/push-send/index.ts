@@ -1,5 +1,5 @@
 import webpush from "npm:web-push@3.6.7";
-import { buildHeaders, buildPayload, classifyReply, runLimited, shouldClaimMore } from "./core.ts";
+import { buildHeaders, buildPayload, classifyReply, planSends, runLimited, shouldClaimMore } from "./core.ts";
 
 const CLAIM_SIZE = 20;
 const SEND_CONCURRENCY = 10;
@@ -62,7 +62,12 @@ Deno.serve(async (request) => {
       if (!Array.isArray(due)) throw new Error("Claim returned no array");
       claimed += due.length;
 
-      const outcomes = await runLimited(due, SEND_CONCURRENCY, async (row) => {
+      const planned = planSends(due);
+      const dropOutcomes = await runLimited(planned.drop, SEND_CONCURRENCY, async (row) => {
+        await rpc<unknown>("werdy_push_drop_subscription", { id: row.subscription }, url, key);
+        return "dropped";
+      });
+      const sendOutcomes = await runLimited(planned.send, SEND_CONCURRENCY, async (row) => {
         const details = webpush.generateRequestDetails(
           { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
           buildPayload(row.title, row.body, row.topic),
@@ -86,7 +91,7 @@ Deno.serve(async (request) => {
         console.error(`Push failed with ${response.status}`);
         return "failed";
       });
-      for (const outcome of outcomes) {
+      for (const outcome of [...dropOutcomes, ...sendOutcomes]) {
         if (outcome.status === "rejected") {
           const error = outcome.reason;
           console.error("Push failed", error instanceof Error ? error.message : "unknown error");

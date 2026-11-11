@@ -1,4 +1,4 @@
--- Run as database owner after all four migrations. Everything rolls back.
+-- Run as database owner after all migrations. Everything rolls back.
 begin;
 set local request.jwt.claim.sub = '';
 create temporary table delete_test(gone uuid, kept uuid, code text, gone_push uuid, kept_push uuid);
@@ -15,11 +15,11 @@ declare now_ms bigint := pg_catalog.floor(extract(epoch from pg_catalog.clock_ti
 begin
     perform public.werdy_sync_push('[{"install":"delete_test","operation":1,"change":{"Note":{"day":20754,"note":{"text":"kept note","credit":"none","entered_on":20754}}}}]');
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/kept","p256dh":"kept_key","auth":"kept_auth"}',
+        '{"endpoint":"https://fcm.googleapis.com/kept","p256dh":"kept_key","auth":"kept_auth"}',
         pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id','kept','send_at_ms',now_ms + 60000,
             'title','Kept','body','Kept reminder','topic','kept_1')));
     update delete_test set kept_push = (select id from public.werdy_push_subscriptions
-        where endpoint = 'https://push.example.test/kept');
+        where endpoint = 'https://fcm.googleapis.com/kept');
     update delete_test set code=public.werdy_share_create()->>'code';
 end $$;
 reset role;
@@ -34,11 +34,11 @@ begin
     select * into strict t from delete_test;
     perform public.werdy_sync_push('[{"install":"delete_test","operation":1,"change":{"Note":{"day":20754,"note":{"text":"gone note","credit":"none","entered_on":20754}}}}]');
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/gone","p256dh":"gone_key","auth":"gone_auth"}',
+        '{"endpoint":"https://fcm.googleapis.com/gone","p256dh":"gone_key","auth":"gone_auth"}',
         pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id','gone','send_at_ms',now_ms + 60000,
             'title','Gone','body','Gone reminder','topic','gone_1')));
     update delete_test set gone_push = (select id from public.werdy_push_subscriptions
-        where endpoint = 'https://push.example.test/gone');
+        where endpoint = 'https://fcm.googleapis.com/gone');
     if not (public.werdy_share_redeem(t.code)->>'ok')::boolean then raise exception 'setup redeem failed'; end if;
     if (public.werdy_share_redeem('AAAAAAAAAA')->>'ok')::boolean then raise exception 'setup bad code accepted'; end if;
     own_code := public.werdy_share_create()->>'code';

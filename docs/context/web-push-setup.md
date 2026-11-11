@@ -56,11 +56,13 @@ select cron.schedule(
 
 Supabase must have `pg_cron`, `pg_net`, and Vault enabled. Check their state in the dashboard before running the SQL. The Cron request calls the function each minute. Each claim calls `werdy_push_claim_due` with `{"max_rows":20}` and returns a JSON array. The sender handles up to 10 push requests at once. Each push request has a 10 second timeout. It stops claiming when a batch is empty or 100 seconds have passed since the run began. Unclaimed due rows wait for a later run, subject to the migration's 15 minute expiry. The claim RPC removes claimed rows before sending. Failed sends do not retry. A 404 or 410 also removes the subscription.
 
+Push endpoints must use HTTPS on the default port at `fcm.googleapis.com`, `updates.push.services.mozilla.com`, a subdomain of `push.apple.com`, or a subdomain of `notify.windows.com`. The migration removes stored subscriptions outside this list, the database rejects new ones, and the sender drops any remaining invalid subscription before encryption or sending.
+
 ## 5. Check on phones
 
 Owner step. After approval and deployment, turn reminders on and close werdy. Check one due reminder on Android Chrome. On iPhone, add werdy to the home screen first, grant notification permission from a tap, then close it and check a due reminder. Tap each notification and check that today's sheet opens. Record device, OS version, browser, time, and result in the PR. Status now: `___` for both phones.
 
 ## Local test
 
-Run `node --test supabase/functions/push-send/core.test.ts` from the repo root. This checks payload, delivery headers, reply handling, send concurrency, and the claim time budget without Deno or network access.
+Run `node --test supabase/functions/push-send/core.test.ts` from the repo root. This checks payload, delivery headers, endpoint rules, reply handling, send concurrency, and the claim time budget without Deno or network access.
 The `package.json` in that folder exists only for Node tests and declares no dependencies.

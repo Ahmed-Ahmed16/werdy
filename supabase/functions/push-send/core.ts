@@ -1,5 +1,34 @@
 export type ReplyAction = "sent" | "drop_subscription" | "log_and_drop_row";
 
+export function isAllowedPushEndpoint(url: string): boolean {
+  try {
+    const authority = /^https:\/\/([^/?#]*)/i.exec(url)?.[1];
+    if (!authority || /[@\\\s]/.test(authority)) return false;
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password ||
+        (parsed.port !== "" && parsed.port !== "443")) return false;
+    const host = parsed.hostname.toLowerCase();
+    if (host === "fcm.googleapis.com" || host === "updates.push.services.mozilla.com") return true;
+    for (const parent of ["push.apple.com", "notify.windows.com"]) {
+      if (!host.endsWith(`.${parent}`)) continue;
+      const prefix = host.slice(0, -parent.length - 1);
+      if (/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(prefix)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function planSends<T extends { endpoint: string }>(rows: readonly T[]): { send: T[]; drop: T[] } {
+  const send: T[] = [];
+  const drop: T[] = [];
+  for (const row of rows) {
+    (isAllowedPushEndpoint(row.endpoint) ? send : drop).push(row);
+  }
+  return { send, drop };
+}
+
 export function buildPayload(title: string, body: string, topic: string): string {
   return JSON.stringify({
     web_push: 8030,

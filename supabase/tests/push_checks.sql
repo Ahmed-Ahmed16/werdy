@@ -1,4 +1,4 @@
--- Run as database owner after all four migrations. Everything rolls back.
+-- Run as database owner after all migrations. Everything rolls back.
 begin;
 set local request.jwt.claim.sub = '';
 create temporary table push_test(first_user uuid, second_user uuid, first_id uuid, deleted_id uuid);
@@ -12,10 +12,11 @@ select pg_catalog.set_config('request.jwt.claims',
 set local role authenticated;
 do $$
 declare
-    subscription jsonb := '{"endpoint":"https://push.example.test/first","p256dh":"key_1","auth":"auth_1"}';
+    subscription jsonb := '{"endpoint":"https://fcm.googleapis.com/first","p256dh":"key_1","auth":"auth_1"}';
     now_ms bigint := pg_catalog.floor(extract(epoch from pg_catalog.clock_timestamp()) * 1000)::bigint;
     item jsonb;
     rejected boolean;
+    candidate_endpoint text;
 begin
     item := pg_catalog.jsonb_build_object('id','first','send_at_ms',now_ms + 60000,
         'title','Prayer','body','Time to pray','topic','prayer_1');
@@ -25,19 +26,45 @@ begin
         raise exception 'owner cannot see push rows';
     end if;
     perform public.werdy_push_replace(pg_catalog.jsonb_build_object(
-        'endpoint','https://push.example.test/boundary',
+        'endpoint','https://fcm.googleapis.com/boundary',
         'p256dh',pg_catalog.repeat('A',256),'auth','auth_1'), '[]');
     rejected := false;
     begin perform public.werdy_push_replace(pg_catalog.jsonb_build_object(
-        'endpoint','https://push.example.test/boundary',
+        'endpoint','https://fcm.googleapis.com/boundary',
         'p256dh',pg_catalog.repeat('A',257),'auth','auth_1'), '[]');
         exception when invalid_parameter_value then rejected := true; end;
     if not rejected or not exists(select 1 from public.werdy_push_subscriptions
-        where endpoint = 'https://push.example.test/boundary' and pg_catalog.char_length(p256dh) = 256) then
+        where endpoint = 'https://fcm.googleapis.com/boundary' and pg_catalog.char_length(p256dh) = 256) then
         raise exception 'push key length boundary failed';
     end if;
-    perform public.werdy_push_forget('https://push.example.test/boundary');
+    perform public.werdy_push_forget('https://fcm.googleapis.com/boundary');
     update push_test set first_id = (select id from public.werdy_push_subscriptions);
+    foreach candidate_endpoint in array array[
+        'https://evil.test/x',
+        'https://push.apple.com.evil.test/x',
+        'https://user@fcm.googleapis.com/x',
+        'https://fcm.googleapis.com:8443/x'
+    ] loop
+        rejected := false;
+        begin
+            perform public.werdy_push_replace(pg_catalog.jsonb_build_object(
+                'endpoint',candidate_endpoint,'p256dh','key_1','auth','auth_1'), '[]');
+        exception when check_violation then rejected := true; end;
+        if not rejected then raise exception 'unsafe push endpoint accepted: %', candidate_endpoint; end if;
+    end loop;
+    foreach candidate_endpoint in array array[
+        'https://fcm.googleapis.com/allowed',
+        'https://updates.push.services.mozilla.com/allowed',
+        'https://web.push.apple.com/allowed',
+        'https://a.notify.windows.com/allowed'
+    ] loop
+        perform public.werdy_push_replace(pg_catalog.jsonb_build_object(
+            'endpoint',candidate_endpoint,'p256dh','key_1','auth','auth_1'), '[]');
+        if not exists (select 1 from public.werdy_push_subscriptions where endpoint = candidate_endpoint) then
+            raise exception 'push endpoint rejected: %', candidate_endpoint;
+        end if;
+        perform public.werdy_push_forget(candidate_endpoint);
+    end loop;
     rejected := false;
     begin perform public.werdy_push_replace(subscription || '{"location":"hidden"}'::jsonb,
         pg_catalog.jsonb_build_array(item));
@@ -88,7 +115,7 @@ begin
         or exists(select 1 from public.werdy_push_reminders) then
         raise exception 'other user can read push rows';
     end if;
-    perform public.werdy_push_forget('https://push.example.test/first');
+    perform public.werdy_push_forget('https://fcm.googleapis.com/first');
 end $$;
 reset role;
 do $$
@@ -129,7 +156,7 @@ begin
         or pg_catalog.jsonb_array_length(claimed) is distinct from 2
         or claimed->0->>'reminder' is distinct from 'due_first'
         or claimed->1->>'reminder' is distinct from 'due_second'
-        or claimed->0->>'endpoint' is distinct from 'https://push.example.test/first'
+        or claimed->0->>'endpoint' is distinct from 'https://fcm.googleapis.com/first'
         or claimed->0->>'p256dh' is distinct from 'key_1'
         or claimed->0->>'auth' is distinct from 'auth_1'
         or claimed->0->>'title' is distinct from 'Due'
@@ -170,18 +197,18 @@ set local role authenticated;
 do $$
 begin
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/first","p256dh":"key_2","auth":"auth_2"}', '[]');
+        '{"endpoint":"https://fcm.googleapis.com/first","p256dh":"key_2","auth":"auth_2"}', '[]');
     if (select pg_catalog.count(*) from public.werdy_push_subscriptions) <> 1
         or (select pg_catalog.count(*) from public.werdy_push_reminders) <> 0 then
         raise exception 'endpoint takeover kept old reminders';
     end if;
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/drop","p256dh":"key_2","auth":"auth_2"}', '[]');
+        '{"endpoint":"https://fcm.googleapis.com/drop","p256dh":"key_2","auth":"auth_2"}', '[]');
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/forget","p256dh":"key_2","auth":"auth_2"}', '[]');
-    perform public.werdy_push_forget('https://push.example.test/forget');
+        '{"endpoint":"https://fcm.googleapis.com/forget","p256dh":"key_2","auth":"auth_2"}', '[]');
+    perform public.werdy_push_forget('https://fcm.googleapis.com/forget');
     if exists(select 1 from public.werdy_push_subscriptions
-        where endpoint = 'https://push.example.test/forget') then
+        where endpoint = 'https://fcm.googleapis.com/forget') then
         raise exception 'owner forget kept subscription';
     end if;
 end $$;
@@ -197,12 +224,12 @@ set local role service_role;
 do $$
 begin
     perform public.werdy_push_drop_subscription(
-        (select id from public.werdy_push_subscriptions where endpoint = 'https://push.example.test/drop'));
+        (select id from public.werdy_push_subscriptions where endpoint = 'https://fcm.googleapis.com/drop'));
 end $$;
 reset role;
 do $$
 begin
-    if exists(select 1 from public.werdy_push_subscriptions where endpoint = 'https://push.example.test/drop') then
+    if exists(select 1 from public.werdy_push_subscriptions where endpoint = 'https://fcm.googleapis.com/drop') then
         raise exception 'service did not drop subscription';
     end if;
 end $$;
@@ -214,11 +241,11 @@ do $$
 declare now_ms bigint := pg_catalog.floor(extract(epoch from pg_catalog.clock_timestamp()) * 1000)::bigint;
 begin
     perform public.werdy_push_replace(
-        '{"endpoint":"https://push.example.test/deleted","p256dh":"key_1","auth":"auth_1"}',
+        '{"endpoint":"https://fcm.googleapis.com/deleted","p256dh":"key_1","auth":"auth_1"}',
         pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id','delete','send_at_ms',now_ms + 60000,
             'title','Delete','body','Cascade','topic','delete_1')));
     update push_test set deleted_id = (select id from public.werdy_push_subscriptions
-        where endpoint = 'https://push.example.test/deleted');
+        where endpoint = 'https://fcm.googleapis.com/deleted');
 end $$;
 reset role;
 delete from auth.users u using push_test t where u.id = t.first_user;

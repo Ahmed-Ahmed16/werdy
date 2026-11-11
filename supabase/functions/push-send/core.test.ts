@@ -1,6 +1,47 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildHeaders, buildPayload, classifyReply, runLimited, shouldClaimMore } from "./core.ts";
+import { buildHeaders, buildPayload, classifyReply, isAllowedPushEndpoint, planSends, runLimited, shouldClaimMore } from "./core.ts";
+
+test("allows only push service endpoints with safe URL parts", () => {
+  for (const endpoint of [
+    "https://fcm.googleapis.com/send",
+    "HTTPS://FCM.GOOGLEAPIS.COM:443/send",
+    "https://updates.push.services.mozilla.com/send",
+    "https://web.push.apple.com/send",
+    "https://a.b.push.apple.com/send",
+    "https://a.notify.windows.com/send",
+    "https://a.b.notify.windows.com/send",
+  ]) {
+    assert.equal(isAllowedPushEndpoint(endpoint), true, endpoint);
+  }
+  for (const endpoint of [
+    "not a URL",
+    "http://fcm.googleapis.com/send",
+    "https://user@fcm.googleapis.com/send",
+    "https://@fcm.googleapis.com/send",
+    "https://user:pass@fcm.googleapis.com/send",
+    "https://fcm.googleapis.com:8443/send",
+    "https://evil.test/send",
+    "https://push.apple.com.evil.test/send",
+    "https://evilnotify.windows.com/send",
+    "https://push.apple.com/send",
+    "https://notify.windows.com/send",
+  ]) {
+    assert.equal(isAllowedPushEndpoint(endpoint), false, endpoint);
+  }
+});
+
+test("disallowed rows never reach the send function", async () => {
+  const rows = [
+    { subscription: "safe", endpoint: "https://fcm.googleapis.com/send" },
+    { subscription: "unsafe", endpoint: "https://evil.test/send" },
+  ];
+  const planned = planSends(rows);
+  const reached: string[] = [];
+  await runLimited(planned.send, 2, async (row) => { reached.push(row.subscription); });
+  assert.deepEqual(reached, ["safe"]);
+  assert.deepEqual(planned.drop.map((row) => row.subscription), ["unsafe"]);
+});
 
 test("builds a Declarative Web Push payload with the topic", () => {
   const payload = JSON.parse(buildPayload("Dhuhr deeds", "Open today's sheet", "abc_123"));
