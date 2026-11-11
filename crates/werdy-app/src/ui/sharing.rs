@@ -225,6 +225,42 @@ fn refresh_view(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountS
 }
 
 #[component]
+pub fn WatchRequestForm() -> Element {
+    let i18n = use_i18n();
+    let handle = use_context::<AccountHandle>();
+    let mut sharing = use_context::<Signal<Sharing>>();
+    let (request_email, request_sent, busy, error) = {
+        let request_state = sharing.read();
+        (
+            request_state.request_email.clone(),
+            request_state.request_sent,
+            request_state.busy,
+            request_state.error,
+        )
+    };
+    let store = handle.0;
+    rsx! {
+        label { r#for:"watch-email", {i18n.t("sharing-request-email")} }
+        input { id:"watch-email",dir:"ltr",value:"{request_email}",disabled:busy,
+            oninput:move |event| {
+                let mut sharing = sharing.write();
+                sharing.request_email = event.value();
+                sharing.request_sent = false;
+            }
+        }
+        button { class:"secondary-button",disabled:busy,onclick:move |_| {
+            let request = sharing.write().send_request();
+            if let Some(request) = request { run(sharing,store.clone(),request); }
+        },{i18n.t("sharing-request-send")} }
+        if request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
+        if busy { p {role:"status",{i18n.t("sharing-loading")}} }
+        if let Some(error) = error.filter(|key| matches!(*key, "sharing-email-invalid" | "sharing-request-error")) {
+            p {role:"alert",{i18n.t(error)}}
+        }
+    }
+}
+
+#[component]
 pub fn SharingSection() -> Element {
     let i18n = use_i18n();
     let status = use_context::<Signal<AccountView>>();
@@ -274,19 +310,7 @@ pub fn SharingSection() -> Element {
                 button {disabled:data.busy,onclick:{let store=store.clone(); move |_| {
                     let code=input();input.set(String::new());run(sharing,store.clone(),Request::Redeem(code));
                 }},{i18n.t("sharing-redeem")}}
-                label { r#for:"watch-email", {i18n.t("sharing-request-email")} }
-                input { id:"watch-email",dir:"ltr",value:"{data.request_email}",disabled:data.busy,
-                    oninput:move |event| {
-                        let mut sharing = sharing.write();
-                        sharing.request_email = event.value();
-                        sharing.request_sent = false;
-                    }
-                }
-                button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
-                    let request = sharing.write().send_request();
-                    if let Some(request) = request { run(sharing,store.clone(),request); }
-                }},{i18n.t("sharing-request-send")} }
-                if data.request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
+                WatchRequestForm {}
                 h3 {{i18n.t("sharing-requests")}}
                 for request in data.incoming.into_iter().filter(|request| request.direction == WatchDirection::WatchMe) {
                     div { key:"{request.id}",
@@ -309,8 +333,7 @@ pub fn SharingSection() -> Element {
                 }
                 button {disabled:data.busy,onclick:move |_|run(sharing,store.clone(),Request::Lists),{i18n.t("sharing-refresh")}}
             }
-            if data.busy {p {role:"status",{i18n.t("sharing-loading")}}}
-            if let Some(error)=data.error {p {role:"alert",{i18n.t(error)}}}
+            if let Some(error)=data.error.filter(|key| !matches!(*key, "sharing-email-invalid" | "sharing-request-error")) {p {role:"alert",{i18n.t(error)}}}
         }
     }
 }

@@ -89,7 +89,7 @@ fn GoogleButton() -> Element {
 
 #[cfg(target_arch = "wasm32")]
 #[component]
-fn SignInButton() -> Element {
+pub fn SignInButton() -> Element {
     let i18n = use_i18n();
     let status = use_context::<Signal<AccountView>>();
     let mut attempt = use_signal(|| 0_u64);
@@ -105,7 +105,7 @@ fn SignInButton() -> Element {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[component]
-fn SignInButton() -> Element {
+pub fn SignInButton() -> Element {
     let i18n = use_i18n();
     let handle = use_context::<AccountHandle>();
     let status = use_context::<Signal<AccountView>>();

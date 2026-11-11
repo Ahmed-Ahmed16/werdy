@@ -144,6 +144,7 @@ pub enum Screen {
     FirstRunExtras,
     FirstRunOwnDeeds,
     FirstRunLocation,
+    FirstRunWatcher,
     FirstRunSummary,
     SetPicker,
     /// Daily sheet.
@@ -491,6 +492,13 @@ impl AppState {
                 {
                     Screen::FirstRunLocation
                 }
+                "watcher"
+                    if pending_level
+                        .as_ref()
+                        .is_none_or(|key| data.chosen_sets.contains(key)) =>
+                {
+                    Screen::FirstRunWatcher
+                }
                 "summary"
                     if pending_level
                         .as_ref()
@@ -753,6 +761,7 @@ impl AppState {
                 Screen::FirstRunExtras => "extras",
                 Screen::FirstRunOwnDeeds => "own_deeds",
                 Screen::FirstRunLocation => "location",
+                Screen::FirstRunWatcher => "watcher",
                 Screen::FirstRunSummary => "summary",
                 _ => return,
             }
@@ -941,6 +950,12 @@ impl AppState {
         Ok(())
     }
 
+    pub fn watch_only_first_run(&mut self) -> Result<(), EditorError> {
+        self.start_first_run_empty()?;
+        self.finish_first_run(Screen::Settings);
+        Ok(())
+    }
+
     fn apply_first_run_level(&mut self, chosen: &str) -> Result<(), EditorError> {
         let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
         if !catalog.set(chosen).is_some_and(|set| set.level.is_some()) {
@@ -1020,15 +1035,29 @@ impl AppState {
     pub fn back_first_run_location(&mut self) {
         self.show_screen(Screen::FirstRunOwnDeeds);
     }
-    pub fn continue_first_run_location(&mut self) {
-        self.show_screen(Screen::FirstRunSummary);
+    pub fn continue_first_run_location(&mut self, watcher_step: bool) {
+        self.show_screen(if watcher_step {
+            Screen::FirstRunWatcher
+        } else {
+            Screen::FirstRunSummary
+        });
     }
-    pub fn skip_first_run_location(&mut self) {
+    pub fn skip_first_run_location(&mut self, watcher_step: bool) {
         self.clear_location();
+        self.continue_first_run_location(watcher_step);
+    }
+    pub fn back_first_run_watcher(&mut self) {
+        self.show_screen(Screen::FirstRunLocation);
+    }
+    pub fn continue_first_run_watcher(&mut self) {
         self.show_screen(Screen::FirstRunSummary);
     }
-    pub fn back_first_run_summary(&mut self) {
-        self.show_screen(Screen::FirstRunLocation);
+    pub fn back_first_run_summary(&mut self, watcher_step: bool) {
+        self.show_screen(if watcher_step {
+            Screen::FirstRunWatcher
+        } else {
+            Screen::FirstRunLocation
+        });
     }
 
     pub fn first_run_summary_rows(&self) -> Result<Vec<(String, usize)>, EditorError> {
@@ -2573,6 +2602,79 @@ mod tests {
     }
 
     #[test]
+    fn first_run_watcher_routes_location_and_summary() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.start_first_run_empty()?;
+        state.continue_first_run_own_deeds();
+        state.continue_first_run_location(true);
+        assert_eq!(state.screen, Screen::FirstRunWatcher);
+        state.back_first_run_watcher();
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        state.skip_first_run_location(true);
+        assert_eq!(state.screen, Screen::FirstRunWatcher);
+        state.continue_first_run_watcher();
+        assert_eq!(state.screen, Screen::FirstRunSummary);
+        state.back_first_run_summary(true);
+        assert_eq!(state.screen, Screen::FirstRunWatcher);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_without_accounts_skips_watcher() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.start_first_run_empty()?;
+        state.continue_first_run_own_deeds();
+        state.continue_first_run_location(false);
+        assert_eq!(state.screen, Screen::FirstRunSummary);
+        state.back_first_run_summary(false);
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        state.skip_first_run_location(false);
+        assert_eq!(state.screen, Screen::FirstRunSummary);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_watcher_step_survives_restart() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.start_first_run_empty()?;
+        state.continue_first_run_own_deeds();
+        state.continue_first_run_location(true);
+        state.save_to(&store);
+        let resumed = AppState::start(&store, today()?, slot_order());
+        assert_eq!(resumed.screen, Screen::FirstRunWatcher);
+        assert_eq!(resumed.data.first_run.step, "watcher");
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_watch_only_keeps_other_sets_and_opens_settings() -> TestResult {
+        let mut empty = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        empty.watch_only_first_run()?;
+        assert!(empty.data.deeds.is_empty());
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.toggle_set("level_1")?;
+        state.toggle_set("quran")?;
+        state.watch_only_first_run()?;
+        assert!(state.data.first_run_complete);
+        assert_eq!(state.screen, Screen::Settings);
+        assert_eq!(state.data.chosen_sets, BTreeSet::from(["quran".into()]));
+        let level = werdy_data::builtin()?
+            .set("level_1")
+            .ok_or("missing level")?
+            .deeds
+            .clone();
+        assert!(
+            state
+                .data
+                .starter_keys
+                .values()
+                .all(|key| !level.contains(key))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn first_run_full_path_counts_sheet_and_finishes_on_current_day() -> TestResult {
         let start = today()?;
         let mut state = AppState::start(&MemoryStore::default(), start, slot_order());
@@ -2589,7 +2691,7 @@ mod tests {
             .ok_or("missing deed")?;
         state.continue_first_run_own_deeds();
         assert_eq!(state.screen, Screen::FirstRunLocation);
-        state.continue_first_run_location();
+        state.continue_first_run_location(false);
         assert_eq!(state.screen, Screen::FirstRunSummary);
         let rows = state.first_run_summary_rows()?;
         assert_eq!(rows[0].0, "level_1");
@@ -2656,8 +2758,8 @@ mod tests {
         state.back_first_run_location();
         assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
         state.continue_first_run_own_deeds();
-        state.skip_first_run_location();
-        state.back_first_run_summary();
+        state.skip_first_run_location(false);
+        state.back_first_run_summary(false);
         assert_eq!(state.screen, Screen::FirstRunLocation);
         Ok(())
     }
