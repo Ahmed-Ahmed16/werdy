@@ -23,6 +23,7 @@ pub struct Sharing {
     watchers: Vec<SharePerson>,
     watched: Vec<SharePerson>,
     incoming: Vec<WatchRequest>,
+    prompt_dismissed: bool,
     outgoing: Vec<SentWatchRequest>,
     request_email: String,
     request_sent: bool,
@@ -37,6 +38,28 @@ pub struct Sharing {
 }
 
 impl Sharing {
+    fn prompt_visible(&self) -> bool {
+        !self.prompt_dismissed && !self.incoming.is_empty()
+    }
+
+    /// The sheet shows its cards only once the prompt is gone, so one request
+    /// never appears twice on screen.
+    fn cards_visible(&self, view: ReadOnly) -> bool {
+        !view.0 && !self.incoming.is_empty() && !self.prompt_visible()
+    }
+
+    fn dismiss_prompt(&mut self) {
+        self.prompt_dismissed = true;
+    }
+
+    pub fn reset_account(&mut self, generation: Option<u64>) {
+        // A new sign in shows waiting requests again, so Later is forgotten here.
+        *self = Self {
+            generation,
+            ..Self::default()
+        };
+    }
+
     fn send_request(&mut self, direction: WatchDirection) -> Option<Request> {
         self.request_sent = false;
         match normalize_email(&self.request_email) {
@@ -135,10 +158,7 @@ pub fn use_sharing() -> Signal<Sharing> {
                     account.session.as_ref().map(|_| account.generation)
                 };
                 if sharing.peek().generation != generation {
-                    sharing.set(Sharing {
-                        generation,
-                        ..Sharing::default()
-                    });
+                    sharing.write().reset_account(generation);
                     if generation.is_some() {
                         run(sharing, account.clone(), Request::Lists);
                     }
@@ -230,7 +250,7 @@ pub fn delete_account(
         let delete_session_current = store.account.borrow().generation == generation;
         match store.settle_delete(result, &records, generation) {
             Ok(()) => {
-                sharing.set(Sharing::default());
+                sharing.write().reset_account(None);
                 #[cfg(target_arch = "wasm32")]
                 if delete_session_current {
                     let cleanup =
@@ -266,6 +286,64 @@ fn refresh_view(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountS
     match view {
         Ok(view) => run(sharing, store, Request::Read(person.id, Box::new(view))),
         Err(_) => sharing.write().error = Some("sharing-error"),
+    }
+}
+
+#[component]
+pub fn WatchRequestCard(
+    request: WatchRequest,
+    #[props(default)] on_later: Option<EventHandler>,
+) -> Element {
+    let i18n = use_i18n();
+    let sharing = use_context::<Signal<Sharing>>();
+    let store = use_context::<AccountHandle>().0;
+    let disabled = !sharing.read().idle();
+    rsx! {
+        section { class: "settings-card watch-request-card", role: "region", aria_label: i18n.t("sharing-requests-region"),
+            p { {i18n.t_with(request_consent_key(request.direction), &[("email", fluent_bundle::FluentValue::from(request.email.unwrap_or_else(||i18n.t("account-email-unknown"))))])} }
+            div { class: "settings-options",
+                button { class: "secondary-button", disabled, onclick: {let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Accept(id.clone()))}, {i18n.t("sharing-request-accept")} }
+                button { class: "secondary-button", disabled, onclick: {let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Decline(id.clone()))}, {i18n.t("sharing-request-decline")} }
+                if let Some(on_later) = on_later {
+                    button { class: "secondary-button", onclick: move |_| on_later.call(()), {i18n.t("sharing-request-later")} }
+                }
+            }
+            if let Some(error) = sharing.read().error {
+                p { role: "alert", {i18n.t_with(error, &[("limit", fluent_bundle::FluentValue::from(WATCH_REQUEST_LIMIT))])} }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn WatchRequestPrompt() -> Element {
+    let i18n = use_i18n();
+    let mut sharing = use_context::<Signal<Sharing>>();
+    let requests = sharing.read();
+    if !requests.prompt_visible() {
+        return rsx! {};
+    }
+    rsx! {
+        section { class: "settings-card watch-request-prompt", role: "region", aria_label: i18n.t("sharing-requests-region"),
+            h2 { {i18n.t("sharing-requests")} }
+            for request in requests.incoming.clone() {
+                WatchRequestCard { key: "{request.id}", request, on_later: move |_| sharing.write().dismiss_prompt() }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn SheetWatchRequests() -> Element {
+    let sharing = use_context::<Signal<Sharing>>();
+    let requests = sharing.read();
+    if !requests.cards_visible(ReadOnly(read_only())) {
+        return rsx! {};
+    }
+    rsx! {
+        for request in requests.incoming.clone() {
+            WatchRequestCard { key: "{request.id}", request }
+        }
     }
 }
 
@@ -351,11 +429,7 @@ pub fn SharingSection() -> Element {
                 }
                 h3 {{i18n.t("sharing-requests")}}
                 for request in data.incoming {
-                    div { key:"{request.id}",
-                        p { {i18n.t_with(request_consent_key(request.direction), &[("email", fluent_bundle::FluentValue::from(request.email.clone().unwrap_or_else(||i18n.t("account-email-unknown"))))])} }
-                        button {class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Accept(id.clone()))},{i18n.t("sharing-request-accept")}}
-                        button {class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Decline(id.clone()))},{i18n.t("sharing-request-decline")}}
-                    }
+                    WatchRequestCard { key: "{request.id}", request }
                 }
                 h3 {{i18n.t("sharing-watched")}}
                 for person in data.watched {
@@ -526,6 +600,116 @@ fn WatchedContent(view: WatchView, language: String, today: werdy_core::WerdyDay
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn waiting_request() -> WatchRequest {
+        WatchRequest {
+            id: "request".into(),
+            email: Some("sender@example.test".into()),
+            direction: WatchDirection::WatchMe,
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn incoming_lists_show_prompt_and_own_sheet_cards() {
+        let mut sharing = Sharing::default();
+        assert!(!sharing.prompt_visible());
+        assert!(!sharing.cards_visible(ReadOnly(false)));
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(
+                vec![],
+                vec![],
+                vec![waiting_request()],
+                vec![],
+            )),
+        );
+        assert!(sharing.prompt_visible());
+        assert!(!sharing.cards_visible(ReadOnly(false)));
+        sharing.dismiss_prompt();
+        assert!(sharing.cards_visible(ReadOnly(false)));
+        assert!(!sharing.cards_visible(ReadOnly(true)));
+    }
+
+    #[test]
+    fn later_hides_prompt_until_the_next_sign_in_but_keeps_sheet_cards() {
+        let mut sharing = Sharing {
+            incoming: vec![waiting_request()],
+            ..Sharing::default()
+        };
+        sharing.dismiss_prompt();
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(
+                vec![],
+                vec![],
+                vec![waiting_request()],
+                vec![],
+            )),
+        );
+        assert!(!sharing.prompt_visible());
+        assert!(sharing.cards_visible(ReadOnly(false)));
+        sharing.reset_account(Some(2));
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(
+                vec![],
+                vec![],
+                vec![waiting_request()],
+                vec![],
+            )),
+        );
+        assert!(sharing.prompt_visible());
+        assert!(!sharing.cards_visible(ReadOnly(false)));
+    }
+
+    #[test]
+    fn answering_last_request_hides_prompt_and_cards_after_refresh() {
+        for request in [
+            Request::Accept("request".into()),
+            Request::Decline("request".into()),
+        ] {
+            let mut sharing = Sharing {
+                incoming: vec![waiting_request()],
+                ..Sharing::default()
+            };
+            assert!(sharing.receive(&request, Ok(Reply::Changed)));
+            assert!(sharing.prompt_visible());
+            sharing.receive(
+                &Request::Lists,
+                Ok(Reply::Lists(vec![], vec![], vec![], vec![])),
+            );
+            assert!(!sharing.prompt_visible());
+            assert!(!sharing.cards_visible(ReadOnly(false)));
+        }
+    }
+
+    #[test]
+    fn answering_one_request_keeps_the_others_visible() {
+        let remaining = WatchRequest {
+            id: "remaining".into(),
+            direction: WatchDirection::WatchThem,
+            ..waiting_request()
+        };
+        let mut sharing = Sharing {
+            incoming: vec![waiting_request(), remaining.clone()],
+            ..Sharing::default()
+        };
+        assert!(sharing.receive(&Request::Accept("request".into()), Ok(Reply::Changed)));
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(
+                vec![],
+                vec![],
+                vec![remaining.clone()],
+                vec![],
+            )),
+        );
+        assert_eq!(sharing.incoming, vec![remaining]);
+        assert!(sharing.prompt_visible());
+        sharing.dismiss_prompt();
+        assert!(sharing.cards_visible(ReadOnly(false)));
+    }
 
     #[test]
     fn send_and_cancel_refresh_waiting_requests() {

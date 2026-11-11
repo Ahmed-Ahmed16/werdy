@@ -80,6 +80,28 @@ textarea:focus-visible {
   grid-area: header;
 }
 
+.watch-request-prompt {
+  grid-area: requests;
+  margin-block-end: var(--gap-l);
+}
+
+.settings-card.watch-request-card,
+.settings-card.watch-request-prompt {
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.panes:has(> .watch-request-prompt) {
+  grid-template-areas:
+    "requests"
+    "demo"
+    "header"
+    "status"
+    "install"
+    "summary"
+    "sheet";
+}
+
 .demo-banner {
   grid-area: demo;
   min-width: 0;
@@ -191,6 +213,16 @@ textarea:focus-visible {
   .panes {
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     grid-template-areas:
+      "demo demo"
+      "header header"
+      "status status"
+      "install install"
+      "sheet summary";
+  }
+
+  .panes:has(> .watch-request-prompt) {
+    grid-template-areas:
+      "requests requests"
       "demo demo"
       "header header"
       "status status"
