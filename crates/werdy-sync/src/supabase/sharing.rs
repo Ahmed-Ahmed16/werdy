@@ -55,6 +55,19 @@ struct SendWatch<'a> {
     email: &'a str,
     direction: WatchDirection,
 }
+
+/// Mirrors the waiting sent request limit in werdy_request_send on the server.
+pub const WATCH_REQUEST_LIMIT: u8 = 5;
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SentWatchRequest {
+    pub id: String,
+    pub email: String,
+    pub direction: WatchDirection,
+    pub created_at: u64,
+    pub expires_at: u64,
+}
 #[derive(Serialize)]
 struct RequestId<'a> {
     request_id: &'a str,
@@ -113,6 +126,16 @@ impl SupabaseBackend {
     pub async fn incoming_watch_requests(&self) -> Result<Vec<WatchRequest>, SyncError> {
         self.rpc("werdy_request_incoming", &super::TimeRequest {})
             .await
+    }
+    pub async fn outgoing_watch_requests(&self) -> Result<Vec<SentWatchRequest>, SyncError> {
+        self.rpc("werdy_request_outgoing", &super::TimeRequest {})
+            .await
+    }
+    pub async fn cancel_watch_request(&self, id: &str) -> Result<(), SyncError> {
+        outcome(
+            self.rpc("werdy_request_cancel", &RequestId { request_id: id })
+                .await?,
+        )
     }
     pub async fn accept_watch_request(&self, id: &str) -> Result<(), SyncError> {
         outcome(
@@ -194,6 +217,38 @@ impl SupabaseBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sent_requests_require_email_and_expiry_and_reject_extra_fields() {
+        let reply = serde_json::json!([{
+            "id":"request", "email":"receiver@example.test", "direction":"watch_them",
+            "created_at":1, "expires_at":2592000001_u64
+        }]);
+        let requests: Vec<SentWatchRequest> =
+            super::super::parse_response(&serde_json::to_vec(&reply).unwrap()).unwrap();
+        assert_eq!(requests[0].email, "receiver@example.test");
+        assert_eq!(requests[0].direction, WatchDirection::WatchThem);
+        assert_eq!(requests[0].expires_at - requests[0].created_at, 2592000000);
+        for field in ["email", "expires_at"] {
+            let mut invalid = reply.clone();
+            invalid[0].as_object_mut().unwrap().remove(field);
+            assert!(
+                super::super::parse_response::<Vec<SentWatchRequest>>(
+                    &serde_json::to_vec(&invalid).unwrap()
+                )
+                .is_err()
+            );
+        }
+        let mut extra = reply;
+        extra[0]["declined"] = true.into();
+        assert!(
+            super::super::parse_response::<Vec<SentWatchRequest>>(
+                &serde_json::to_vec(&extra).unwrap()
+            )
+            .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn invalid_watch_email_is_refused_before_network() {
         let backend =
@@ -224,6 +279,16 @@ mod tests {
                 "werdy_request_incoming",
                 serde_json::json!({}),
                 serde_json::json!({}),
+            ),
+            (
+                "werdy_request_outgoing",
+                serde_json::to_value(super::super::TimeRequest {}).unwrap(),
+                serde_json::json!({}),
+            ),
+            (
+                "werdy_request_cancel",
+                serde_json::to_value(RequestId { request_id: "id" }).unwrap(),
+                serde_json::json!({"request_id":"id"}),
             ),
             (
                 "werdy_request_accept",

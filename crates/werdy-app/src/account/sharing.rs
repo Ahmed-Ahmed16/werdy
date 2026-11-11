@@ -2,17 +2,18 @@
 //! Account deletion uses the same authenticated request path.
 use super::{AccountStore, config, runtime};
 use werdy_sync::{
-    ShareCode, SharePerson, SupabaseAuth, SupabaseBackend, SyncError, WatchDirection, WatchRequest,
-    WatchView,
+    SentWatchRequest, ShareCode, SharePerson, SupabaseAuth, SupabaseBackend, SyncError,
+    WatchDirection, WatchRequest, WatchView,
 };
 
 pub enum Request {
     Lists,
     // Keep the action name specified for this request.
     #[allow(clippy::enum_variant_names)]
-    SendWatchRequest(String),
+    SendWatchRequest(String, WatchDirection),
     Accept(String),
     Decline(String),
+    Cancel(String),
     Create,
     Redeem(String),
     Revoke(String),
@@ -21,7 +22,12 @@ pub enum Request {
     DeleteAccount,
 }
 pub enum Reply {
-    Lists(Vec<SharePerson>, Vec<SharePerson>, Vec<WatchRequest>),
+    Lists(
+        Vec<SharePerson>,
+        Vec<SharePerson>,
+        Vec<WatchRequest>,
+        Vec<SentWatchRequest>,
+    ),
     Code(ShareCode),
     Changed,
     View(Box<WatchView>),
@@ -71,11 +77,10 @@ async fn perform(backend: &SupabaseBackend, request: &Request) -> Result<Reply, 
             backend.list_watchers().await?,
             backend.list_watched().await?,
             backend.incoming_watch_requests().await?,
+            backend.outgoing_watch_requests().await?,
         )),
-        Request::SendWatchRequest(email) => {
-            backend
-                .send_watch_request(email, WatchDirection::WatchMe)
-                .await?;
+        Request::SendWatchRequest(email, direction) => {
+            backend.send_watch_request(email, *direction).await?;
             Ok(Reply::Changed)
         }
         Request::Accept(id) => {
@@ -84,6 +89,10 @@ async fn perform(backend: &SupabaseBackend, request: &Request) -> Result<Reply, 
         }
         Request::Decline(id) => {
             backend.decline_watch_request(id).await?;
+            Ok(Reply::Changed)
+        }
+        Request::Cancel(id) => {
+            backend.cancel_watch_request(id).await?;
             Ok(Reply::Changed)
         }
         Request::Create => Ok(Reply::Code(backend.create_share_code().await?)),

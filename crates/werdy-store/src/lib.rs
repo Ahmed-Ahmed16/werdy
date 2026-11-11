@@ -462,7 +462,6 @@ impl OwnerData {
 /// Conflicting deed identities return an error without changing either copy.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData, StoreError> {
     let mut merged = stored.clone();
-    merged.first_run = local.first_run.clone();
     merged
         .dismissed_milestones
         .extend(&local.dismissed_milestones);

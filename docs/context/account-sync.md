@@ -68,6 +68,13 @@ Sign out saves the current records, removes the session, cancels the active
 sync task and removes sync state. It keeps local history. A generation check
 also prevents a late completion from restoring old account state. Storage
 errors are shown instead of claiming that a failed sign out succeeded.
+Web sign out reads the current push endpoint, unsubscribes in the browser first,
+then asks the server to forget that endpoint. The cleanup has a 10 second limit;
+failure logs a warning and sign out continues. With the sender from #150, the
+next send to a removed browser subscription gets 404 or 410 and drops that
+subscription and all its rows. That sender is not in this tree yet. Reminders
+are scheduled at most 8 days ahead, and `werdy_push_claim_due` removes overdue
+rows when called.
 
 Delete my account (Settings > Account, after a confirm step) calls
 `werdy_account_delete` under the same guard as sharing requests: it waits for

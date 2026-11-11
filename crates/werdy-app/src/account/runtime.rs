@@ -36,6 +36,11 @@ pub fn view(store: &AccountStore) -> AccountView {
 
 pub fn use_background(mut state: Signal<AppState>) {
     let handle = use_context::<AccountHandle>();
+    #[cfg(target_arch = "wasm32")]
+    use_hook({
+        let store = handle.0.clone();
+        move || crate::platform::web_reminders::register(store)
+    });
     let initial = handle.0.clone();
     let mut status = use_signal(|| view(&initial));
     use_context_provider(|| status);

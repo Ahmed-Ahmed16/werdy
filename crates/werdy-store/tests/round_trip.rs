@@ -112,14 +112,14 @@ fn first_run_progress_round_trips_and_old_file_defaults() -> TestResult {
 }
 
 #[test]
-fn first_run_progress_uses_local_state_during_merge() -> TestResult {
+fn first_run_progress_uses_stored_state_during_merge() -> TestResult {
     let mut stored = sample()?;
     stored.first_run.step = "location".to_owned();
     let mut local = stored.clone();
     local.first_run.step = "summary".to_owned();
     assert_eq!(
         werdy_store::merge_records(&stored, &local)?.first_run.step,
-        "summary"
+        "location"
     );
     Ok(())
 }

@@ -78,6 +78,52 @@ fn rpc_requests_use_correct_routes_arguments_and_refreshed_credentials() {
 }
 
 #[test]
+fn push_rpc_requests_match_the_server_contract() {
+    let backend = backend();
+    let subscription = PushSubscription {
+        endpoint: "https://push.example.invalid/device".into(),
+        p256dh: "public".into(),
+        auth: "secret".into(),
+    };
+    let reminders = [serde_json::json!({
+        "id":"slot:fajr", "send_at_ms":1793145600000_i64,
+        "title":"werdy", "body":"Fajr deeds are waiting", "topic":"abc"
+    })];
+    let request = backend
+        .request(
+            "werdy_push_replace",
+            &PushReplace {
+                subscription: &subscription,
+                reminders: &reminders,
+            },
+        )
+        .unwrap();
+    assert_eq!(request.url().path(), "/rest/v1/rpc/werdy_push_replace");
+    assert_eq!(request.headers()[AUTHORIZATION], "Bearer test_token");
+    let body: serde_json::Value =
+        serde_json::from_slice(request.body().unwrap().as_bytes().unwrap()).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"subscription":{
+        "endpoint":"https://push.example.invalid/device", "p256dh":"public", "auth":"secret"
+    },"reminders":reminders})
+    );
+    let request = backend
+        .request(
+            "werdy_push_forget",
+            &PushForget {
+                endpoint: &subscription.endpoint,
+            },
+        )
+        .unwrap();
+    assert_eq!(request.url().path(), "/rest/v1/rpc/werdy_push_forget");
+    assert_eq!(
+        request.body().unwrap().as_bytes().unwrap(),
+        br#"{"endpoint":"https://push.example.invalid/device"}"#
+    );
+}
+
+#[test]
 fn full_width_fraction_serializes_without_value_conversion_or_rounding() {
     let day = WerdyDay::new(2026, 10, 28).unwrap();
     let pending = Pending {
@@ -202,4 +248,46 @@ fn account_delete_posts_empty_body_and_accepts_only_ok() {
         .unwrap()
         .to_string();
     assert!(!error.contains("JWT"));
+}
+#[test]
+fn only_send_limit_errors_get_a_specific_error() {
+    let limit =
+        br#"{"code":"P0001","message":"watch request limit reached","details":null,"hint":null}"#;
+    assert_eq!(
+        check_rpc_status("werdy_request_send", StatusCode::BAD_REQUEST, limit),
+        Err(SyncError::WatchRequestLimit)
+    );
+    for (function, status, body) in [
+        (
+            "werdy_request_send",
+            StatusCode::UNAUTHORIZED,
+            limit.as_slice(),
+        ),
+        (
+            "werdy_share_create",
+            StatusCode::BAD_REQUEST,
+            limit.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"22023","message":"watch request limit reached"}"#.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"P0001","message":"other failure"}"#.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            b"not JSON".as_slice(),
+        ),
+    ] {
+        assert_eq!(
+            check_rpc_status(function, status, body),
+            Err(SyncError::Http(status.as_u16()))
+        );
+    }
+    assert!(check_rpc_status("werdy_request_send", StatusCode::OK, limit).is_ok());
 }

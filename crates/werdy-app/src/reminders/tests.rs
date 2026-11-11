@@ -256,3 +256,94 @@ fn all_clock_gap_notifications_still_produce_empty_replacement_and_other_errors_
     assert_eq!(failed.err().as_deref(), Some("invalid UTC offset"));
     Ok(())
 }
+
+#[test]
+fn web_batch_keeps_only_prayers_and_uses_private_text_in_both_languages() -> TestResult {
+    let mut owner = owner()?;
+    let date = WerdyDay::new(2026, 4, 24)?;
+    let notices = [
+        "fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night", "deed",
+    ];
+    let plan = Plan {
+        notifications: notices
+            .iter()
+            .enumerate()
+            .map(|(index, slot)| Notification {
+                id: format!("2026-04-24:slot:{slot}"),
+                date,
+                minute: 300 + index as u16 * 60,
+                werdy_day: date,
+                target: if *slot == "deed" {
+                    Target::Deed(DeedId(2))
+                } else {
+                    Target::Slot(SlotKey::new(slot))
+                },
+                deeds: vec![DeedId(2)],
+            })
+            .collect(),
+        ..Plan::default()
+    };
+    for (language, prayer, last_text) in [
+        (
+            "en",
+            "Dhuhr",
+            "Isha deeds are waiting. Open werdy to keep getting reminders.",
+        ),
+        (
+            "ar",
+            "الظهر",
+            "أعمال العشاء تنتظرك. افتح werdy لتستمر التذكيرات.",
+        ),
+    ] {
+        owner.settings.language = language.into();
+        let texts = Texts::load();
+        let batch = web_batch(&owner, &plan, &texts, |date, minute| {
+            if minute == 300 {
+                Ok(None)
+            } else {
+                epoch_millis(date, minute, 120).map(Some)
+            }
+        })?;
+        assert_eq!(batch.len(), 4);
+        assert!(batch.iter().all(|row| !row.body.contains("Read 2 pages")));
+        assert!(batch.iter().all(|row| row.title == "werdy"));
+        assert_eq!(
+            batch[0].title,
+            texts.get(Language::from_code(language), "reminders-push-title", &[])
+        );
+        assert!(batch[0].body.contains(prayer));
+        assert_eq!(
+            batch[3].body.replace(['\u{2068}', '\u{2069}'], ""),
+            last_text
+        );
+        assert_eq!(batch[0].send_at_ms, epoch_millis(date, 420, 120)?);
+        assert!(batch.iter().all(|row| {
+            row.topic.len() <= 32
+                && row
+                    .topic
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        }));
+        assert_eq!(
+            batch[0].topic,
+            web_batch(&owner, &plan, &Texts::load(), |date, minute| epoch_millis(
+                date, minute, 120
+            )
+            .map(Some))?[1]
+                .topic
+        );
+        assert_eq!(
+            serde_json::to_value(&batch)?[0]
+                .as_object()
+                .map(|row| row.len()),
+            Some(5)
+        );
+    }
+    assert!(
+        web_batch(&owner, &Plan::default(), &Texts::load(), |_, _| Err(
+            "unused".into()
+        ))?
+        .is_empty()
+    );
+    Ok(())
+}

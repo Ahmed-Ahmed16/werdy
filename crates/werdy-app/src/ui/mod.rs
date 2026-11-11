@@ -12,7 +12,7 @@ mod install;
 mod marks;
 mod note;
 mod rail;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
 mod reminders;
 mod reports;
 mod settings;
@@ -289,6 +289,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                 Screen::Reports => "report-panes",
                 Screen::Deeds | Screen::Editor(_) | Screen::Settings => "page-content",
             },
+                sharing::WatchRequestPrompt {}
                 if mode == platform::DataMode::Demo {
                     div { class: "demo-banner", role: "note",
                         span { {demo_banner} }

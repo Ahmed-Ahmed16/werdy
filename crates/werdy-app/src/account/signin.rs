@@ -77,11 +77,14 @@ pub async fn begin(store: Rc<AccountStore>) {
     match outcome {
         Ok(session) => {
             use werdy_store::Store;
-            let saved = store
-                .load()
-                .and_then(|records| store.sign_in(session, &records.unwrap_or_default()));
-            if saved.is_err() {
-                store.account.borrow_mut().error = Some("account-storage-error");
+            let saved = store.load().and_then(|records| {
+                let records = records.unwrap_or_default();
+                store.sign_in(session, &records)?;
+                Ok(records)
+            });
+            match saved {
+                Ok(records) => crate::platform::reschedule_reminders(&records),
+                Err(_) => store.account.borrow_mut().error = Some("account-storage-error"),
             }
         }
         Err(key) => store.account.borrow_mut().error = Some(key),

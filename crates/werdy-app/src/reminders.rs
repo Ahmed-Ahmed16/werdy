@@ -2,12 +2,17 @@
 use fluent_bundle::FluentValue;
 use serde::Serialize;
 use werdy_core::WerdyDay;
-use werdy_reminders::{Notification, Plan, Target};
-use werdy_store::{ClockTime, DeedName, OwnerData};
+#[cfg(any(test, target_os = "android"))]
+use werdy_reminders::Notification;
+use werdy_reminders::{Plan, Target};
+#[cfg(any(test, target_os = "android"))]
+use werdy_store::DeedName;
+use werdy_store::{ClockTime, OwnerData};
 
 use crate::i18n::{Language, Texts};
 
 #[derive(Debug, Serialize)]
+#[cfg(any(test, target_os = "android"))]
 pub struct Alarm {
     pub id: String,
     pub epoch_millis: i64,
@@ -16,9 +21,99 @@ pub struct Alarm {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg(any(test, target_os = "android"))]
 pub struct Payload {
     pub channel_name: String,
     pub notifications: Vec<Alarm>,
+}
+
+#[derive(Debug, Serialize)]
+#[cfg(any(test, target_arch = "wasm32"))]
+pub struct PushReminder {
+    pub id: String,
+    pub send_at_ms: i64,
+    pub title: String,
+    pub body: String,
+    pub topic: String,
+}
+
+/// Builds a server replacement with prayer names only.
+#[cfg(any(test, target_arch = "wasm32"))]
+pub fn web_batch(
+    owner: &OwnerData,
+    plan: &Plan,
+    texts: &Texts,
+    epoch_at: impl Fn(WerdyDay, u16) -> Result<Option<i64>, String>,
+) -> Result<Vec<PushReminder>, String> {
+    let language = Language::from_code(&owner.settings.language);
+    let mut batch = Vec::new();
+    for notice in &plan.notifications {
+        let Target::Slot(slot) = &notice.target else {
+            continue;
+        };
+        if !matches!(
+            slot.0.as_str(),
+            "fajr" | "dhuhr" | "asr" | "maghrib" | "isha"
+        ) {
+            continue;
+        }
+        let Some(send_at_ms) = epoch_at(notice.date, notice.minute)? else {
+            continue;
+        };
+        let prayer = texts.get(language, &format!("slot-{}", slot.0), &[]);
+        batch.push(PushReminder {
+            id: notice.id.clone(),
+            send_at_ms,
+            title: texts.get(language, "reminders-push-title", &[]),
+            body: texts.get(
+                language,
+                "reminders-push-body",
+                &[("prayer", FluentValue::from(prayer))],
+            ),
+            topic: push_topic(&notice.id),
+        });
+    }
+    if let Some(last) = batch.last_mut() {
+        let prayer = plan
+            .notifications
+            .iter()
+            .find(|notice| notice.id == last.id)
+            .and_then(|notice| match &notice.target {
+                Target::Slot(slot) => Some(texts.get(language, &format!("slot-{}", slot.0), &[])),
+                Target::Deed(_) => None,
+            })
+            .ok_or_else(|| "missing final prayer".to_owned())?;
+        last.body = texts.get(
+            language,
+            "reminders-push-last",
+            &[("prayer", FluentValue::from(prayer))],
+        );
+    }
+    Ok(batch)
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn push_topic(id: &str) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let hash = id.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    });
+    let bytes = hash.to_be_bytes();
+    let mut output = String::with_capacity(11);
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
+        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            output.push(ALPHABET[((value >> 6) & 63) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            output.push(ALPHABET[(value & 63) as usize] as char);
+        }
+    }
+    output
 }
 
 /// A fixed offset is minutes east of UTC. Invalid wall times and offsets are errors.
@@ -71,6 +166,7 @@ fn epoch_candidates(
 }
 
 /// Omits notifications in a clock gap. Other conversion errors remain errors.
+#[cfg(any(test, target_os = "android"))]
 pub fn payload(
     owner: &OwnerData,
     plan: &Plan,
@@ -97,6 +193,7 @@ pub fn payload(
     })
 }
 
+#[cfg(any(test, target_os = "android"))]
 fn notification_text(owner: &OwnerData, notice: &Notification, texts: &Texts) -> (String, String) {
     let language = Language::from_code(&owner.settings.language);
     let name = match &notice.target {
@@ -131,6 +228,7 @@ fn notification_text(owner: &OwnerData, notice: &Notification, texts: &Texts) ->
     (title, body)
 }
 
+#[cfg(any(test, target_os = "android"))]
 fn deed_name(owner: &OwnerData, id: werdy_core::DeedId, texts: &Texts) -> String {
     let language = Language::from_code(&owner.settings.language);
     match owner.names.get(&id) {
@@ -142,6 +240,7 @@ fn deed_name(owner: &OwnerData, id: werdy_core::DeedId, texts: &Texts) -> String
     }
 }
 
+#[cfg(any(test, target_os = "android"))]
 fn short(text: &str, limit: usize) -> String {
     let mut chars = text.chars();
     let mut short: String = chars.by_ref().take(limit).collect();
@@ -164,12 +263,14 @@ pub fn time_value(time: ClockTime) -> String {
 mod tests;
 
 #[derive(serde::Deserialize)]
+#[cfg(any(test, target_os = "android"))]
 struct Reply {
     ok: Option<bool>,
     allowed: Option<bool>,
     error: Option<String>,
 }
 
+#[cfg(any(test, target_os = "android"))]
 fn reply(json: &str) -> Result<Reply, String> {
     let reply: Reply = serde_json::from_str(json).map_err(|error| error.to_string())?;
     if let Some(error) = reply.error {
@@ -178,6 +279,7 @@ fn reply(json: &str) -> Result<Reply, String> {
     Ok(reply)
 }
 
+#[cfg(any(test, target_os = "android"))]
 pub fn ok_reply(json: &str) -> Result<(), String> {
     if reply(json)?.ok == Some(true) {
         Ok(())
@@ -186,6 +288,7 @@ pub fn ok_reply(json: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(any(test, target_os = "android"))]
 pub fn permission_reply(json: &str) -> Result<bool, String> {
     reply(json)?
         .allowed

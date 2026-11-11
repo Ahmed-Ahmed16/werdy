@@ -11,4 +11,14 @@ reminders-notification-title = Reminder: { $name }
 reminders-notification-body = Still to do: { $deeds }
 reminders-list-separator = { ", " }
 reminders-more = { $count } more
+reminders-push-privacy = werdy's server receives only your reminder times. They hint at your city, not your address.
+reminders-push-unavailable = Reminders are not available yet.
+reminders-push-iphone = Add werdy to your home screen to get reminders.
+reminders-push-unsupported = This browser cannot show reminders.
+reminders-push-blocked = Notifications are blocked. Allow them in browser settings.
+reminders-push-signed-out = Sign in to use reminders.
+reminders-push-switch = Reminders on this device
+reminders-push-title = werdy
+reminders-push-body = { $prayer } deeds are waiting.
+reminders-push-last = { $prayer } deeds are waiting. Open werdy to keep getting reminders.
 

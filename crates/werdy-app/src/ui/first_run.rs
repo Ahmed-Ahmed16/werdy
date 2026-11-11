@@ -345,7 +345,7 @@ pub fn WatcherStep() -> Element {
             if yes() {
                 section { class: "first-run-card",
                     if account.signed_in {
-                        super::sharing::WatchRequestForm {}
+                        super::sharing::WatchRequestForm { standalone: true }
                     } else {
                         p { {i18n.t("sharing-signin")} }
                         super::account::SignInButton {}
