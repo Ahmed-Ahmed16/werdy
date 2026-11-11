@@ -32,12 +32,23 @@ pub struct Sharing {
     view: Option<WatchView>,
     busy: bool,
     error: Option<&'static str>,
+    failed_request: Option<String>,
     generation: Option<u64>,
     pub deleting: bool,
     pub delete_error: Option<&'static str>,
 }
 
 impl Sharing {
+    fn card_error(&self, request_id: &str) -> Option<&'static str> {
+        (self.failed_request.as_deref() == Some(request_id)).then_some("sharing-request-error")
+    }
+
+    fn start_request(&mut self) {
+        self.busy = true;
+        self.error = None;
+        self.failed_request = None;
+    }
+
     fn prompt_visible(&self) -> bool {
         !self.prompt_dismissed && !self.incoming.is_empty()
     }
@@ -89,6 +100,9 @@ impl Sharing {
             Ok(Reply::Code(code)) => self.code = Some(code),
             Ok(Reply::View(view)) => self.view = Some(*view),
             Ok(Reply::Changed) => {
+                if matches!(request, Request::Accept(_) | Request::Decline(_)) {
+                    self.failed_request = None;
+                }
                 if matches!(request, Request::SendWatchRequest(..)) {
                     self.request_email.clear();
                     self.request_sent = true;
@@ -123,6 +137,9 @@ impl Sharing {
                         | Request::Cancel(_)
                 ) =>
             {
+                if let Request::Accept(id) | Request::Decline(id) = request {
+                    self.failed_request = Some(id.clone());
+                }
                 self.error = Some("sharing-request-error");
             }
             Err(_) => self.error = Some("sharing-error"),
@@ -184,8 +201,7 @@ fn run(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountStore>, re
     if !sharing.peek().idle() {
         return;
     }
-    sharing.write().busy = true;
-    sharing.write().error = None;
+    sharing.write().start_request();
     let generation = store.account.borrow().generation;
     // Settings unmounts when the watched screen opens. Keep its request alive
     // in the root scope; account generation still rejects replies after sign out.
@@ -288,7 +304,7 @@ pub fn WatchRequestCard(
                     button { class: "secondary-button", onclick: move |_| on_later.call(()), {i18n.t("sharing-request-later")} }
                 }
             }
-            if let Some(error) = sharing.read().error {
+            if let Some(error) = sharing.read().card_error(&request.id) {
                 p { role: "alert", {i18n.t_with(error, &[("limit", fluent_bundle::FluentValue::from(WATCH_REQUEST_LIMIT))])} }
             }
         }
@@ -588,6 +604,80 @@ mod tests {
             direction: WatchDirection::WatchMe,
             created_at: 1,
         }
+    }
+
+    #[test]
+    fn failed_answer_shows_error_only_on_its_own_card() {
+        for request in [
+            Request::Accept("request".into()),
+            Request::Decline("request".into()),
+        ] {
+            let mut sharing = Sharing {
+                incoming: vec![
+                    waiting_request(),
+                    WatchRequest {
+                        id: "other".into(),
+                        ..waiting_request()
+                    },
+                ],
+                ..Sharing::default()
+            };
+            sharing.receive(&request, Err(SyncError::Http(503)));
+            assert_eq!(sharing.card_error("request"), Some("sharing-request-error"));
+            assert_eq!(sharing.card_error("other"), None);
+            assert_eq!(sharing.error, Some("sharing-request-error"));
+        }
+    }
+
+    #[test]
+    fn unrelated_failures_do_not_show_card_errors() {
+        for (request, error) in [
+            (Request::Lists, "sharing-error"),
+            (
+                Request::SendWatchRequest("receiver@example.test".into(), WatchDirection::WatchMe),
+                "sharing-request-error",
+            ),
+            (Request::Revoke("request".into()), "sharing-error"),
+        ] {
+            let mut sharing = Sharing::default();
+            sharing.receive(&request, Err(SyncError::Http(503)));
+            assert_eq!(sharing.card_error("request"), None);
+            assert_eq!(sharing.card_error("other"), None);
+            assert_eq!(sharing.error, Some(error));
+        }
+    }
+
+    #[test]
+    fn successful_answer_clears_previous_card_error() {
+        for request in [
+            Request::Accept("request".into()),
+            Request::Decline("request".into()),
+        ] {
+            let mut sharing = Sharing::default();
+            sharing.receive(
+                &Request::Decline("request".into()),
+                Err(SyncError::Http(503)),
+            );
+            assert_eq!(sharing.card_error("request"), Some("sharing-request-error"));
+            assert!(sharing.receive(&request, Ok(Reply::Changed)));
+            assert_eq!(sharing.card_error("request"), None);
+        }
+    }
+
+    #[test]
+    fn starting_new_request_clears_previous_card_and_section_errors() {
+        let mut sharing = Sharing::default();
+        sharing.receive(
+            &Request::Decline("request".into()),
+            Err(SyncError::Http(503)),
+        );
+        sharing.start_request();
+        assert_eq!(sharing.card_error("request"), None);
+        assert_eq!(sharing.error, None);
+        assert!(!sharing.idle());
+        sharing.receive(&Request::Lists, Err(SyncError::Http(503)));
+        assert_eq!(sharing.card_error("request"), None);
+        assert_eq!(sharing.error, Some("sharing-error"));
     }
 
     #[test]
