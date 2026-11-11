@@ -32,11 +32,12 @@ werdy is a tracker for daily Islamic deeds and life work, for one person (the **
 
 Shown until first run is complete.
 
-1. "Pick your Academy level" opens first. Three cards show the level title, deed count and summary. "Show the deeds" opens a list grouped by prayer time. The instructors' credit appears once below the cards. Choosing a card does not add deeds until "Next". "Not following the Academy? Start with an empty sheet" continues without deeds.
-2. The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
-3. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
-4. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added. The Academy level sets keep their sheet names here.
-5. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens the deed editor.
+1. "Pick your Academy level" opens first. Three cards show the level title, deed count and summary. "Show the deeds" opens a list grouped by prayer time. The instructors' credit appears once below the cards. Choosing a card does not add deeds until the extras step. "Not following the Academy? Start with an empty sheet" continues without deeds.
+2. "Want to add more?" offers the five prayers on time, fasting and seasons, and Ramadan in that order. The five prayers start ticked. Each card shows the set name, deed count, reason and deed names. Next adds the level and ticked extras. Skip adds only the level. Back returns to the chosen level. Returning to the same level keeps the ticks; choosing another level resets them.
+3. The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
+4. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
+5. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added. The Academy level sets keep their sheet names here.
+6. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens the deed editor.
 
 Expected: after first run, reloading the page opens Today, not first run.
 

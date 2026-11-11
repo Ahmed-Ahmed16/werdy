@@ -100,11 +100,81 @@ pub fn LevelStep() -> Element {
             if let Some(credit) = credit { p { class: "level-credit", {i18n.t(credit)} } }
             footer { class: "first-run-footer",
                 button { class: "primary-button", disabled: selected.is_none(), onclick: move |_| {
-                    if actions.change_deed(|state| state.continue_first_run_level()).is_err() { error.set(true); }
+                    actions.view(|state| {
+                        if state.continue_first_run_level().is_err() { error.set(true); }
+                    });
                 }, {i18n.t("first-run-level-next")} }
                 button { class: "text-button", onclick: move |_| {
                     if actions.change_deed(|state| state.start_first_run_empty()).is_err() { error.set(true); }
                 }, {i18n.t("first-run-level-empty")} }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn ExtrasStep() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let mut error = use_signal(|| false);
+    let selected = state.read().pending_extra_ticks.clone();
+    let level_key = state.read().pending_level.clone();
+    let Ok(catalog) = editor_data::catalog() else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let Some(level_set) = level_key.as_deref().and_then(|key| catalog.set(key)) else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let Some(level) = &level_set.level else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let help = i18n.t_with(
+        "first-run-extras-help",
+        &[("level", FluentValue::from(i18n.t(&level.title)))],
+    );
+
+    rsx! {
+        section { class: "first-run-screen",
+            header { class: "first-run-header",
+                span { class: "rail-brand", {i18n.t("app-name")} }
+                h1 { {i18n.t("first-run-extras-title")} }
+                p { "{help}" }
+            }
+            if error() { p { class: "editor-error", role: "alert", {i18n.t("sets-add-error")} } }
+            div { class: "set-grid",
+                for offer in &level.offers {
+                    if let Some(set) = catalog.set(&offer.set) {
+                        { let key = offer.set.clone();
+                          let active = selected.contains(&key);
+                          let deed_names = catalog.deeds_in(set).iter().map(|deed| i18n.t(&deed.name)).collect::<Vec<_>>().join(&i18n.t("sets-separator"));
+                          rsx! {
+                            article { class: if active { "set-card selected extra-card" } else { "set-card extra-card" }, key: "{key}",
+                                div { class: "set-copy",
+                                    h2 { {i18n.t(&set.name)} }
+                                    p { class: "level-count", {i18n.t_with("first-run-level-count", &[("count", FluentValue::from(set.deeds.len()))])} }
+                                    p { {i18n.t(&offer.why)} }
+                                    p { "{deed_names}" }
+                                }
+                                button { class: "set-toggle", aria_label: i18n.t_with(if active { "sets-remove-named" } else { "sets-add-named" }, &[("set", FluentValue::from(i18n.t(&set.name)))]), aria_pressed: "{active}", onclick: move |_| {
+                                    actions.view(|state| {
+                                        if state.toggle_first_run_extra(&key).is_err() { error.set(true); }
+                                    });
+                                }, {i18n.t(if active { "sets-remove" } else { "sets-add" })} }
+                            }
+                          }
+                        }
+                    }
+                }
+            }
+            footer { class: "first-run-footer",
+                button { class: "primary-button", onclick: move |_| {
+                    if actions.change_deed(|state| state.continue_first_run_extras()).is_err() { error.set(true); }
+                }, {i18n.t("first-run-level-next")} }
+                button { class: "text-button", onclick: move |_| {
+                    if actions.change_deed(|state| state.skip_first_run_extras()).is_err() { error.set(true); }
+                }, {i18n.t("first-run-extras-skip")} }
+                button { class: "text-button", onclick: move |_| actions.view(|state| state.back_first_run_extras()), {i18n.t("first-run-extras-back")} }
             }
         }
     }

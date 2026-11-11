@@ -431,4 +431,13 @@ begin
         raise exception 'revoke left a crossing share or request';
     end if;
 end $$;
+-- The pair lock key ignores letter case and argument order.
+do $$
+begin
+    if werdy_private.watch_pair_key('Z@example.test','a@example.test') is distinct from 'a@example.test:z@example.test'
+        or werdy_private.watch_pair_key('z@example.test','A@example.test') is distinct from 'a@example.test:z@example.test'
+        or werdy_private.watch_pair_key('a@example.test','z@example.test') is distinct from 'a@example.test:z@example.test' then
+        raise exception 'pair lock key depends on case or order';
+    end if;
+end $$;
 rollback;

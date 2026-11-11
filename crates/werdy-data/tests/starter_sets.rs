@@ -136,6 +136,87 @@ fn academy_levels_load_in_card_order() {
 }
 
 #[test]
+fn every_academy_level_offers_three_sets_in_order() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for set in catalog.level_sets() {
+        let offers = &set.level.as_ref().expect("level details").offers;
+        assert_eq!(
+            offers
+                .iter()
+                .map(|offer| offer.set.as_str())
+                .collect::<Vec<_>>(),
+            ["five_prayers", "fasting_seasons", "ramadan"]
+        );
+        assert_eq!(
+            offers.iter().map(|offer| offer.ticked).collect::<Vec<_>>(),
+            [true, false, false]
+        );
+    }
+}
+
+#[test]
+fn invalid_academy_offers_are_rejected() {
+    let text = include_str!("../../../data/starter-sets.toml");
+    for (replacement, expected) in [
+        (
+            "missing_set",
+            Error::UnknownOfferedSet {
+                level: "level_1".into(),
+                set: "missing_set".into(),
+            },
+        ),
+        (
+            "levels_2_3",
+            Error::LevelOfferedAsExtra {
+                level: "level_1".into(),
+                set: "levels_2_3".into(),
+            },
+        ),
+    ] {
+        let changed = text.replacen(
+            "{ set = \"five_prayers\"",
+            &format!("{{ set = \"{replacement}\""),
+            1,
+        );
+        assert_ne!(changed, text);
+        assert_eq!(parse(&changed), Err(expected));
+    }
+    let duplicate = text.replacen("{ set = \"fasting_seasons\"", "{ set = \"five_prayers\"", 1);
+    assert_ne!(duplicate, text);
+    assert_eq!(
+        parse(&duplicate),
+        Err(Error::DuplicateOffer {
+            level: "level_1".into(),
+            set: "five_prayers".into()
+        })
+    );
+}
+
+#[test]
+fn academy_offer_why_keys_exist_in_both_locales() {
+    let text = include_str!("../../../data/starter-sets.toml");
+    let ar = include_str!("../../../locales/ar/starter-sets.ftl");
+    let en = include_str!("../../../locales/en/starter-sets.ftl");
+    let changed = text.replacen("level-offer-why-five-prayers", "missing-offer-why", 1);
+    assert_ne!(changed, text);
+    assert_eq!(
+        load(&changed, ar, en),
+        Err(Error::MissingName {
+            locale: "ar",
+            name: "missing-offer-why".into()
+        })
+    );
+    let ar_with_key = format!("{ar}\nmissing-offer-why = Example\n");
+    assert_eq!(
+        load(&changed, &ar_with_key, en),
+        Err(Error::MissingName {
+            locale: "en",
+            name: "missing-offer-why".into()
+        })
+    );
+}
+
+#[test]
 fn duplicate_academy_level_order_is_rejected() {
     let text = include_str!("../../../data/starter-sets.toml");
     let duplicate = text.replacen(
