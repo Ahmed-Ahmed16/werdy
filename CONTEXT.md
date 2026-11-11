@@ -16,6 +16,14 @@ _Avoid_: parent (a watcher need not be one), follower, supervisor, teacher
 A short code or QR the owner creates to let one watcher in. The owner can revoke it at any time.
 _Avoid_: invite, link
 
+**Watch request**:
+A request, sent to a Google email, to start watching. The owner can ask someone to watch them, or a watcher can ask to watch an owner. Nothing changes until the other person accepts. Declined, cancelled and expired requests just go away.
+_Avoid_: invite, invitation, follow request, friend request
+
+**Share**:
+The link between one owner and one watcher that lets the watcher see. A share starts from a share code or an accepted watch request, and ends when the owner revokes it or the watcher stops watching.
+_Avoid_: connection, follow, subscription
+
 ## Deeds
 
 **Deed**:

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use werdy_core::{
     CalendarSettings, CategoryKey, Deed, DeedId, DeedRule, Error, HijriOffset, HijriRange, Mark,
-    MarkEntry, Schedule, SlotKey, Target, Weekday, WerdyDay, daily_sheet,
+    MarkEntry, Schedule, SlotKey, Target, Weekday, WerdyDay, daily_sheet, today_summary,
 };
 
 type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
@@ -254,5 +254,74 @@ fn hijri_schedule_uses_the_owner_offset() -> Result<(), Error> {
     );
     assert!(zero.slots.is_empty());
     assert_eq!(plus_one.slots[0].rows[0].deed_id, DeedId(1));
+    Ok(())
+}
+
+#[test]
+fn unmarked_only_keeps_rows_without_a_mark_and_drops_emptied_slots() -> Result<(), Error> {
+    let today = day()?;
+    let deeds = vec![
+        deed(1, "fajr", today),
+        deed(2, "fajr", today),
+        deed(3, "dhuhr", today),
+        deed(4, "isha", today),
+        deed(5, "isha", today),
+    ];
+    let marks = Marks::from([
+        ((DeedId(1), today), MarkEntry::new(Mark::Done, today)),
+        ((DeedId(3), today), MarkEntry::new(Mark::Missed, today)),
+        (
+            (DeedId(5), today),
+            MarkEntry::new(Mark::partial_without_target(), today),
+        ),
+    ]);
+
+    let sheet = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    )
+    .unmarked_only();
+
+    let rows: Vec<_> = sheet
+        .slots
+        .iter()
+        .map(|slot| {
+            let ids: Vec<_> = slot.rows.iter().map(|row| row.deed_id).collect();
+            (slot.slot.0.as_str(), ids, slot.folded)
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("fajr", vec![DeedId(2)], false),
+            ("isha", vec![DeedId(4)], false)
+        ]
+    );
+    assert_eq!(
+        today_summary(&deeds, &marks, today, &CalendarSettings::default()).open,
+        2
+    );
+    Ok(())
+}
+
+#[test]
+fn unmarked_only_is_empty_when_every_due_deed_has_a_mark() -> Result<(), Error> {
+    let today = day()?;
+    let deeds = vec![deed(1, "fajr", today)];
+    let marks = Marks::from([((DeedId(1), today), MarkEntry::new(Mark::Missed, today))]);
+
+    let sheet = daily_sheet(
+        &deeds,
+        &marks,
+        today,
+        &slot_order(),
+        CalendarSettings::default(),
+    )
+    .unmarked_only();
+
+    assert!(sheet.slots.is_empty());
     Ok(())
 }

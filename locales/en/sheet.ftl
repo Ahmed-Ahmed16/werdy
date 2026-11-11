@@ -42,6 +42,10 @@ slot-chip-label = { $slot }, { $marked } of { $total } marked
 sheet-slots = Slots of the day
 sheet-fold-all = Fold all
 sheet-open-all = Open all
+sheet-open-only = Only open ({ $count })
+sheet-unmarked-only = Showing deeds with no mark yet.
+sheet-unmarked-none = Every deed today has a mark.
+sheet-show-all = Show all
 
 mark-done = Done
 mark-partial = Partial

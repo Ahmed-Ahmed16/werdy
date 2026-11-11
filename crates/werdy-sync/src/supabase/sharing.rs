@@ -1,4 +1,4 @@
-use crate::{Accepted, Batch, SupabaseBackend, SyncError, invalid};
+use crate::{Accepted, Batch, SupabaseBackend, SyncError, invalid, normalize_email};
 use serde::{Deserialize, Serialize};
 
 /// A bearer secret, intentionally without Debug or serialization for logging.
@@ -34,6 +34,32 @@ impl WatchPage {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchDirection {
+    WatchMe,
+    WatchThem,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WatchRequest {
+    pub id: String,
+    pub email: Option<String>,
+    pub direction: WatchDirection,
+    pub created_at: u64,
+}
+
+#[derive(Serialize)]
+struct SendWatch<'a> {
+    email: &'a str,
+    direction: WatchDirection,
+}
+#[derive(Serialize)]
+struct RequestId<'a> {
+    request_id: &'a str,
+}
+
 #[derive(Serialize)]
 struct Redeem<'a> {
     code: &'a str,
@@ -67,6 +93,40 @@ fn outcome(result: Outcome) -> Result<(), SyncError> {
 }
 
 impl SupabaseBackend {
+    pub async fn send_watch_request(
+        &self,
+        email: &str,
+        direction: WatchDirection,
+    ) -> Result<(), SyncError> {
+        let email = normalize_email(email)?;
+        outcome(
+            self.rpc(
+                "werdy_request_send",
+                &SendWatch {
+                    email: &email,
+                    direction,
+                },
+            )
+            .await?,
+        )
+    }
+    pub async fn incoming_watch_requests(&self) -> Result<Vec<WatchRequest>, SyncError> {
+        self.rpc("werdy_request_incoming", &super::TimeRequest {})
+            .await
+    }
+    pub async fn accept_watch_request(&self, id: &str) -> Result<(), SyncError> {
+        outcome(
+            self.rpc("werdy_request_accept", &RequestId { request_id: id })
+                .await?,
+        )
+    }
+    pub async fn decline_watch_request(&self, id: &str) -> Result<(), SyncError> {
+        outcome(
+            self.rpc("werdy_request_decline", &RequestId { request_id: id })
+                .await?,
+        )
+    }
+
     pub async fn create_share_code(&self) -> Result<ShareCode, SyncError> {
         let reply: ShareCode = self
             .rpc("werdy_share_create", &super::TimeRequest {})
@@ -134,6 +194,77 @@ impl SupabaseBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn invalid_watch_email_is_refused_before_network() {
+        let backend =
+            SupabaseBackend::new("https://example.invalid", "sb_publishable_test", "jwt").unwrap();
+        assert!(matches!(
+            backend
+                .send_watch_request("bad", WatchDirection::WatchMe)
+                .await,
+            Err(SyncError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn watch_request_wire_contract_is_strict() {
+        let backend =
+            SupabaseBackend::new("https://example.test", "sb_publishable_test", "jwt").unwrap();
+        for (name, body, expected) in [
+            (
+                "werdy_request_send",
+                serde_json::to_value(SendWatch {
+                    email: "a@b",
+                    direction: WatchDirection::WatchMe,
+                })
+                .unwrap(),
+                serde_json::json!({"email":"a@b","direction":"watch_me"}),
+            ),
+            (
+                "werdy_request_incoming",
+                serde_json::json!({}),
+                serde_json::json!({}),
+            ),
+            (
+                "werdy_request_accept",
+                serde_json::to_value(RequestId { request_id: "id" }).unwrap(),
+                serde_json::json!({"request_id":"id"}),
+            ),
+            (
+                "werdy_request_decline",
+                serde_json::to_value(RequestId { request_id: "id" }).unwrap(),
+                serde_json::json!({"request_id":"id"}),
+            ),
+        ] {
+            let request = backend.request(name, &body).unwrap();
+            assert!(request.url().path().ends_with(name));
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(
+                    request.body().unwrap().as_bytes().unwrap()
+                )
+                .unwrap(),
+                expected
+            );
+        }
+        let requests: Vec<WatchRequest> = super::super::parse_response(
+            br#"[{"id":"id","email":null,"direction":"watch_me","created_at":1}]"#,
+        )
+        .unwrap();
+        assert_eq!(requests[0].direction, WatchDirection::WatchMe);
+        assert_eq!(
+            serde_json::to_value(WatchDirection::WatchThem).unwrap(),
+            "watch_them"
+        );
+        assert!(
+            super::super::parse_response::<WatchRequest>(
+                br#"{"id":"id","email":null,"direction":"watch_me","created_at":1,"extra":true}"#
+            )
+            .is_err()
+        );
+        assert!(super::super::parse_response::<Outcome>(br#"{"ok":true,"extra":true}"#).is_err());
+        assert!(outcome(super::super::parse_response(br#"{"ok":false}"#).unwrap()).is_err());
+    }
+
     #[test]
     fn sharing_wire_requests_and_canned_replies_do_not_leak_secrets() {
         let backend =

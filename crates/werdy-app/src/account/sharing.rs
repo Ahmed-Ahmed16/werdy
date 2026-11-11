@@ -1,10 +1,18 @@
 //! Sharing requests use the account token, but never the owner's sync engine.
 //! Account deletion uses the same authenticated request path.
 use super::{AccountStore, config, runtime};
-use werdy_sync::{ShareCode, SharePerson, SupabaseAuth, SupabaseBackend, SyncError, WatchView};
+use werdy_sync::{
+    ShareCode, SharePerson, SupabaseAuth, SupabaseBackend, SyncError, WatchDirection, WatchRequest,
+    WatchView,
+};
 
 pub enum Request {
     Lists,
+    // Keep the action name specified for this request.
+    #[allow(clippy::enum_variant_names)]
+    SendWatchRequest(String),
+    Accept(String),
+    Decline(String),
     Create,
     Redeem(String),
     Revoke(String),
@@ -13,7 +21,7 @@ pub enum Request {
     DeleteAccount,
 }
 pub enum Reply {
-    Lists(Vec<SharePerson>, Vec<SharePerson>),
+    Lists(Vec<SharePerson>, Vec<SharePerson>, Vec<WatchRequest>),
     Code(ShareCode),
     Changed,
     View(Box<WatchView>),
@@ -62,7 +70,22 @@ async fn perform(backend: &SupabaseBackend, request: &Request) -> Result<Reply, 
         Request::Lists => Ok(Reply::Lists(
             backend.list_watchers().await?,
             backend.list_watched().await?,
+            backend.incoming_watch_requests().await?,
         )),
+        Request::SendWatchRequest(email) => {
+            backend
+                .send_watch_request(email, WatchDirection::WatchMe)
+                .await?;
+            Ok(Reply::Changed)
+        }
+        Request::Accept(id) => {
+            backend.accept_watch_request(id).await?;
+            Ok(Reply::Changed)
+        }
+        Request::Decline(id) => {
+            backend.decline_watch_request(id).await?;
+            Ok(Reply::Changed)
+        }
         Request::Create => Ok(Reply::Code(backend.create_share_code().await?)),
         Request::Redeem(code) => {
             backend.redeem_share_code(code).await?;

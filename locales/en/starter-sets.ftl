@@ -157,6 +157,15 @@ deed-laylat-al-qadr-dua = Dua for Laylat al Qadr
 set-level-1 = Level 1
 set-levels-2-3 = Levels 2 and 3
 set-level-advanced = Advanced level
+level-card-1-title = Academy level 1
+level-card-2-title = Academy level 2
+level-card-3-title = Academy level 3
+level-card-1-summary = The first congregation with its sunnah, morning and evening adhkar, two quarters a day and half a page to memorise, the adhkar of the day, Friday sunnahs.
+level-card-2-summary = Adds the opening takbir, dua between adhan and iqamah, duha, tahlil, a hizb a day, a page to memorise, dawah.
+level-card-3-summary = Going early and the first row at every prayer, siwak, making up missed prayers, dua for others, deeds of the heart and tongue, self review.
+level-offer-why-five-prayers = The levels track congregation; these track praying on time.
+level-offer-why-fasting-seasons = The levels only have fasting on Monday and Thursday.
+level-offer-why-ramadan = The level sheets have no Ramadan deeds.
 set-credit-instructors = From the Academy instructors' level sheets, used with their permission
 
 deed-lv-fajr-early = Going early (Fajr)
