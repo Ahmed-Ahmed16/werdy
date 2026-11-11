@@ -440,6 +440,7 @@ pub struct AppState {
     kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
     pending_settings: PendingSettings,
     sets_dirty: bool,
+    first_run_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
 }
 
@@ -448,8 +449,10 @@ impl AppState {
     /// Do not merge server revisions against phone times here.
     pub fn accept_sync(&mut self, records: OwnerData) {
         self.data = records;
+        self.adopt_first_run_view();
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
+        self.first_run_dirty = false;
         self.deed_changes.clear();
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
@@ -464,6 +467,36 @@ impl AppState {
             Err(_) => (OwnerData::default(), SaveStatus::LoadFailed),
         };
         let migrated = crate::starter::migrate_legacy_prayers(&mut data);
+        let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
+            Self::first_run_view(&data);
+        Self {
+            data,
+            today,
+            viewing: today,
+            slot_order,
+            save_status,
+            screen,
+            pending_level,
+            pending_extra_level,
+            pending_extra_ticks,
+            location_return: Screen::Deeds,
+            location_request: LocationRequest::default(),
+            settings_back_to_deeds: false,
+            report_period: Period::Week,
+            report_steps_back: 0,
+            welcome_visible: false,
+            unmarked_day: None,
+            kept_days_cache: RefCell::new(None),
+            pending_settings: PendingSettings::default(),
+            sets_dirty: migrated,
+            first_run_dirty: false,
+            deed_changes: BTreeMap::new(),
+        }
+    }
+
+    fn first_run_view(
+        data: &OwnerData,
+    ) -> (Screen, Option<String>, Option<String>, BTreeSet<String>) {
         let pending_level = data.first_run.pending_level.clone().filter(|key| {
             crate::editor_data::catalog()
                 .ok()
@@ -501,30 +534,24 @@ impl AppState {
                 _ => Screen::FirstRunLevel,
             }
         };
-        let pending_extra_ticks = data.first_run.extra_ticks.clone();
-        let pending_extra_level = data.first_run.extra_level.clone();
-        Self {
-            data,
-            today,
-            viewing: today,
-            slot_order,
-            save_status,
+        (
             screen,
-            pending_level: pending_level.clone(),
-            pending_extra_level,
-            pending_extra_ticks,
-            location_return: Screen::Deeds,
-            location_request: LocationRequest::default(),
-            settings_back_to_deeds: false,
-            report_period: Period::Week,
-            report_steps_back: 0,
-            welcome_visible: false,
-            unmarked_day: None,
-            kept_days_cache: RefCell::new(None),
-            pending_settings: PendingSettings::default(),
-            sets_dirty: migrated,
-            deed_changes: BTreeMap::new(),
+            pending_level,
+            data.first_run.extra_level.clone(),
+            data.first_run.extra_ticks.clone(),
+        )
+    }
+
+    fn adopt_first_run_view(&mut self) {
+        if self.data.first_run_complete {
+            return;
         }
+        let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
+            Self::first_run_view(&self.data);
+        self.screen = screen;
+        self.pending_level = pending_level;
+        self.pending_extra_level = pending_extra_level;
+        self.pending_extra_ticks = pending_extra_ticks;
     }
 
     /// Returns the sheet for the day on screen.
@@ -748,15 +775,18 @@ impl AppState {
         }
         self.screen = screen;
         if !self.data.first_run_complete {
-            self.data.first_run.step = match screen {
+            let step = match screen {
                 Screen::FirstRunLevel => "level",
                 Screen::FirstRunExtras => "extras",
                 Screen::FirstRunOwnDeeds => "own_deeds",
                 Screen::FirstRunLocation => "location",
                 Screen::FirstRunSummary => "summary",
                 _ => return,
+            };
+            if self.data.first_run.step != step {
+                self.data.first_run.step = step.to_owned();
+                self.first_run_dirty = true;
             }
-            .to_owned();
         }
     }
 
@@ -802,6 +832,7 @@ impl AppState {
         }
         self.data.first_run_complete = true;
         self.data.first_run = Default::default();
+        self.first_run_dirty = true;
         self.screen = screen;
     }
 
@@ -813,6 +844,7 @@ impl AppState {
         }
         self.pending_level = Some(key.to_owned());
         self.data.first_run.pending_level = self.pending_level.clone();
+        self.first_run_dirty = true;
         Ok(())
     }
 
@@ -835,6 +867,7 @@ impl AppState {
             self.data.first_run.extra_level = self.pending_extra_level.clone();
         }
         self.data.first_run.extra_ticks = self.pending_extra_ticks.clone();
+        self.first_run_dirty = true;
         self.show_screen(Screen::FirstRunExtras);
         Ok(())
     }
@@ -859,6 +892,7 @@ impl AppState {
             self.pending_extra_ticks.remove(key);
         }
         self.data.first_run.extra_ticks = self.pending_extra_ticks.clone();
+        self.first_run_dirty = true;
         Ok(())
     }
 
@@ -937,6 +971,7 @@ impl AppState {
         self.data.first_run.extra_level = None;
         self.pending_extra_ticks.clear();
         self.data.first_run.extra_ticks.clear();
+        self.first_run_dirty = true;
         self.show_screen(Screen::FirstRunOwnDeeds);
         Ok(())
     }
@@ -964,6 +999,7 @@ impl AppState {
         }
         self.pending_level = Some(chosen.to_owned());
         self.data.first_run.pending_level = self.pending_level.clone();
+        self.first_run_dirty = true;
         Ok(())
     }
 
@@ -991,6 +1027,7 @@ impl AppState {
             },
         )?;
         self.data.first_run.own_deed_ids.insert(id);
+        self.first_run_dirty = true;
         Ok(Some(id))
     }
 
@@ -1003,6 +1040,7 @@ impl AppState {
         }
         self.delete_deed_confirmed(id, true)?;
         self.data.first_run.own_deed_ids.remove(&id);
+        self.first_run_dirty = true;
         Ok(())
     }
 
@@ -1033,11 +1071,13 @@ impl AppState {
 
     pub fn first_run_summary_rows(&self) -> Result<Vec<(String, usize)>, EditorError> {
         let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
-        let sheet_ids: BTreeSet<_> = self
-            .sheet()
-            .slots
+        let live_ids: BTreeSet<_> = self
+            .data
+            .deeds
             .iter()
-            .flat_map(|slot| slot.rows.iter().map(|row| row.deed_id))
+            .filter(|deed| !deed.is_archived_on(self.today))
+            .filter(|deed| !self.data.deleted_deeds.contains(&deed.id))
+            .map(|deed| deed.id)
             .collect();
         let mut counted = BTreeSet::new();
         let mut rows = Vec::new();
@@ -1045,18 +1085,18 @@ impl AppState {
             && self.data.chosen_sets.contains(key)
             && let Some(set) = catalog.set(key)
         {
-            let count = self.count_first_run_set(set, &sheet_ids, &mut counted);
+            let count = self.count_first_run_set(set, &live_ids, &mut counted);
             rows.push((key.to_owned(), count));
         }
         for set in &catalog.sets {
             if self.data.chosen_sets.contains(&set.key)
                 && Some(set.key.as_str()) != self.pending_level.as_deref()
             {
-                let count = self.count_first_run_set(set, &sheet_ids, &mut counted);
+                let count = self.count_first_run_set(set, &live_ids, &mut counted);
                 rows.push((set.key.clone(), count));
             }
         }
-        let own = sheet_ids.difference(&counted).count();
+        let own = live_ids.difference(&counted).count();
         if own > 0 {
             rows.push(("first-run-own-row".to_owned(), own));
         }
@@ -1066,14 +1106,14 @@ impl AppState {
     fn count_first_run_set(
         &self,
         set: &werdy_data::StarterSet,
-        sheet_ids: &BTreeSet<DeedId>,
+        live_ids: &BTreeSet<DeedId>,
         counted: &mut BTreeSet<DeedId>,
     ) -> usize {
         self.data
             .starter_keys
             .iter()
             .filter(|(id, key)| {
-                sheet_ids.contains(id) && set.deeds.contains(key) && counted.insert(**id)
+                live_ids.contains(id) && set.deeds.contains(key) && counted.insert(**id)
             })
             .count()
     }
@@ -1599,6 +1639,7 @@ impl AppState {
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
         if self.data.first_run.own_deed_ids.remove(&old_id) {
             self.data.first_run.own_deed_ids.insert(new_id);
+            self.first_run_dirty = true;
         }
         if let Some(key) = self.data.deed_keys.remove(&old_id) {
             self.data.deed_keys.insert(new_id, key);
@@ -1729,6 +1770,9 @@ impl AppState {
                 };
                 self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
+                if self.first_run_dirty {
+                    merged.first_run = self.data.first_run.clone();
+                }
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
                 }
@@ -1750,13 +1794,18 @@ impl AppState {
                     || merged.settings.calendar != self.data.settings.calendar;
                 match store.save(&merged) {
                     Ok(()) => {
+                        let adopt_first_run = !self.first_run_dirty;
                         if history_changed {
                             self.invalidate_kept_days();
                         }
                         self.data = merged;
                         self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
+                        self.first_run_dirty = false;
                         self.deed_changes.clear();
+                        if adopt_first_run {
+                            self.adopt_first_run_view();
+                        }
                         crate::platform::reschedule_reminders(&self.data);
                         SaveStatus::Saved
                     }
@@ -1787,6 +1836,9 @@ impl AppState {
                 };
                 self.pending_settings.apply_to(&mut merged.settings);
                 merged.first_run_complete |= self.data.first_run_complete;
+                if self.first_run_dirty {
+                    merged.first_run = self.data.first_run.clone();
+                }
                 if self.sets_dirty {
                     merged.chosen_sets = self.data.chosen_sets.clone();
                 }
@@ -1801,6 +1853,8 @@ impl AppState {
                     self.deed_changes.clear();
                     self.pending_settings = PendingSettings::default();
                     self.sets_dirty = false;
+                    self.first_run_dirty = false;
+                    self.adopt_first_run_view();
                 } else {
                     self.data = merged;
                     self.invalidate_kept_days();
@@ -1823,6 +1877,7 @@ impl AppState {
         self.welcome_visible = false;
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
+        self.first_run_dirty = false;
         self.deed_changes.clear();
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
@@ -2573,7 +2628,7 @@ mod tests {
     }
 
     #[test]
-    fn first_run_full_path_counts_sheet_and_finishes_on_current_day() -> TestResult {
+    fn first_run_full_path_counts_live_deeds_and_finishes_on_current_day() -> TestResult {
         let start = today()?;
         let mut state = AppState::start(&MemoryStore::default(), start, slot_order());
         state.select_first_run_level("level_1")?;
@@ -2597,12 +2652,7 @@ mod tests {
         assert_eq!(rows[2], ("first-run-own-row".to_owned(), 1));
         assert_eq!(
             rows.iter().map(|row| row.1).sum::<usize>(),
-            state
-                .sheet()
-                .slots
-                .iter()
-                .map(|slot| slot.rows.len())
-                .sum::<usize>()
+            state.data.deeds.len()
         );
         assert!(
             state
@@ -2620,6 +2670,34 @@ mod tests {
                 .deeds
                 .iter()
                 .all(|deed| deed.created_on() == state.today)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_summary_counts_weekday_deeds_when_not_due() -> TestResult {
+        let day = WerdyDay::new(2026, 10, 27)?;
+        let mut state = AppState::start(&MemoryStore::default(), day, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.skip_first_run_extras()?;
+        let fasting_id = *state
+            .data
+            .starter_keys
+            .iter()
+            .find_map(|(id, key)| (key == "lv_fasting_monday_thursday").then_some(id))
+            .ok_or("missing weekday deed")?;
+        assert!(!sheet_ids(&state).contains(&fasting_id));
+        let level = crate::editor_data::catalog()?
+            .set("level_1")
+            .ok_or("missing level")?
+            .deeds
+            .len();
+        let rows = state.first_run_summary_rows()?;
+        assert_eq!(rows[0], ("level_1".to_owned(), level));
+        assert_eq!(
+            rows.iter().map(|row| row.1).sum::<usize>(),
+            state.data.deeds.len()
         );
         Ok(())
     }
@@ -2673,6 +2751,80 @@ mod tests {
         let resumed = AppState::start(&store, today()?, slot_order());
         assert_eq!(resumed.screen, Screen::FirstRunOwnDeeds);
         assert_eq!(resumed.pending_level.as_deref(), Some("level_1"));
+        Ok(())
+    }
+
+    #[derive(Default)]
+    struct CountingStore {
+        inner: MemoryStore,
+        writes: Cell<usize>,
+    }
+
+    impl Store for CountingStore {
+        fn load(&self) -> Result<Option<OwnerData>, StoreError> {
+            self.inner.load()
+        }
+
+        fn save(&self, data: &OwnerData) -> Result<(), StoreError> {
+            self.inner.save(data)?;
+            self.writes.set(self.writes.get() + 1);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn first_run_tabs_adopt_saved_step_and_stop_writing() -> TestResult {
+        let store = CountingStore::default();
+        let mut initial = AppState::start(&store, today()?, slot_order());
+        initial.select_first_run_level("level_1")?;
+        initial.continue_first_run_level()?;
+        initial.save_to(&store);
+        let mut first = AppState::start(&store, today()?, slot_order());
+        let mut second = AppState::start(&store, today()?, slot_order());
+        first.skip_first_run_extras()?;
+        first.save_to(&store);
+        second.set_language("en");
+        let mut settled = false;
+        for _ in 0..5 {
+            let writes = store.writes.get();
+            second.reload_from(&store);
+            first.reload_from(&store);
+            if store.writes.get() == writes {
+                settled = true;
+                break;
+            }
+        }
+        assert!(settled, "tabs kept writing on reload");
+        assert_eq!(first.screen, Screen::FirstRunOwnDeeds);
+        assert_eq!(second.screen, first.screen);
+        assert_eq!(second.pending_level, first.pending_level);
+        assert_eq!(store.load()?.ok_or("missing data")?.settings.language, "en");
+        let writes = store.writes.get();
+        first.reload_from(&store);
+        second.reload_from(&store);
+        assert_eq!(store.writes.get(), writes);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_local_step_change_wins_on_reload() -> TestResult {
+        let store = CountingStore::default();
+        let mut initial = AppState::start(&store, today()?, slot_order());
+        initial.select_first_run_level("level_1")?;
+        initial.continue_first_run_level()?;
+        initial.save_to(&store);
+        let mut local = AppState::start(&store, today()?, slot_order());
+        let mut other = AppState::start(&store, today()?, slot_order());
+        local.skip_first_run_extras()?;
+        other.set_language("en");
+        other.save_to(&store);
+        local.reload_from(&store);
+        assert_eq!(local.screen, Screen::FirstRunOwnDeeds);
+        assert_eq!(local.data.first_run.step, "own_deeds");
+        assert_eq!(
+            store.load()?.ok_or("missing data")?.first_run.step,
+            "own_deeds"
+        );
         Ok(())
     }
 
