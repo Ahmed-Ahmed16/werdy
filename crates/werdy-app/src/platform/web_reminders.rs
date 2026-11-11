@@ -113,11 +113,18 @@ pub async fn forget_on_sign_out(store: &AccountStore) -> Result<(), String> {
     forget_with_intent(store, super::ForgetIntent::SignOut).await
 }
 
+pub async fn forget_after_account_delete(store: &AccountStore) -> Result<(), String> {
+    forget_with_intent(store, super::ForgetIntent::AccountDeleted).await
+}
+
 async fn forget_with_intent(
     store: &AccountStore,
     intent: super::ForgetIntent,
 ) -> Result<(), String> {
-    if matches!(intent, super::ForgetIntent::SignOut) {
+    if matches!(
+        intent,
+        super::ForgetIntent::SignOut | super::ForgetIntent::AccountDeleted
+    ) {
         set_enabled(false)?;
     }
     if config::VAPID_PUBLIC_KEY.is_empty() || !status().await.supported {
@@ -131,6 +138,7 @@ async fn forget_with_intent(
     let result = async {
         if let Some(subscription) = current().await? {
             super::unsubscribe_then_forget(
+                intent,
                 async {
                     browser("unsubscribe")
                         .join::<bool>()

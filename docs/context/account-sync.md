@@ -81,6 +81,8 @@ Delete my account (Settings > Account, after a confirm step) calls
 owner sync and runs in the root scope. The RPC deletes the caller's sync
 changes, head, shares in both directions, share codes, attempts and the auth
 user. Only a confirmed delete then signs out as above, so local records stay.
+On the web, a confirmed delete turns off push reminders and unsubscribes the
+browser without another server request.
 A failed request changes nothing on the device. The migration is
 `supabase/migrations/20261030000000_delete_account.sql`; after applying it, run
 `supabase/tests/delete_account_checks.sql`.
