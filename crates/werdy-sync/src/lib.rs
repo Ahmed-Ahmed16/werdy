@@ -13,7 +13,9 @@
 
 #![forbid(unsafe_code)]
 
+mod email;
 mod fake;
+pub use email::normalize_email;
 mod rows;
 mod watch;
 pub use watch::WatchView;
@@ -27,7 +29,7 @@ pub use supabase::SupabaseBackend;
 #[cfg(feature = "supabase")]
 pub use supabase::auth::{Session, SupabaseAuth};
 #[cfg(feature = "supabase")]
-pub use supabase::sharing::{ShareCode, SharePerson, WatchPage};
+pub use supabase::sharing::{ShareCode, SharePerson, WatchDirection, WatchPage, WatchRequest};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;

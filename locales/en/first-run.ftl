@@ -1,4 +1,19 @@
 first-run-title = Welcome. Set up your page
+first-run-level-title = Pick your Academy level
+first-run-level-help = We fill your sheet with your level's deeds. You can change them later.
+first-run-level-count =
+    { $count ->
+        [one] { $count } deed
+       *[other] { $count } deeds
+    }
+first-run-level-show = Show the deeds
+first-run-level-hide = Hide the deeds
+first-run-level-next = Next
+first-run-level-empty = Not following the Academy? Start with an empty sheet
+first-run-extras-title = Want to add more?
+first-run-extras-help = These sets are not in { $level }. All optional.
+first-run-extras-skip = Skip
+first-run-extras-back = Back
 first-run-intro = Choose a place, then choose deeds. You can change both later.
 first-run-location-title = Your place
 first-run-location-help = Your place sets the Fajr boundary. It stays on this device.
