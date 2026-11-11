@@ -440,4 +440,45 @@ begin
         raise exception 'pair lock key depends on case or order';
     end if;
 end $$;
+-- Leave ends waiting requests too: the owner cannot accept an old request to bring a watcher back.
+create temporary table leave_test(owner uuid, watcher uuid, request_id uuid);
+insert into leave_test values(pg_catalog.gen_random_uuid(), pg_catalog.gen_random_uuid(), null);
+grant select, update on leave_test to authenticated;
+insert into auth.users(id,email) select owner,owner::text || '@leave.test' from leave_test
+    union all select watcher,watcher::text || '@leave.test' from leave_test;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from leave_test;
+set local role authenticated;
+select public.werdy_request_send(owner::text || '@leave.test','watch_them') from leave_test;
+reset role;
+update leave_test t set request_id=r.id from werdy_private.watch_requests r where r.sender=t.watcher;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',owner,'role','authenticated')::text,true) from leave_test;
+set local role authenticated;
+create temporary table leave_code as select public.werdy_share_create()->>'code' as code;
+grant select on leave_code to authenticated;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',watcher,'role','authenticated')::text,true) from leave_test;
+set local role authenticated;
+do $$
+begin
+    if not (public.werdy_share_redeem((select code from leave_code))->>'ok')::boolean then raise exception 'leave test redeem failed'; end if;
+end $$;
+select public.werdy_share_leave(owner) from leave_test;
+reset role;
+select pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub',owner,'role','authenticated')::text,true) from leave_test;
+set local role authenticated;
+do $$
+declare t record;
+begin
+    select * into strict t from leave_test;
+    if public.werdy_request_accept(t.request_id) is distinct from '{"ok":false}'::jsonb then
+        raise exception 'owner restored a watcher who left with an old request';
+    end if;
+end $$;
+reset role;
+do $$
+begin
+    if exists(select 1 from public.werdy_shares s join leave_test t on s.owner=t.owner and s.watcher=t.watcher) then
+        raise exception 'share exists after leave';
+    end if;
+end $$;
 rollback;

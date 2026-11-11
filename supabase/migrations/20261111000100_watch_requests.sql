@@ -187,7 +187,8 @@ begin
 end $$;
 
 -- Leave takes the same pair lock as revoke, so it cannot interleave with a
--- crossing send either.
+-- crossing send either, and like revoke it ends waiting requests for the
+-- pair in both directions, so an old request cannot bring the watcher back.
 create or replace function public.werdy_share_leave(owner_id uuid)
 returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare caller uuid := werdy_private.share_caller();
@@ -198,6 +199,11 @@ begin
         (select u.email from auth.users u where u.id = caller),
         (select u.email from auth.users u where u.id = owner_id));
     delete from public.werdy_shares s where s.owner = owner_id and s.watcher = caller;
+    delete from werdy_private.watch_requests r
+        where (r.sender = owner_id and r.direction = 'watch_me'
+            and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = caller))
+        or (r.sender = caller and r.direction = 'watch_them'
+            and r.receiver_email = (select pg_catalog.lower(u.email) from auth.users u where u.id = owner_id));
     return pg_catalog.jsonb_build_object('ok', true);
 end $$;
 
