@@ -47,7 +47,7 @@ pub fn AccountSection() -> Element {
                     {
                         let store = signout_store.clone();
                         spawn(async move {
-                            let cleanup = crate::platform::web_reminders::forget(&store);
+                            let cleanup = crate::platform::web_reminders::forget_on_sign_out(&store);
                             let timeout = gloo_timers::future::TimeoutFuture::new(10_000);
                             futures_util::pin_mut!(cleanup, timeout);
                             match futures_util::future::select(cleanup, timeout).await {

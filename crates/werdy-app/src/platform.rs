@@ -29,6 +29,18 @@ where
     forget().await
 }
 
+#[cfg(any(test, target_arch = "wasm32"))]
+#[derive(Clone, Copy)]
+enum ForgetIntent {
+    Settings,
+    SignOut,
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn restore_push_flag_after_failure(intent: ForgetIntent, unsubscribed: bool) -> bool {
+    matches!(intent, ForgetIntent::Settings) && !unsubscribed
+}
+
 /// Queues delivery after a successful save.
 pub fn reschedule_reminders(owner: &werdy_store::OwnerData) {
     #[cfg(target_os = "android")]
@@ -755,6 +767,18 @@ mod tests {
             ));
         assert_eq!(result, Err("server failed".to_owned()));
         assert_eq!(*calls.borrow(), ["browser unsubscribe", "server forget"]);
+    }
+
+    #[test]
+    fn failed_unsubscribe_on_sign_out_does_not_restore_push_flag() {
+        assert!(!super::restore_push_flag_after_failure(
+            super::ForgetIntent::SignOut,
+            false
+        ));
+        assert!(super::restore_push_flag_after_failure(
+            super::ForgetIntent::Settings,
+            false
+        ));
     }
 
     #[test]

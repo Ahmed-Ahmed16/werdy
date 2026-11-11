@@ -106,11 +106,27 @@ async fn current() -> Result<Option<PushSubscription>, String> {
 }
 
 pub async fn forget(store: &AccountStore) -> Result<(), String> {
+    forget_with_intent(store, super::ForgetIntent::Settings).await
+}
+
+pub async fn forget_on_sign_out(store: &AccountStore) -> Result<(), String> {
+    forget_with_intent(store, super::ForgetIntent::SignOut).await
+}
+
+async fn forget_with_intent(
+    store: &AccountStore,
+    intent: super::ForgetIntent,
+) -> Result<(), String> {
+    if matches!(intent, super::ForgetIntent::SignOut) {
+        set_enabled(false)?;
+    }
     if config::VAPID_PUBLIC_KEY.is_empty() || !status().await.supported {
         return Ok(());
     }
     let was_enabled = enabled();
-    set_enabled(false)?;
+    if matches!(intent, super::ForgetIntent::Settings) {
+        set_enabled(false)?;
+    }
     let mut unsubscribed = false;
     let result = async {
         if let Some(subscription) = current().await? {
@@ -136,7 +152,7 @@ pub async fn forget(store: &AccountStore) -> Result<(), String> {
         Ok(())
     }
     .await;
-    if result.is_err() && !unsubscribed {
+    if result.is_err() && super::restore_push_flag_after_failure(intent, unsubscribed) {
         let _ = set_enabled(was_enabled);
     }
     result
