@@ -96,14 +96,23 @@ fn save_then_load_returns_identical_data() -> TestResult {
 }
 
 #[test]
-fn first_run_progress_round_trips_and_old_file_defaults() -> TestResult {
+fn first_run_setup_ids_round_trip_and_old_file_defaults() -> TestResult {
     let mut data = sample()?;
     data.first_run.step = "own_deeds".to_owned();
     data.first_run.pending_level = Some("level_1".to_owned());
     data.first_run.own_deed_ids.insert(DeedId(2));
+    data.first_run.setup_deed_ids.insert(DeedId(1));
+    data.first_run.setup_deed_ids.insert(DeedId(2));
     let json = to_json(&data)?;
     assert_eq!(from_json(&json)?.first_run, data.first_run);
     let mut old: serde_json::Value = serde_json::from_str(&json)?;
+    old.get_mut("first_run")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("expected first run object")?
+        .remove("setup_deed_ids");
+    let loaded = from_json(&old.to_string())?;
+    assert!(loaded.first_run.setup_deed_ids.is_empty());
+    assert_eq!(loaded.first_run.own_deed_ids, data.first_run.own_deed_ids);
     old.as_object_mut()
         .ok_or("expected object")?
         .remove("first_run");

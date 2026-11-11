@@ -234,6 +234,8 @@ pub struct FirstRunProgress {
     pub extra_level: Option<String>,
     pub extra_ticks: BTreeSet<String>,
     pub own_deed_ids: BTreeSet<DeedId>,
+    /// Only setup deeds move to the finish day; imported history stays dated.
+    pub setup_deed_ids: BTreeSet<DeedId>,
 }
 
 impl OwnerData {
