@@ -31,7 +31,10 @@ pub use supabase::SupabaseBackend;
 #[cfg(feature = "supabase")]
 pub use supabase::auth::{Session, SupabaseAuth};
 #[cfg(feature = "supabase")]
-pub use supabase::sharing::{ShareCode, SharePerson, WatchDirection, WatchPage, WatchRequest};
+pub use supabase::sharing::{
+    SentWatchRequest, ShareCode, SharePerson, WATCH_REQUEST_LIMIT, WatchDirection, WatchPage,
+    WatchRequest,
+};
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -45,6 +48,7 @@ pub enum SyncError {
     Backend(String),
     Invalid(String),
     Exhausted,
+    WatchRequestLimit,
 }
 
 impl std::fmt::Display for SyncError {
@@ -54,6 +58,7 @@ impl std::fmt::Display for SyncError {
             Self::Backend(reason) => write!(formatter, "sync backend failed: {reason}"),
             Self::Invalid(reason) => write!(formatter, "invalid sync data: {reason}"),
             Self::Exhausted => formatter.write_str("sync counter exhausted"),
+            Self::WatchRequestLimit => formatter.write_str("watch request limit reached"),
         }
     }
 }

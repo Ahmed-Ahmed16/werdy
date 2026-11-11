@@ -249,3 +249,45 @@ fn account_delete_posts_empty_body_and_accepts_only_ok() {
         .to_string();
     assert!(!error.contains("JWT"));
 }
+#[test]
+fn only_send_limit_errors_get_a_specific_error() {
+    let limit =
+        br#"{"code":"P0001","message":"watch request limit reached","details":null,"hint":null}"#;
+    assert_eq!(
+        check_rpc_status("werdy_request_send", StatusCode::BAD_REQUEST, limit),
+        Err(SyncError::WatchRequestLimit)
+    );
+    for (function, status, body) in [
+        (
+            "werdy_request_send",
+            StatusCode::UNAUTHORIZED,
+            limit.as_slice(),
+        ),
+        (
+            "werdy_share_create",
+            StatusCode::BAD_REQUEST,
+            limit.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"22023","message":"watch request limit reached"}"#.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"P0001","message":"other failure"}"#.as_slice(),
+        ),
+        (
+            "werdy_request_send",
+            StatusCode::BAD_REQUEST,
+            b"not JSON".as_slice(),
+        ),
+    ] {
+        assert_eq!(
+            check_rpc_status(function, status, body),
+            Err(SyncError::Http(status.as_u16()))
+        );
+    }
+    assert!(check_rpc_status("werdy_request_send", StatusCode::OK, limit).is_ok());
+}

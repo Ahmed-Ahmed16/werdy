@@ -78,6 +78,14 @@ begin
             on conflict do nothing;
         delete from werdy_private.watch_requests r where r.id = crossing.id;
     else
+        if exists(select 1 from werdy_private.watch_requests r
+            where r.sender = caller and r.receiver_email = normalized and r.direction = $2) then
+            raise exception 'watch request already waiting' using errcode = '22023';
+        end if;
+        if (select pg_catalog.count(*) from werdy_private.watch_requests r
+            where r.sender = caller and r.expires_at > now_ms) >= 5 then
+            raise exception 'watch request limit reached' using errcode = 'P0001';
+        end if;
         insert into werdy_private.watch_requests(sender, receiver_email, direction, created_at, expires_at)
             values(caller, normalized, direction, now_ms, now_ms + 2592000000)
             on conflict do nothing;
@@ -103,6 +111,30 @@ begin
     return result;
 end $$;
 
+create or replace function public.werdy_request_outgoing()
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
+declare
+    caller uuid := werdy_private.share_caller();
+    now_ms bigint := public.werdy_sync_server_time();
+    result jsonb;
+begin
+    delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
+    select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', r.id, 'email', r.receiver_email, 'direction', r.direction,
+        'created_at', r.created_at, 'expires_at', r.expires_at)
+        order by r.created_at, r.id), '[]'::jsonb) into result
+        from werdy_private.watch_requests r where r.sender = caller;
+    return result;
+end $$;
+
+create or replace function public.werdy_request_cancel(request_id uuid)
+returns jsonb language plpgsql volatile security definer set search_path = '' as $$
+declare caller uuid := werdy_private.share_caller();
+begin
+    delete from werdy_private.watch_requests r where r.id = request_id and r.sender = caller;
+    return pg_catalog.jsonb_build_object('ok', true);
+end $$;
+
 create or replace function public.werdy_request_accept(request_id uuid)
 returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -110,16 +142,21 @@ declare
     now_ms bigint := public.werdy_sync_server_time();
     request werdy_private.watch_requests%rowtype;
     owner_id uuid;
+    sender_id uuid;
 begin
-    delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
-    select case when r.direction = 'watch_me' then r.sender else caller end into owner_id
+    select case when r.direction = 'watch_me' then r.sender else caller end, r.sender into owner_id, sender_id
         from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email);
     if owner_id is null then return pg_catalog.jsonb_build_object('ok', false); end if;
-    -- Take the owner head lock first, as revoke does, so a revoke and an
-    -- accept of the same share run one after the other.
+    -- Lock order, the same everywhere: one head lock, then the pair lock, then
+    -- request rows. So accept cannot interleave or deadlock with revoke,
+    -- leave or a crossing send for the same two people.
     insert into public.werdy_sync_heads(owner) values(owner_id) on conflict do nothing;
     perform 1 from public.werdy_sync_heads h where h.owner = owner_id for update;
+    perform werdy_private.watch_pair_lock(
+        (select u.email from auth.users u where u.id = caller),
+        (select u.email from auth.users u where u.id = sender_id));
+    delete from werdy_private.watch_requests r where r.expires_at <= now_ms;
     select r.* into request from werdy_private.watch_requests r join auth.users u on u.id = caller
         where r.id = request_id and r.receiver_email = pg_catalog.lower(u.email)
         and r.expires_at > now_ms for update of r;
@@ -200,9 +237,11 @@ create trigger werdy_watch_requests_forget_email after delete on auth.users
 
 
 revoke all on function public.werdy_request_send(text,text), public.werdy_request_incoming(),
+    public.werdy_request_outgoing(), public.werdy_request_cancel(uuid),
     public.werdy_request_accept(uuid), public.werdy_request_decline(uuid)
     from public, anon, authenticated;
 grant execute on function public.werdy_request_send(text,text), public.werdy_request_incoming(),
+    public.werdy_request_outgoing(), public.werdy_request_cancel(uuid),
     public.werdy_request_accept(uuid), public.werdy_request_decline(uuid)
     to authenticated;
 notify pgrst, 'reload schema';

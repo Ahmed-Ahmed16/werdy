@@ -8,7 +8,8 @@ use dioxus::prelude::*;
 use std::{rc::Rc, time::Duration};
 use werdy_store::{MemoryStore, Store};
 use werdy_sync::{
-    ShareCode, SharePerson, SyncError, WatchDirection, WatchRequest, WatchView, normalize_email,
+    SentWatchRequest, ShareCode, SharePerson, SyncError, WATCH_REQUEST_LIMIT, WatchDirection,
+    WatchRequest, WatchView, normalize_email,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -22,6 +23,7 @@ pub struct Sharing {
     watchers: Vec<SharePerson>,
     watched: Vec<SharePerson>,
     incoming: Vec<WatchRequest>,
+    outgoing: Vec<SentWatchRequest>,
     request_email: String,
     request_sent: bool,
     code: Option<ShareCode>,
@@ -55,10 +57,11 @@ impl Sharing {
     fn receive(&mut self, request: &Request, result: Result<Reply, SyncError>) -> bool {
         self.busy = false;
         match result {
-            Ok(Reply::Lists(watchers, watched, incoming)) => {
+            Ok(Reply::Lists(watchers, watched, incoming, outgoing)) => {
                 self.watchers = watchers;
                 self.watched = watched;
                 self.incoming = incoming;
+                self.outgoing = outgoing;
             }
             Ok(Reply::Code(code)) => self.code = Some(code),
             Ok(Reply::View(view)) => self.view = Some(*view),
@@ -83,10 +86,18 @@ impl Sharing {
                 self.view = None;
                 self.error = Some("sharing-revoked");
             }
+            Err(SyncError::WatchRequestLimit)
+                if matches!(request, Request::SendWatchRequest(..)) =>
+            {
+                self.error = Some("sharing-request-limit");
+            }
             Err(_)
                 if matches!(
                     request,
-                    Request::SendWatchRequest(..) | Request::Accept(_) | Request::Decline(_)
+                    Request::SendWatchRequest(..)
+                        | Request::Accept(_)
+                        | Request::Decline(_)
+                        | Request::Cancel(_)
                 ) =>
             {
                 self.error = Some("sharing-request-error");
@@ -101,6 +112,13 @@ fn request_consent_key(direction: WatchDirection) -> &'static str {
     match direction {
         WatchDirection::WatchMe => "sharing-request-consent",
         WatchDirection::WatchThem => "sharing-request-consent-watch-them",
+    }
+}
+
+fn sent_direction_key(direction: WatchDirection) -> &'static str {
+    match direction {
+        WatchDirection::WatchMe => "sharing-request-sent-watch-me",
+        WatchDirection::WatchThem => "sharing-request-sent-watch-them",
     }
 }
 
@@ -300,6 +318,17 @@ pub fn SharingSection() -> Element {
                     }},{i18n.t("sharing-request-send-watch-them")} }
                 }
                 if data.request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
+                if !data.outgoing.is_empty() {
+                    h3 {{i18n.t("sharing-waiting")}}
+                    for request in data.outgoing {
+                        div { key:"{request.id}",
+                            p { span {dir:"auto",{request.email}} }
+                            p {{i18n.t(sent_direction_key(request.direction))}}
+                            p {{i18n.t_with("sharing-request-until", &[("date", fluent_bundle::FluentValue::from(crate::account::runtime::display_time(request.expires_at).unwrap_or_default()))])}}
+                            button {class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();let id=request.id.clone();move |_|run(sharing,store.clone(),Request::Cancel(id.clone()))},{i18n.t("sharing-request-cancel")}}
+                        }
+                    }
+                }
                 h3 {{i18n.t("sharing-requests")}}
                 for request in data.incoming {
                     div { key:"{request.id}",
@@ -323,7 +352,7 @@ pub fn SharingSection() -> Element {
                 button {disabled:data.busy,onclick:move |_|run(sharing,store.clone(),Request::Lists),{i18n.t("sharing-refresh")}}
             }
             if data.busy {p {role:"status",{i18n.t("sharing-loading")}}}
-            if let Some(error)=data.error {p {role:"alert",{i18n.t(error)}}}
+            if let Some(error)=data.error {p {role:"alert",{i18n.t_with(error, &[("limit", fluent_bundle::FluentValue::from(WATCH_REQUEST_LIMIT))])}}}
         }
     }
 }
@@ -479,6 +508,100 @@ mod tests {
     use super::*;
 
     #[test]
+    fn send_and_cancel_refresh_waiting_requests() {
+        let mut sharing = Sharing::default();
+        let sent = werdy_sync::SentWatchRequest {
+            id: "request".into(),
+            email: "receiver@example.test".into(),
+            direction: WatchDirection::WatchMe,
+            created_at: 1,
+            expires_at: 2592000001,
+        };
+        assert!(sharing.receive(
+            &Request::SendWatchRequest(sent.email.clone(), sent.direction),
+            Ok(Reply::Changed)
+        ));
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(vec![], vec![], vec![], vec![sent.clone()])),
+        );
+        assert_eq!(sharing.outgoing, vec![sent.clone()]);
+        assert!(sharing.receive(&Request::Cancel(sent.id), Ok(Reply::Changed)));
+        sharing.receive(
+            &Request::Lists,
+            Ok(Reply::Lists(vec![], vec![], vec![], vec![])),
+        );
+        assert!(sharing.outgoing.is_empty());
+    }
+
+    #[test]
+    fn request_limit_keeps_typed_email_and_shows_specific_message() {
+        let mut sharing = Sharing {
+            request_email: " Receiver@Example.test ".into(),
+            ..Sharing::default()
+        };
+        let request = sharing.send_request(WatchDirection::WatchThem).unwrap();
+        assert!(!sharing.receive(&request, Err(SyncError::WatchRequestLimit)));
+        assert_eq!(sharing.error, Some("sharing-request-limit"));
+        assert_eq!(sharing.request_email, " Receiver@Example.test ");
+        assert!(!sharing.request_sent);
+        assert!(sharing.idle());
+    }
+
+    #[test]
+    fn waiting_text_explains_direction_expiry_and_variable_limit() {
+        use crate::i18n::{Language, Texts};
+        use fluent_bundle::FluentValue;
+        let texts = Texts::load();
+        for (language, watch_me, watch_them, until, limit) in [
+            (
+                Language::English,
+                "You asked them to watch you",
+                "You asked to watch them",
+                "Until DATE",
+                "You have 4 requests waiting. Cancel one to send another.",
+            ),
+            (
+                Language::Arabic,
+                "طلبت منهم متابعتك",
+                "طلبت متابعتهم",
+                "حتى DATE",
+                "لديك 4 طلبات بانتظار الرد. ألغِ أحدها لإرسال طلب آخر.",
+            ),
+        ] {
+            for (key, args, expected) in [
+                (
+                    sent_direction_key(WatchDirection::WatchMe),
+                    vec![],
+                    watch_me,
+                ),
+                (
+                    sent_direction_key(WatchDirection::WatchThem),
+                    vec![],
+                    watch_them,
+                ),
+                (
+                    "sharing-request-until",
+                    vec![("date", FluentValue::from("DATE"))],
+                    until,
+                ),
+                (
+                    "sharing-request-limit",
+                    vec![("limit", FluentValue::from(4))],
+                    limit,
+                ),
+            ] {
+                assert_eq!(
+                    texts
+                        .get(language, key, &args)
+                        .replace(['\u{2068}', '\u{2069}'], ""),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
     fn accepting_either_direction_refreshes_the_matching_people_list() {
         for direction in [WatchDirection::WatchMe, WatchDirection::WatchThem] {
             let mut sharing = Sharing::default();
@@ -490,7 +613,7 @@ mod tests {
             };
             sharing.receive(
                 &Request::Lists,
-                Ok(Reply::Lists(vec![], vec![], vec![request])),
+                Ok(Reply::Lists(vec![], vec![], vec![request], vec![])),
             );
             assert!(sharing.receive(&Request::Accept("request".into()), Ok(Reply::Changed)));
             let person = SharePerson {
@@ -504,7 +627,12 @@ mod tests {
             };
             sharing.receive(
                 &Request::Lists,
-                Ok(Reply::Lists(watchers.clone(), watched.clone(), vec![])),
+                Ok(Reply::Lists(
+                    watchers.clone(),
+                    watched.clone(),
+                    vec![],
+                    vec![],
+                )),
             );
             assert!(sharing.incoming.is_empty());
             assert_eq!(sharing.watchers, watchers);
