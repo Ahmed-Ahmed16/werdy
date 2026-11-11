@@ -3,10 +3,10 @@
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use std::collections::BTreeSet;
-use werdy_store::{PrayerMethod, Settings};
+use werdy_store::{DeedName, PrayerMethod, Settings};
 
 use super::context::{use_actions, use_i18n};
-use crate::state::{AppState, Screen};
+use crate::state::{AppState, EditorError, Screen};
 use crate::{editor_data, location, platform};
 
 fn fajr_clock(minutes: u16) -> String {
@@ -35,6 +35,19 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
 }
 
 #[component]
+fn StepIndicator(step: usize) -> Element {
+    let i18n = use_i18n();
+    rsx! {
+        div { class: "first-run-progress",
+            span { class: "sr-only", {i18n.t_with("first-run-step", &[("step", FluentValue::from(step)), ("total", FluentValue::from(5))])} }
+            div { class: "first-run-dots", aria_hidden: "true",
+                for dot in 1..=5 { span { class: if dot == step { "first-run-dot current" } else { "first-run-dot" } } }
+            }
+        }
+    }
+}
+
+#[component]
 pub fn LevelStep() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
@@ -52,6 +65,7 @@ pub fn LevelStep() -> Element {
         section { class: "first-run-screen",
             header { class: "first-run-header",
                 span { class: "rail-brand", {i18n.t("app-name")} }
+                StepIndicator { step: 1 }
                 h1 { {i18n.t("first-run-level-title")} }
                 p { {i18n.t("first-run-level-help")} }
             }
@@ -66,7 +80,7 @@ pub fn LevelStep() -> Element {
                           rsx! {
                             article { class: if active { "level-card selected" } else { "level-card" }, key: "{key}",
                                 button { class: "level-choice", aria_pressed: "{active}", onclick: move |_| {
-                                    actions.view(|state| {
+                                    actions.change(|state| {
                                         if state.select_first_run_level(&key).is_err() { error.set(true); }
                                     });
                                 },
@@ -100,7 +114,7 @@ pub fn LevelStep() -> Element {
             if let Some(credit) = credit { p { class: "level-credit", {i18n.t(credit)} } }
             footer { class: "first-run-footer",
                 button { class: "primary-button", disabled: selected.is_none(), onclick: move |_| {
-                    actions.view(|state| {
+                    actions.change(|state| {
                         if state.continue_first_run_level().is_err() { error.set(true); }
                     });
                 }, {i18n.t("first-run-level-next")} }
@@ -138,6 +152,7 @@ pub fn ExtrasStep() -> Element {
         section { class: "first-run-screen",
             header { class: "first-run-header",
                 span { class: "rail-brand", {i18n.t("app-name")} }
+                StepIndicator { step: 2 }
                 h1 { {i18n.t("first-run-extras-title")} }
                 p { "{help}" }
             }
@@ -157,7 +172,7 @@ pub fn ExtrasStep() -> Element {
                                     p { "{deed_names}" }
                                 }
                                 button { class: "set-toggle", aria_label: i18n.t_with(if active { "sets-remove-named" } else { "sets-add-named" }, &[("set", FluentValue::from(i18n.t(&set.name)))]), aria_pressed: "{active}", onclick: move |_| {
-                                    actions.view(|state| {
+                                    actions.change(|state| {
                                         if state.toggle_first_run_extra(&key).is_err() { error.set(true); }
                                     });
                                 }, {i18n.t(if active { "sets-remove" } else { "sets-add" })} }
@@ -174,7 +189,126 @@ pub fn ExtrasStep() -> Element {
                 button { class: "text-button", onclick: move |_| {
                     if actions.change_deed(|state| state.skip_first_run_extras()).is_err() { error.set(true); }
                 }, {i18n.t("first-run-extras-skip")} }
-                button { class: "text-button", onclick: move |_| actions.view(|state| state.back_first_run_extras()), {i18n.t("first-run-extras-back")} }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_extras()), {i18n.t("first-run-extras-back")} }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn OwnDeedsStep() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let mut name = use_signal(String::new);
+    let mut slot = use_signal(|| "any_time".to_owned());
+    let mut error = use_signal(|| None::<EditorError>);
+    let Ok(catalog) = editor_data::catalog() else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let own = state
+        .read()
+        .data
+        .first_run
+        .own_deed_ids
+        .iter()
+        .filter_map(|id| {
+            let app = state.read();
+            let name = match app.deed_name(*id)? {
+                DeedName::Text(text) => text.clone(),
+                DeedName::Key(key) => i18n.t(key),
+            };
+            Some((*id, name))
+        })
+        .collect::<Vec<_>>();
+
+    rsx! {
+        section { class: "first-run-screen",
+            header { class: "first-run-header",
+                span { class: "rail-brand", {i18n.t("app-name")} }
+                StepIndicator { step: 3 }
+                h1 { {i18n.t("first-run-own-title")} }
+                p { {i18n.t("first-run-own-help")} }
+            }
+            div { class: "first-run-card",
+                label { r#for: "first-run-own-name", {i18n.t("first-run-own-name")} }
+                input { id: "first-run-own-name", class: "editor-input", value: "{name}", placeholder: i18n.t("first-run-own-placeholder"), oninput: move |event| name.set(event.value()) }
+                div {
+                    span { {i18n.t("first-run-own-slot")} }
+                    div { class: "first-run-slot-chips",
+                        for choice in &catalog.slots {
+                            { let key = choice.clone(); let selected = slot() == key; rsx! {
+                                button { class: "choice-chip", aria_pressed: "{selected}", onclick: move |_| slot.set(key.clone()), {i18n.t(&format!("slot-{choice}"))} }
+                            } }
+                        }
+                    }
+                }
+                button { class: "secondary-button", disabled: name().trim().is_empty(), onclick: move |_| {
+                    match actions.change_deed(|state| state.add_first_run_deed(&name(), &slot())) {
+                        Ok(Some(_)) => { name.set(String::new()); error.set(None); }
+                        Ok(None) => {}
+                        Err(problem) => error.set(Some(problem)),
+                    }
+                }, {i18n.t("first-run-own-add")} }
+                if let Some(problem) = error() { p { class: "editor-error", role: "alert", {i18n.t(match problem { EditorError::NameTooLong => "editor-error-name-too-long", _ => "editor-error-rule-change" })} } }
+            }
+            if !own.is_empty() {
+                ul { class: "first-run-own-list",
+                    for (id, deed_name) in own {
+                        li { key: "{id:?}",
+                            span { "{deed_name}" }
+                            button { class: "text-button", aria_label: i18n.t_with("first-run-own-remove", &[("name", FluentValue::from(deed_name.clone()))]), onclick: move |_| {
+                                if let Err(problem) = actions.change_deed(|state| state.remove_first_run_deed(id)) { error.set(Some(problem)); }
+                            }, {i18n.t("sets-remove")} }
+                        }
+                    }
+                }
+            }
+            footer { class: "first-run-footer",
+                button { class: "primary-button", onclick: move |_| actions.change(|state| state.continue_first_run_own_deeds()), {i18n.t("first-run-level-next")} }
+                if state.read().data.first_run.own_deed_ids.is_empty() {
+                    button { class: "text-button", onclick: move |_| actions.change(|state| state.continue_first_run_own_deeds()), {i18n.t("first-run-extras-skip")} }
+                }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_own_deeds()), {i18n.t("first-run-extras-back")} }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn SummaryStep() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let state = use_context::<Signal<AppState>>();
+    let Ok(catalog) = editor_data::catalog() else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let Ok(rows) = state.read().first_run_summary_rows() else {
+        return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
+    };
+    let total = rows.iter().map(|row| row.1).sum::<usize>();
+    rsx! {
+        section { class: "first-run-screen",
+            header { class: "first-run-header",
+                span { class: "rail-brand", {i18n.t("app-name")} }
+                h1 { {i18n.t("first-run-summary-title")} }
+                p { {i18n.t("first-run-summary-help")} }
+            }
+            div { class: "first-run-card",
+                for (key, count) in rows {
+                    div { class: "first-run-summary-row", key: "{key}",
+                        span { {if key == "first-run-own-row" { i18n.t(&key) } else { catalog.set(&key).map_or_else(|| key.clone(), |set| i18n.t(&set.name)) }} }
+                        strong { {i18n.num(count)} }
+                    }
+                }
+                div { class: "first-run-summary-row total",
+                    strong { {i18n.t("first-run-total")} }
+                    strong { {i18n.num(total)} }
+                }
+            }
+            footer { class: "first-run-footer",
+                button { class: "primary-button", onclick: move |_| actions.change(|state| state.finish_first_run(Screen::Sheet)), {i18n.t("first-run-summary-open")} }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_summary()), {i18n.t("first-run-extras-back")} }
             }
         }
     }
@@ -197,6 +331,7 @@ pub fn LocationStep() -> Element {
         section { class: "first-run-screen",
             header { class: "first-run-header",
                 span { class: "rail-brand", {i18n.t("app-name")} }
+                if first_run { StepIndicator { step: 4 } }
                 h1 { {i18n.t(if first_run { "first-run-title" } else { "location-manage-title" })} }
                 p { {i18n.t(if first_run { "first-run-intro" } else { "location-manage-intro" })} }
             }
@@ -263,8 +398,9 @@ pub fn LocationStep() -> Element {
             }
             footer { class: "first-run-footer",
                 if first_run {
-                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::SetPicker)), {i18n.t("first-run-next")} }
-                    button { class: "text-button", onclick: move |_| { actions.view(|state| state.location_request.cancel()); actions.change(|state| { state.clear_location(); state.show_screen(Screen::SetPicker); }); }, {i18n.t("location-skip")} }
+                    button { class: "primary-button", onclick: move |_| actions.change(|state| state.continue_first_run_location()), {i18n.t("first-run-level-next")} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| state.skip_first_run_location()), {i18n.t("location-skip")} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_location()), {i18n.t("first-run-extras-back")} }
                 } else {
                     button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(state.location_return)), {i18n.t(if state.read().location_return == Screen::Settings { "settings-back-location" } else { "location-back-deeds" })} }
                     button { class: "text-button", onclick: move |_| { actions.view(|state| state.location_request.cancel()); actions.change(|state| { state.clear_location(); state.show_screen(state.location_return); }); }, {i18n.t("location-remove")} }
@@ -281,7 +417,6 @@ pub fn SetPicker() -> Element {
     let state = use_context::<Signal<AppState>>();
     let mut error = use_signal(|| false);
     let app = state.read();
-    let first_run = !app.data.first_run_complete;
     let chosen = app.data.chosen_sets.clone();
     let confirmation = place_summary(&i18n, &app.data.settings);
     let Ok(catalog) = editor_data::catalog() else {
@@ -291,7 +426,6 @@ pub fn SetPicker() -> Element {
     rsx! {
         section { class: "first-run-screen",
             header { class: "first-run-header",
-                if first_run { span { class: "rail-brand", {i18n.t("app-name")} } }
                 h1 { {i18n.t("sets-title")} }
                 p { {i18n.t("sets-help")} }
                 if let Some(confirmation) = confirmation { p { class: "location-confirmation", "{confirmation}" } }
@@ -314,13 +448,7 @@ pub fn SetPicker() -> Element {
                 }
             }
             footer { class: "first-run-footer",
-                if first_run {
-                    button { class: "primary-button", onclick: move |_| actions.change(|state| state.finish_first_run(Screen::Sheet)), {i18n.t("sets-start-page")} }
-                    button { class: "text-button", onclick: move |_| actions.change(|state| state.finish_first_run(Screen::Editor(None))), {i18n.t("sets-add-own")} }
-                    button { class: "text-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::FirstRunLocation)), {i18n.t("sets-back-location")} }
-                } else {
-                    button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("sets-back-deeds")} }
-                }
+                button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(Screen::Deeds)), {i18n.t("sets-back-deeds")} }
             }
         }
     }

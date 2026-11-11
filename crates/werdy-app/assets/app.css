@@ -1590,6 +1590,17 @@ textarea:focus-visible {
 
 .first-run-header h1 { margin: var(--gap-s) 0 0; font-size: var(--size-screen); }
 .first-run-header p, .first-run-card p, .set-copy p { color: var(--text-muted); }
+.first-run-progress { margin-block-start: var(--gap-m); }
+.first-run-dots { display: flex; gap: var(--gap-xs); }
+.first-run-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--border-strong); }
+.first-run-dot.current { background: var(--primary); }
+.first-run-slot-chips { display: flex; flex-wrap: wrap; gap: var(--gap-xs); }
+.first-run-slot-chips .choice-chip { min-height: var(--touch-min); max-width: 100%; overflow-wrap: anywhere; }
+.first-run-own-list { display: grid; gap: var(--gap-s); margin: 0; padding: 0; list-style: none; }
+.first-run-own-list li, .first-run-summary-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--gap-s); min-width: 0; overflow-wrap: anywhere; }
+.first-run-own-list li { padding: var(--gap-m); border: var(--stroke-thin) solid var(--border); border-radius: var(--radius-card); }
+.first-run-own-list button { min-height: var(--touch-min); }
+.first-run-summary-row.total { padding-block-start: var(--gap-m); border-top: var(--stroke-thin) solid var(--border); }
 .first-run-card {
   display: flex;
   flex-direction: column;

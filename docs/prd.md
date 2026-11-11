@@ -32,14 +32,16 @@ werdy is a tracker for daily Islamic deeds and life work, for one person (the **
 
 Shown until first run is complete.
 
-1. "Pick your Academy level" opens first. Three cards show the level title, deed count and summary. "Show the deeds" opens a list grouped by prayer time. The instructors' credit appears once below the cards. Choosing a card does not add deeds until the extras step. "Not following the Academy? Start with an empty sheet" continues without deeds.
+1. "Pick your Academy level" opens first. Three cards show the level title, deed count and summary. "Show the deeds" opens a list grouped by prayer time. The instructors' credit appears once below the cards. Choosing a card does not add deeds until the extras step. "Not following the Academy? Start with an empty sheet" opens own deeds without adding a level.
 2. "Want to add more?" offers the five prayers on time, fasting and seasons, and Ramadan in that order. The five prayers start ticked. Each card shows the set name, deed count, reason and deed names. Next adds the level and ticked extras. Skip adds only the level. Back returns to the chosen level. Returning to the same level keeps the ticks; choosing another level resets them.
-3. The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
-4. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere).
-5. "Continue to starter sets" opens "Start with a ready set". Each **starter set** (for example "The five prayers", "Morning and evening", "Quran") has an Add button; tapping again removes it. More than one set can be added. The Academy level sets keep their sheet names here.
-6. "Start my page" opens Today with the chosen deeds. "I will add my own deeds" opens the deed editor.
+3. "Add your own deeds" takes a deed name and prayer time slot. Any time starts selected. Add saves a deed due every day with no target. The list shows deeds added here and lets the owner remove each one. Next opens location. Skip appears only while the list is empty. Back returns to extras, or to the level cards after Start with an empty sheet.
+4. The owner chooses a place: "Use my location", or "Choose a city" from a list (Cairo, Riyadh, Makkah, London and others), or "Continue without location". While the browser finds the position, the line "Finding your location. This can take a few seconds." shows and the button is disabled; after 15 seconds without an answer, or if access is refused, "Location was not available. Choose a city instead." shows. Choosing a city while it is finding cancels the lookup.
+5. After a city is chosen, a line shows the city and its Fajr time, for example "Cairo, Egypt · Fajr 05:37". A "Prayer time method" choice is shown (Egyptian General Authority by default in Egypt, Umm al Qura in Saudi Arabia, Muslim World League elsewhere). Next and Continue without location open the summary. Back opens own deeds.
+6. "Your sheet is ready" counts active deeds on the sheet. It shows the chosen level, each chosen extra set, own deeds if any, and the total. Each deed counts once. "Open today's sheet" completes setup and opens Today. Back opens location.
 
-Expected: after first run, reloading the page opens Today, not first run.
+The set picker remains in My deeds. Closing the app during setup keeps the current step and pending level. After setup, reloading opens Today.
+
+Manual check: follow both the level and empty paths in Arabic and English. Add and remove own deeds, change slots, use location Next and Continue without location, then check the summary total against Today. Check Back from each step, reload at each step, and check the layout at 320 px with large text.
 
 ### 4.2 Today (the daily sheet)
 

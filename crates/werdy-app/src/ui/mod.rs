@@ -276,7 +276,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
             "data-theme": theme,
             if state.read().data.first_run_complete { rail::Rail {} }
             main { class: match state.read().screen {
-                Screen::FirstRunLevel | Screen::FirstRunExtras | Screen::FirstRunLocation | Screen::SetPicker => "onboarding-content",
+                Screen::FirstRunLevel | Screen::FirstRunExtras | Screen::FirstRunOwnDeeds | Screen::FirstRunLocation | Screen::FirstRunSummary | Screen::SetPicker => "onboarding-content",
                 Screen::Sheet => "panes",
                 Screen::Reports => "report-panes",
                 Screen::Deeds | Screen::Editor(_) | Screen::Settings => "page-content",
@@ -304,7 +304,9 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                 match state.read().screen {
                     Screen::FirstRunLevel => rsx! { first_run::LevelStep {} },
                     Screen::FirstRunExtras => rsx! { first_run::ExtrasStep {} },
+                    Screen::FirstRunOwnDeeds => rsx! { first_run::OwnDeedsStep {} },
                     Screen::FirstRunLocation => rsx! { first_run::LocationStep {} },
+                    Screen::FirstRunSummary => rsx! { first_run::SummaryStep {} },
                     Screen::SetPicker => rsx! { first_run::SetPicker {} },
                     Screen::Sheet => rsx! {
                         header::DayHeader { on_open_note: move |day| note_day.set(Some(day)) }
