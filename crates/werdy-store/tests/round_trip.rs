@@ -49,6 +49,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         deed_keys: BTreeMap::new(),
         demo_generation: None,
         first_run_complete: true,
+        first_run: Default::default(),
         chosen_sets: ["five_prayers".to_owned()].into(),
         starter_keys: BTreeMap::from([(DeedId(1), "fajr_on_time".to_owned())]),
         deeds: vec![fajr, quran],
@@ -91,6 +92,35 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn first_run_progress_round_trips_and_old_file_defaults() -> TestResult {
+    let mut data = sample()?;
+    data.first_run.step = "own_deeds".to_owned();
+    data.first_run.pending_level = Some("level_1".to_owned());
+    data.first_run.own_deed_ids.insert(DeedId(2));
+    let json = to_json(&data)?;
+    assert_eq!(from_json(&json)?.first_run, data.first_run);
+    let mut old: serde_json::Value = serde_json::from_str(&json)?;
+    old.as_object_mut()
+        .ok_or("expected object")?
+        .remove("first_run");
+    assert_eq!(from_json(&old.to_string())?.first_run, Default::default());
+    Ok(())
+}
+
+#[test]
+fn first_run_progress_uses_local_state_during_merge() -> TestResult {
+    let mut stored = sample()?;
+    stored.first_run.step = "location".to_owned();
+    let mut local = stored.clone();
+    local.first_run.step = "summary".to_owned();
+    assert_eq!(
+        werdy_store::merge_records(&stored, &local)?.first_run.step,
+        "summary"
+    );
     Ok(())
 }
 

@@ -192,6 +192,8 @@ pub struct OwnerData {
     pub demo_generation: Option<String>,
     /// Setup is complete. Older saved records count as complete.
     pub first_run_complete: bool,
+    /// Local progress through setup.
+    pub first_run: FirstRunProgress,
     /// Set keys currently chosen by the owner.
     pub chosen_sets: BTreeSet<String>,
     /// Catalog key of each deed added from a set.
@@ -222,6 +224,16 @@ pub struct OwnerData {
     pub last_welcome_day: Option<WerdyDay>,
     /// Settings.
     pub settings: Settings,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FirstRunProgress {
+    pub step: String,
+    pub pending_level: Option<String>,
+    pub extra_level: Option<String>,
+    pub extra_ticks: BTreeSet<String>,
+    pub own_deed_ids: BTreeSet<DeedId>,
 }
 
 impl OwnerData {
@@ -450,6 +462,7 @@ impl OwnerData {
 /// Conflicting deed identities return an error without changing either copy.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData, StoreError> {
     let mut merged = stored.clone();
+    merged.first_run = local.first_run.clone();
     merged
         .dismissed_milestones
         .extend(&local.dismissed_milestones);
@@ -596,6 +609,8 @@ struct DataFile<S = Settings> {
     #[serde(default = "legacy_complete")]
     first_run_complete: bool,
     #[serde(default)]
+    first_run: FirstRunProgress,
+    #[serde(default)]
     chosen_sets: Vec<String>,
     #[serde(default)]
     starter_keys: Vec<StarterKeyEntry>,
@@ -669,6 +684,7 @@ impl<S> DataFile<S> {
             deed_keys: self.deed_keys,
             demo_generation: self.demo_generation,
             first_run_complete: self.first_run_complete,
+            first_run: self.first_run,
             chosen_sets: self.chosen_sets,
             starter_keys: self.starter_keys,
             deeds: self.deeds,
@@ -742,6 +758,7 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
             .collect(),
         demo_generation: data.demo_generation.clone(),
         first_run_complete: data.first_run_complete,
+        first_run: data.first_run.clone(),
         chosen_sets: data.chosen_sets.iter().cloned().collect(),
         starter_keys: data
             .starter_keys
@@ -941,6 +958,7 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         deed_keys,
         demo_generation: file.demo_generation,
         first_run_complete: file.first_run_complete,
+        first_run: file.first_run,
         chosen_sets,
         starter_keys,
         deeds: file.deeds,

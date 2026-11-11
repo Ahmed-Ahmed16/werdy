@@ -142,7 +142,9 @@ pub enum SaveStatus {
 pub enum Screen {
     FirstRunLevel,
     FirstRunExtras,
+    FirstRunOwnDeeds,
     FirstRunLocation,
+    FirstRunSummary,
     SetPicker,
     /// Daily sheet.
     Sheet,
@@ -462,11 +464,45 @@ impl AppState {
             Err(_) => (OwnerData::default(), SaveStatus::LoadFailed),
         };
         let migrated = crate::starter::migrate_legacy_prayers(&mut data);
+        let pending_level = data.first_run.pending_level.clone().filter(|key| {
+            crate::editor_data::catalog()
+                .ok()
+                .is_some_and(|catalog| catalog.set(key).is_some_and(|set| set.level.is_some()))
+        });
+        let invalid_level = data.first_run.pending_level.is_some() && pending_level.is_none();
         let screen = if data.first_run_complete {
             Screen::Sheet
-        } else {
+        } else if invalid_level {
             Screen::FirstRunLevel
+        } else {
+            match data.first_run.step.as_str() {
+                "extras" if pending_level.is_some() => Screen::FirstRunExtras,
+                "own_deeds"
+                    if pending_level
+                        .as_ref()
+                        .is_none_or(|key| data.chosen_sets.contains(key)) =>
+                {
+                    Screen::FirstRunOwnDeeds
+                }
+                "location"
+                    if pending_level
+                        .as_ref()
+                        .is_none_or(|key| data.chosen_sets.contains(key)) =>
+                {
+                    Screen::FirstRunLocation
+                }
+                "summary"
+                    if pending_level
+                        .as_ref()
+                        .is_none_or(|key| data.chosen_sets.contains(key)) =>
+                {
+                    Screen::FirstRunSummary
+                }
+                _ => Screen::FirstRunLevel,
+            }
         };
+        let pending_extra_ticks = data.first_run.extra_ticks.clone();
+        let pending_extra_level = data.first_run.extra_level.clone();
         Self {
             data,
             today,
@@ -474,9 +510,9 @@ impl AppState {
             slot_order,
             save_status,
             screen,
-            pending_level: None,
-            pending_extra_level: None,
-            pending_extra_ticks: BTreeSet::new(),
+            pending_level: pending_level.clone(),
+            pending_extra_level,
+            pending_extra_ticks,
             location_return: Screen::Deeds,
             location_request: LocationRequest::default(),
             settings_back_to_deeds: false,
@@ -711,6 +747,17 @@ impl AppState {
             self.location_return = Screen::Deeds;
         }
         self.screen = screen;
+        if !self.data.first_run_complete {
+            self.data.first_run.step = match screen {
+                Screen::FirstRunLevel => "level",
+                Screen::FirstRunExtras => "extras",
+                Screen::FirstRunOwnDeeds => "own_deeds",
+                Screen::FirstRunLocation => "location",
+                Screen::FirstRunSummary => "summary",
+                _ => return,
+            }
+            .to_owned();
+        }
     }
 
     /// Opens Settings with a return path to My deeds.
@@ -754,6 +801,7 @@ impl AppState {
             self.redate_setup_deeds();
         }
         self.data.first_run_complete = true;
+        self.data.first_run = Default::default();
         self.screen = screen;
     }
 
@@ -764,6 +812,7 @@ impl AppState {
             return Err(EditorError::RuleChange);
         }
         self.pending_level = Some(key.to_owned());
+        self.data.first_run.pending_level = self.pending_level.clone();
         Ok(())
     }
 
@@ -783,7 +832,9 @@ impl AppState {
                 .map(|offer| offer.set.clone())
                 .collect();
             self.pending_extra_level = Some(key);
+            self.data.first_run.extra_level = self.pending_extra_level.clone();
         }
+        self.data.first_run.extra_ticks = self.pending_extra_ticks.clone();
         self.show_screen(Screen::FirstRunExtras);
         Ok(())
     }
@@ -807,6 +858,7 @@ impl AppState {
         if !self.pending_extra_ticks.insert(key.to_owned()) {
             self.pending_extra_ticks.remove(key);
         }
+        self.data.first_run.extra_ticks = self.pending_extra_ticks.clone();
         Ok(())
     }
 
@@ -815,12 +867,12 @@ impl AppState {
         self.show_screen(Screen::FirstRunLevel);
     }
 
-    /// Adds the level and selected extras, then opens location.
+    /// Adds the level and selected extras, then opens own deeds.
     pub fn continue_first_run_extras(&mut self) -> Result<(), EditorError> {
         self.finish_first_run_extras(self.pending_extra_ticks.clone())
     }
 
-    /// Adds only the level, then opens location.
+    /// Adds only the level, then opens own deeds.
     pub fn skip_first_run_extras(&mut self) -> Result<(), EditorError> {
         self.finish_first_run_extras(BTreeSet::new())
     }
@@ -862,10 +914,11 @@ impl AppState {
             *self = previous;
             return Err(error);
         }
+        self.show_screen(Screen::FirstRunOwnDeeds);
         Ok(())
     }
 
-    /// Opens location without a level, keeping other saved sets.
+    /// Opens own deeds without a level, keeping other saved sets.
     pub fn start_first_run_empty(&mut self) -> Result<(), EditorError> {
         let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
         let previous = self.clone();
@@ -879,9 +932,12 @@ impl AppState {
             }
         }
         self.pending_level = None;
+        self.data.first_run.pending_level = None;
         self.pending_extra_level = None;
+        self.data.first_run.extra_level = None;
         self.pending_extra_ticks.clear();
-        self.show_screen(Screen::FirstRunLocation);
+        self.data.first_run.extra_ticks.clear();
+        self.show_screen(Screen::FirstRunOwnDeeds);
         Ok(())
     }
 
@@ -907,8 +963,119 @@ impl AppState {
             return Err(error);
         }
         self.pending_level = Some(chosen.to_owned());
-        self.show_screen(Screen::FirstRunLocation);
+        self.data.first_run.pending_level = self.pending_level.clone();
         Ok(())
+    }
+
+    pub fn add_first_run_deed(
+        &mut self,
+        name: &str,
+        slot: &str,
+    ) -> Result<Option<DeedId>, EditorError> {
+        if self.screen != Screen::FirstRunOwnDeeds || self.data.first_run_complete {
+            return Err(EditorError::RuleChange);
+        }
+        if name.trim().is_empty() {
+            return Ok(None);
+        }
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        if !catalog.slots.iter().any(|key| key == slot) {
+            return Err(EditorError::RuleChange);
+        }
+        let id = self.save_deed(
+            None,
+            &EditorDraft {
+                name: name.to_owned(),
+                slot: SlotKey::new(slot),
+                ..EditorDraft::default()
+            },
+        )?;
+        self.data.first_run.own_deed_ids.insert(id);
+        Ok(Some(id))
+    }
+
+    pub fn remove_first_run_deed(&mut self, id: DeedId) -> Result<(), EditorError> {
+        if self.screen != Screen::FirstRunOwnDeeds
+            || !self.data.first_run.own_deed_ids.contains(&id)
+            || self.data.marks.keys().any(|(deed_id, _)| *deed_id == id)
+        {
+            return Err(EditorError::RuleChange);
+        }
+        self.delete_deed_confirmed(id, true)?;
+        self.data.first_run.own_deed_ids.remove(&id);
+        Ok(())
+    }
+
+    pub fn back_first_run_own_deeds(&mut self) {
+        self.show_screen(if self.pending_level.is_some() {
+            Screen::FirstRunExtras
+        } else {
+            Screen::FirstRunLevel
+        });
+    }
+
+    pub fn continue_first_run_own_deeds(&mut self) {
+        self.show_screen(Screen::FirstRunLocation);
+    }
+    pub fn back_first_run_location(&mut self) {
+        self.show_screen(Screen::FirstRunOwnDeeds);
+    }
+    pub fn continue_first_run_location(&mut self) {
+        self.show_screen(Screen::FirstRunSummary);
+    }
+    pub fn skip_first_run_location(&mut self) {
+        self.clear_location();
+        self.show_screen(Screen::FirstRunSummary);
+    }
+    pub fn back_first_run_summary(&mut self) {
+        self.show_screen(Screen::FirstRunLocation);
+    }
+
+    pub fn first_run_summary_rows(&self) -> Result<Vec<(String, usize)>, EditorError> {
+        let catalog = crate::editor_data::catalog().map_err(|_| EditorError::RuleChange)?;
+        let sheet_ids: BTreeSet<_> = self
+            .sheet()
+            .slots
+            .iter()
+            .flat_map(|slot| slot.rows.iter().map(|row| row.deed_id))
+            .collect();
+        let mut counted = BTreeSet::new();
+        let mut rows = Vec::new();
+        if let Some(key) = self.pending_level.as_deref()
+            && self.data.chosen_sets.contains(key)
+            && let Some(set) = catalog.set(key)
+        {
+            let count = self.count_first_run_set(set, &sheet_ids, &mut counted);
+            rows.push((key.to_owned(), count));
+        }
+        for set in &catalog.sets {
+            if self.data.chosen_sets.contains(&set.key)
+                && Some(set.key.as_str()) != self.pending_level.as_deref()
+            {
+                let count = self.count_first_run_set(set, &sheet_ids, &mut counted);
+                rows.push((set.key.clone(), count));
+            }
+        }
+        let own = sheet_ids.difference(&counted).count();
+        if own > 0 {
+            rows.push(("first-run-own-row".to_owned(), own));
+        }
+        Ok(rows)
+    }
+
+    fn count_first_run_set(
+        &self,
+        set: &werdy_data::StarterSet,
+        sheet_ids: &BTreeSet<DeedId>,
+        counted: &mut BTreeSet<DeedId>,
+    ) -> usize {
+        self.data
+            .starter_keys
+            .iter()
+            .filter(|(id, key)| {
+                sheet_ids.contains(id) && set.deeds.contains(key) && counted.insert(**id)
+            })
+            .count()
     }
 
     pub fn toggle_set(&mut self, key: &str) -> Result<(), EditorError> {
@@ -1430,6 +1597,9 @@ impl AppState {
     }
 
     fn move_deed_id(&mut self, old_id: DeedId, new_id: DeedId) {
+        if self.data.first_run.own_deed_ids.remove(&old_id) {
+            self.data.first_run.own_deed_ids.insert(new_id);
+        }
         if let Some(key) = self.data.deed_keys.remove(&old_id) {
             self.data.deed_keys.insert(new_id, key);
         }
@@ -2403,6 +2573,200 @@ mod tests {
     }
 
     #[test]
+    fn first_run_full_path_counts_sheet_and_finishes_on_current_day() -> TestResult {
+        let start = today()?;
+        let mut state = AppState::start(&MemoryStore::default(), start, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        assert_eq!(state.screen, Screen::FirstRunExtras);
+        state.continue_first_run_extras()?;
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
+        state.back_first_run_own_deeds();
+        assert_eq!(state.screen, Screen::FirstRunExtras);
+        state.continue_first_run_extras()?;
+        let own = state
+            .add_first_run_deed("Walk", "night")?
+            .ok_or("missing deed")?;
+        state.continue_first_run_own_deeds();
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        state.continue_first_run_location();
+        assert_eq!(state.screen, Screen::FirstRunSummary);
+        let rows = state.first_run_summary_rows()?;
+        assert_eq!(rows[0].0, "level_1");
+        assert_eq!(rows[1], ("five_prayers".to_owned(), 5));
+        assert_eq!(rows[2], ("first-run-own-row".to_owned(), 1));
+        assert_eq!(
+            rows.iter().map(|row| row.1).sum::<usize>(),
+            state
+                .sheet()
+                .slots
+                .iter()
+                .map(|slot| slot.rows.len())
+                .sum::<usize>()
+        );
+        assert!(
+            state
+                .sheet()
+                .slots
+                .iter()
+                .any(|slot| slot.rows.iter().any(|row| row.deed_id == own))
+        );
+        state.update_today(start.next()?);
+        state.finish_first_run(Screen::Sheet);
+        assert_eq!(state.screen, Screen::Sheet);
+        assert!(
+            state
+                .data
+                .deeds
+                .iter()
+                .all(|deed| deed.created_on() == state.today)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_own_deeds_blank_remove_and_back_paths() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.start_first_run_empty()?;
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
+        assert!(state.data.deeds.is_empty());
+        assert_eq!(state.add_first_run_deed("   ", "any_time")?, None);
+        let id = state
+            .add_first_run_deed("Walk", "morning")?
+            .ok_or("missing deed")?;
+        let rule = state
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .and_then(|deed| deed.rule_on(state.today))
+            .ok_or("missing rule")?;
+        assert_eq!(rule.schedule, werdy_core::Schedule::EveryDay);
+        assert_eq!(rule.slot, werdy_core::SlotKey::new("morning"));
+        assert!(rule.target.is_none());
+        let store = MemoryStore::default();
+        state.save_to(&store);
+        state.remove_first_run_deed(id)?;
+        assert!(!state.data.deeds.iter().any(|deed| deed.id == id));
+        assert!(state.data.deleted_deeds.contains(&id));
+        state.back_first_run_own_deeds();
+        assert_eq!(state.screen, Screen::FirstRunLevel);
+        state.start_first_run_empty()?;
+        state.continue_first_run_own_deeds();
+        state.back_first_run_location();
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
+        state.continue_first_run_own_deeds();
+        state.skip_first_run_location();
+        state.back_first_run_summary();
+        assert_eq!(state.screen, Screen::FirstRunLocation);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_restart_keeps_step_and_pending_level() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.skip_first_run_extras()?;
+        state.save_to(&store);
+        let resumed = AppState::start(&store, today()?, slot_order());
+        assert_eq!(resumed.screen, Screen::FirstRunOwnDeeds);
+        assert_eq!(resumed.pending_level.as_deref(), Some("level_1"));
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_restart_initializes_or_keeps_extra_ticks() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.save_to(&store);
+        let mut resumed = AppState::start(&store, today()?, slot_order());
+        resumed.continue_first_run_level()?;
+        assert!(resumed.pending_extra_ticks.contains("five_prayers"));
+        resumed.toggle_first_run_extra("five_prayers")?;
+        resumed.save_to(&store);
+        let mut again = AppState::start(&store, today()?, slot_order());
+        assert_eq!(again.screen, Screen::FirstRunExtras);
+        assert!(again.pending_extra_ticks.is_empty());
+        again.back_first_run_extras();
+        again.continue_first_run_level()?;
+        assert!(again.pending_extra_ticks.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_own_deed_survives_id_rebase_and_restart() -> TestResult {
+        let store = MemoryStore::default();
+        let mut first = AppState::start(&store, today()?, slot_order());
+        let mut stale = AppState::start(&store, today()?, slot_order());
+        first.start_first_run_empty()?;
+        stale.start_first_run_empty()?;
+        let first_id = first
+            .add_first_run_deed("Walk", "morning")?
+            .ok_or("missing first deed")?;
+        first.save_to(&store);
+        let old_id = stale
+            .add_first_run_deed("Read", "night")?
+            .ok_or("missing second deed")?;
+        assert_eq!(old_id, first_id);
+        stale.save_to(&store);
+        let mut resumed = AppState::start(&store, today()?, slot_order());
+        assert_eq!(resumed.screen, Screen::FirstRunOwnDeeds);
+        let own_id = *resumed
+            .data
+            .first_run
+            .own_deed_ids
+            .iter()
+            .next()
+            .ok_or("missing saved own deed")?;
+        assert_ne!(own_id, first_id);
+        resumed.remove_first_run_deed(own_id)?;
+        resumed.save_to(&store);
+        let after = AppState::start(&store, today()?, slot_order());
+        assert!(!after.data.deeds.iter().any(|deed| deed.id == own_id));
+        assert!(after.data.deeds.iter().any(|deed| deed.id == first_id));
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_unknown_or_invalid_saved_step_opens_level() -> TestResult {
+        let store = MemoryStore::default();
+        let mut data = OwnerData::default();
+        data.first_run.step = "future_step".to_owned();
+        store.save(&data)?;
+        assert_eq!(
+            AppState::start(&store, today()?, slot_order()).screen,
+            Screen::FirstRunLevel
+        );
+        data.first_run.step = "extras".to_owned();
+        store.save(&data)?;
+        assert_eq!(
+            AppState::start(&store, today()?, slot_order()).screen,
+            Screen::FirstRunLevel
+        );
+        data.first_run.pending_level = Some("missing_level".to_owned());
+        store.save(&data)?;
+        assert_eq!(
+            AppState::start(&store, today()?, slot_order()).screen,
+            Screen::FirstRunLevel
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn managed_location_still_returns_to_settings() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.finish_first_run(Screen::Settings);
+        state.show_screen(Screen::FirstRunLocation);
+        assert_eq!(state.location_return, Screen::Settings);
+        state.show_screen(state.location_return);
+        assert_eq!(state.screen, Screen::Settings);
+        Ok(())
+    }
+
+    #[test]
     fn first_run_level_next_opens_extras_with_default_tick() -> TestResult {
         let store = MemoryStore::default();
         let mut state = AppState::start(&store, today()?, slot_order());
@@ -2430,7 +2794,7 @@ mod tests {
         let catalog = werdy_data::builtin()?;
         let level = catalog.set("levels_2_3").ok_or("missing level")?;
         let prayers = catalog.set("five_prayers").ok_or("missing prayers")?;
-        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
         assert_eq!(
             state.data.chosen_sets,
             BTreeSet::from(["levels_2_3".into(), "five_prayers".into()])
@@ -2484,7 +2848,7 @@ mod tests {
         state.continue_first_run_level()?;
         state.skip_first_run_extras()?;
         assert_eq!(state.data.chosen_sets, BTreeSet::from(["level_1".into()]));
-        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
         Ok(())
     }
 
@@ -2521,10 +2885,10 @@ mod tests {
     }
 
     #[test]
-    fn first_run_empty_sheet_opens_location_without_sets_or_deeds() -> TestResult {
+    fn first_run_empty_sheet_opens_own_deeds_without_sets_or_deeds() -> TestResult {
         let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
         state.start_first_run_empty()?;
-        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
         assert!(state.data.deeds.is_empty());
         assert!(state.data.chosen_sets.is_empty());
         Ok(())
@@ -2543,8 +2907,10 @@ mod tests {
         assert_eq!(state.save_status, SaveStatus::Saved);
 
         let resumed = AppState::start(store, today()?, slot_order());
-        assert_eq!(resumed.screen, Screen::FirstRunLevel);
-        assert_eq!(resumed.pending_level, None);
+        assert_eq!(resumed.screen, Screen::FirstRunOwnDeeds);
+        assert_eq!(resumed.pending_level.as_deref(), Some("level_1"));
+        let mut resumed = resumed;
+        resumed.show_screen(Screen::FirstRunLevel);
         Ok(resumed)
     }
 
@@ -2660,7 +3026,7 @@ mod tests {
         state.toggle_set("five_prayers")?;
         state.toggle_set("ramadan")?;
         state.start_first_run_empty()?;
-        assert_eq!(state.screen, Screen::FirstRunLocation);
+        assert_eq!(state.screen, Screen::FirstRunOwnDeeds);
         assert_eq!(
             state.data.chosen_sets,
             BTreeSet::from(["five_prayers".into(), "ramadan".into()])
