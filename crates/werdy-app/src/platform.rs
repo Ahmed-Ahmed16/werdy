@@ -19,14 +19,21 @@ mod android_reminders;
 pub(crate) mod web_reminders;
 
 #[cfg(any(test, target_arch = "wasm32"))]
-async fn unsubscribe_then_forget<U, F, T>(unsubscribe: U, forget: F) -> Result<(), String>
+async fn unsubscribe_then_forget<U, F, T>(
+    intent: ForgetIntent,
+    unsubscribe: U,
+    forget: F,
+) -> Result<(), String>
 where
     U: std::future::Future<Output = Result<(), String>>,
     F: FnOnce() -> T,
     T: std::future::Future<Output = Result<(), String>>,
 {
     unsubscribe.await?;
-    forget().await
+    if !matches!(intent, ForgetIntent::AccountDeleted) {
+        forget().await?;
+    }
+    Ok(())
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
@@ -34,6 +41,7 @@ where
 enum ForgetIntent {
     Settings,
     SignOut,
+    AccountDeleted,
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
@@ -756,6 +764,7 @@ mod tests {
             .build()
             .expect("test runtime")
             .block_on(super::unsubscribe_then_forget(
+                super::ForgetIntent::Settings,
                 async move {
                     browser_calls.borrow_mut().push("browser unsubscribe");
                     Ok(())
@@ -769,6 +778,30 @@ mod tests {
         assert_eq!(*calls.borrow(), ["browser unsubscribe", "server forget"]);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn account_delete_unsubscribes_without_server_forget() {
+        let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let browser_calls = calls.clone();
+        let server_calls = calls.clone();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime")
+            .block_on(super::unsubscribe_then_forget(
+                super::ForgetIntent::AccountDeleted,
+                async move {
+                    browser_calls.borrow_mut().push("browser unsubscribe");
+                    Ok(())
+                },
+                move || async move {
+                    server_calls.borrow_mut().push("server forget");
+                    Ok(())
+                },
+            ));
+        assert_eq!(result, Ok(()));
+        assert_eq!(*calls.borrow(), ["browser unsubscribe"]);
+    }
+
     #[test]
     fn failed_unsubscribe_on_sign_out_does_not_restore_push_flag() {
         assert!(!super::restore_push_flag_after_failure(
@@ -778,6 +811,18 @@ mod tests {
         assert!(super::restore_push_flag_after_failure(
             super::ForgetIntent::Settings,
             false
+        ));
+    }
+
+    #[test]
+    fn account_delete_never_restores_push_flag() {
+        assert!(!super::restore_push_flag_after_failure(
+            super::ForgetIntent::AccountDeleted,
+            false
+        ));
+        assert!(!super::restore_push_flag_after_failure(
+            super::ForgetIntent::AccountDeleted,
+            true
         ));
     }
 

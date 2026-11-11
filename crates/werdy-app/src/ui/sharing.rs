@@ -226,8 +226,28 @@ pub fn delete_account(
             .map(|_| ());
         drop(flight);
         let records = state.peek().data.clone();
+        #[cfg(target_arch = "wasm32")]
+        let delete_session_current = store.account.borrow().generation == generation;
         match store.settle_delete(result, &records, generation) {
-            Ok(()) => sharing.set(Sharing::default()),
+            Ok(()) => {
+                sharing.set(Sharing::default());
+                #[cfg(target_arch = "wasm32")]
+                if delete_session_current {
+                    let cleanup =
+                        crate::platform::web_reminders::forget_after_account_delete(&store);
+                    let timeout = gloo_timers::future::TimeoutFuture::new(10_000);
+                    futures_util::pin_mut!(cleanup, timeout);
+                    match futures_util::future::select(cleanup, timeout).await {
+                        futures_util::future::Either::Left((Err(error), _)) => {
+                            warn!("Push reminder removal failed: {error}");
+                        }
+                        futures_util::future::Either::Right(_) => {
+                            warn!("Push reminder removal timed out after 10 seconds");
+                        }
+                        futures_util::future::Either::Left((Ok(()), _)) => {}
+                    }
+                }
+            }
             Err(key) => {
                 let mut sharing = sharing.write();
                 sharing.deleting = false;
