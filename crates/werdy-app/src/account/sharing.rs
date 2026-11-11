@@ -10,7 +10,7 @@ pub enum Request {
     Lists,
     // Keep the action name specified for this request.
     #[allow(clippy::enum_variant_names)]
-    SendWatchRequest(String),
+    SendWatchRequest(String, WatchDirection),
     Accept(String),
     Decline(String),
     Create,
@@ -72,10 +72,8 @@ async fn perform(backend: &SupabaseBackend, request: &Request) -> Result<Reply, 
             backend.list_watched().await?,
             backend.incoming_watch_requests().await?,
         )),
-        Request::SendWatchRequest(email) => {
-            backend
-                .send_watch_request(email, WatchDirection::WatchMe)
-                .await?;
+        Request::SendWatchRequest(email, direction) => {
+            backend.send_watch_request(email, *direction).await?;
             Ok(Reply::Changed)
         }
         Request::Accept(id) => {
