@@ -1,9 +1,10 @@
 -- Run as database owner after all migrations. Everything rolls back.
 begin;
 set local request.jwt.claim.sub = '';
-create temporary table push_test(first_user uuid, second_user uuid, first_id uuid, deleted_id uuid);
-insert into push_test values(pg_catalog.gen_random_uuid(), pg_catalog.gen_random_uuid(), null, null);
+create temporary table push_test(first_user uuid, second_user uuid, first_id uuid, deleted_id uuid, drop_id uuid);
+insert into push_test values(pg_catalog.gen_random_uuid(), pg_catalog.gen_random_uuid(), null, null, null);
 grant select, update on push_test to authenticated;
+grant select on push_test to service_role;
 insert into auth.users(id,email) select first_user,'first@push.test' from push_test
     union all select second_user,'second@push.test' from push_test;
 
@@ -166,10 +167,19 @@ begin
         or pg_catalog.jsonb_typeof(claimed->0->'subscription') is distinct from 'string' then
         raise exception 'first claim returned wrong rows';
     end if;
+end $$;
+reset role;
+do $$
+begin
     if (select pg_catalog.count(*) from public.werdy_push_reminders
         where reminder like 'due_%') <> 1 then
         raise exception 'first claim removed unclaimed row';
     end if;
+end $$;
+set local role service_role;
+do $$
+declare claimed jsonb;
+begin
     claimed := public.werdy_push_claim_due(2);
     if pg_catalog.jsonb_array_length(claimed) is distinct from 1
         or claimed->0->>'reminder' is distinct from 'due_third' then
@@ -198,10 +208,18 @@ do $$
 begin
     perform public.werdy_push_replace(
         '{"endpoint":"https://fcm.googleapis.com/first","p256dh":"key_2","auth":"auth_2"}', '[]');
+end $$;
+reset role;
+do $$
+begin
     if (select pg_catalog.count(*) from public.werdy_push_subscriptions) <> 1
         or (select pg_catalog.count(*) from public.werdy_push_reminders) <> 0 then
         raise exception 'endpoint takeover kept old reminders';
     end if;
+end $$;
+set local role authenticated;
+do $$
+begin
     perform public.werdy_push_replace(
         '{"endpoint":"https://fcm.googleapis.com/drop","p256dh":"key_2","auth":"auth_2"}', '[]');
     perform public.werdy_push_replace(
@@ -220,11 +238,12 @@ begin
         raise exception 'endpoint did not move to second user';
     end if;
 end $$;
+update push_test set drop_id = (select id from public.werdy_push_subscriptions
+    where endpoint = 'https://fcm.googleapis.com/drop');
 set local role service_role;
 do $$
 begin
-    perform public.werdy_push_drop_subscription(
-        (select id from public.werdy_push_subscriptions where endpoint = 'https://fcm.googleapis.com/drop'));
+    perform public.werdy_push_drop_subscription((select drop_id from push_test));
 end $$;
 reset role;
 do $$
