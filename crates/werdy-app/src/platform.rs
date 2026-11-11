@@ -18,6 +18,17 @@ mod android_reminders;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod web_reminders;
 
+#[cfg(any(test, target_arch = "wasm32"))]
+async fn unsubscribe_then_forget<U, F, T>(unsubscribe: U, forget: F) -> Result<(), String>
+where
+    U: std::future::Future<Output = Result<(), String>>,
+    F: FnOnce() -> T,
+    T: std::future::Future<Output = Result<(), String>>,
+{
+    unsubscribe.await?;
+    forget().await
+}
+
 /// Queues delivery after a successful save.
 pub fn reschedule_reminders(owner: &werdy_store::OwnerData) {
     #[cfg(target_os = "android")]
@@ -721,6 +732,29 @@ mod tests {
             "?demo=1"
         )));
         assert!(super::push_upload_allowed(super::mode_from_query("")));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn browser_unsubscribes_before_failed_server_forget() {
+        let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let browser_calls = calls.clone();
+        let server_calls = calls.clone();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime")
+            .block_on(super::unsubscribe_then_forget(
+                async move {
+                    browser_calls.borrow_mut().push("browser unsubscribe");
+                    Ok(())
+                },
+                move || async move {
+                    server_calls.borrow_mut().push("server forget");
+                    Err("server failed".to_owned())
+                },
+            ));
+        assert_eq!(result, Err("server failed".to_owned()));
+        assert_eq!(*calls.borrow(), ["browser unsubscribe", "server forget"]);
     }
 
     #[test]

@@ -111,22 +111,32 @@ pub async fn forget(store: &AccountStore) -> Result<(), String> {
     }
     let was_enabled = enabled();
     set_enabled(false)?;
+    let mut unsubscribed = false;
     let result = async {
         if let Some(subscription) = current().await? {
-            let (backend, _) = backend(store).await?;
-            backend
-                .push_forget(&subscription.endpoint)
-                .await
-                .map_err(|error| error.to_string())?;
-            browser("unsubscribe")
-                .join::<bool>()
-                .await
-                .map_err(|_| "push unsubscribe failed".to_owned())?;
+            super::unsubscribe_then_forget(
+                async {
+                    browser("unsubscribe")
+                        .join::<bool>()
+                        .await
+                        .map_err(|_| "push unsubscribe failed".to_owned())?;
+                    unsubscribed = true;
+                    Ok(())
+                },
+                || async {
+                    let (backend, _) = backend(store).await?;
+                    backend
+                        .push_forget(&subscription.endpoint)
+                        .await
+                        .map_err(|error| error.to_string())
+                },
+            )
+            .await?;
         }
         Ok(())
     }
     .await;
-    if result.is_err() {
+    if result.is_err() && !unsubscribed {
         let _ = set_enabled(was_enabled);
     }
     result
