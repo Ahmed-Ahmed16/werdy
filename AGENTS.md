@@ -68,6 +68,8 @@ Every agent (Claude, Codex, any other) and the owner run recurring jobs through 
 
 A missing recurring job becomes a new subcommand with tests, through an issue. Why: see `docs/context/agent-cli-proposal.md`.
 
+Migrations and Edge Functions deploy to the live project on merge to `main` through `.github/workflows/supabase-deploy.yml`. Never edit a migration file that is already on `main`; add a new one. Every migration must be safe to rerun.
+
 ## Agent skills
 
 ### Issue tracker

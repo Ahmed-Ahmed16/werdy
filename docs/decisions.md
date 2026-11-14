@@ -2,6 +2,11 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0044 (2026-11-14): Supabase changes deploy from CI on merge
+Migrations and Edge Functions deploy to the live project from `.github/workflows/supabase-deploy.yml` after a merge to `main`. CI previews migrations before applying them, then deploys functions through the API. Only trusted main code receives deployment secrets. Deploy runs share a lock and never cancel a running deploy. A missing access token skips functions with a notice; a missing database URL fails migrations. Never edit a migration already on main. Add a new migration that is safe to rerun.
+
+Push setup is a separate manual workflow. It creates VAPID keys only when no public key exists, masks generated values, and keeps the function cron secret and Vault in step. Existing subscriptions keep their keys. Why: the database and functions must follow reviewed code without repeated manual deploy commands, and private push keys must stay out of human hands. Rejected: deploying from pull requests, and rotating push keys on every run. Revisit: when test projects or approval gates are needed before a live deploy.
+
 ## 0043 (2026-11-11): Watch requests by email, both ways
 A watch request adds a watcher by Google email, in either direction: the owner asks someone to watch them, or a watcher asks to watch an owner. The other person accepts or declines in the app, and accepting creates the same read only share as a share code (0006, 0039). Rules:
 * The email is matched after trimming and lowercasing, with no alias rules. Sign in is Google only, so the app asks for "their Google email".

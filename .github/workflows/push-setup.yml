@@ -1,0 +1,171 @@
+name: Push setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      subject:
+        description: 'Contact URI. Use mailto:you@example.com or https: URL. Bare mailto: uses vars.PUSH_CONTACT_EMAIL.'
+        required: true
+        default: 'mailto:'
+        type: string
+
+permissions:
+  contents: read
+
+# Share the deploy lock so setup cannot race migrations or another setup.
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.54.11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes postgresql-client
+      - name: Configure push secrets and Cron
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PUSH_SUBJECT: ${{ inputs.subject }}
+          PUSH_CONTACT_EMAIL: ${{ vars.PUSH_CONTACT_EMAIL }}
+        shell: bash
+        run: |
+          if [[ -z "$SUPABASE_ACCESS_TOKEN" || -z "$SUPABASE_DB_URL" ]]; then
+            echo '::error::Add both SUPABASE_ACCESS_TOKEN and SUPABASE_DB_URL repository secrets before setup.'
+            exit 1
+          fi
+          # Escape workflow command characters before registering any mask.
+          mask() {
+            local value=$1
+            value=${value//'%'/'%25'}
+            value=${value//$'\r'/'%0D'}
+            value=${value//$'\n'/'%0A'}
+            printf '::add-mask::%s\n' "$value"
+          }
+          mask "$SUPABASE_ACCESS_TOKEN"
+          mask "$SUPABASE_DB_URL"
+          if [[ "$PUSH_SUBJECT" == 'mailto:' ]]; then
+            PUSH_SUBJECT="mailto:$PUSH_CONTACT_EMAIL"
+          fi
+          mask "$PUSH_SUBJECT"
+          if [[ ! "$PUSH_SUBJECT" =~ ^(mailto:|https:)[^[:space:]]+$ ]]; then
+            echo '::error::Subject must start with mailto: or https: and contain a contact address. Supply subject or set PUSH_CONTACT_EMAIL.'
+            exit 1
+          fi
+          export PGDATABASE="$SUPABASE_DB_URL" PGCONNECT_TIMEOUT=30
+          export VAPID_PUBLIC_KEY='' PUSH_CRON_SECRET=''
+          new_secrets=false
+          secrets=$(supabase secrets list --project-ref ysrvszrhkwgsqrrvvdhj --output json)
+          has_public=$(jq -er 'if type == "array" then any(.[]; .name == "VAPID_PUBLIC_KEY") | tostring else error("Expected a secrets array") end' <<< "$secrets")
+          if [[ "$has_public" == false ]]; then
+            keys=$(npx --yes web-push@3.6.7 generate-vapid-keys --json)
+            VAPID_PUBLIC_KEY=$(jq -er '.publicKey' <<< "$keys")
+            VAPID_PRIVATE_KEY=$(jq -er '.privateKey' <<< "$keys")
+            mask "$VAPID_PRIVATE_KEY"
+            PUSH_CRON_SECRET=$(openssl rand -hex 32)
+            mask "$PUSH_CRON_SECRET"
+            # Standard input keeps keys out of command arguments and files.
+            printf '%s\n' \
+              "VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY" \
+              "VAPID_SUBJECT=$PUSH_SUBJECT" \
+              "PUSH_CRON_SECRET=$PUSH_CRON_SECRET" | \
+              supabase secrets set --project-ref ysrvszrhkwgsqrrvvdhj --env-file /dev/stdin
+            unset keys VAPID_PRIVATE_KEY
+            new_secrets=true
+          else
+            echo 'Existing VAPID keys kept. No function secrets changed.'
+          fi
+          export NEW_PUSH_SECRETS="$new_secrets"
+          # Read values from env inside psql, with SQL literal quoting.
+          # Hide SQL errors too: an expanded statement could contain a key.
+          if ! psql -X --set ON_ERROR_STOP=1 > /dev/null 2>&1 <<'SQL'
+          \getenv new_secrets NEW_PUSH_SECRETS
+          \getenv public_key VAPID_PUBLIC_KEY
+          \getenv cron_secret PUSH_CRON_SECRET
+          begin;
+          select exists(select 1 from vault.secrets where name = 'werdy_push_project_url') as has_url \gset
+          \if :has_url
+          select vault.update_secret(id, 'https://ysrvszrhkwgsqrrvvdhj.supabase.co')
+          from vault.secrets where name = 'werdy_push_project_url';
+          \else
+          select vault.create_secret('https://ysrvszrhkwgsqrrvvdhj.supabase.co', 'werdy_push_project_url');
+          \endif
+          \if :new_secrets
+          select exists(select 1 from vault.secrets where name = 'werdy_push_cron_secret') as has_cron \gset
+          \if :has_cron
+          select vault.update_secret(id, :'cron_secret')
+          from vault.secrets where name = 'werdy_push_cron_secret';
+          \else
+          select vault.create_secret(:'cron_secret', 'werdy_push_cron_secret');
+          \endif
+          -- Only the public key is kept here so later runs can show it again.
+          select exists(select 1 from vault.secrets where name = 'werdy_push_vapid_public_key') as has_public \gset
+          \if :has_public
+          select vault.update_secret(id, :'public_key')
+          from vault.secrets where name = 'werdy_push_vapid_public_key';
+          \else
+          select vault.create_secret(:'public_key', 'werdy_push_vapid_public_key');
+          \endif
+          \endif
+          do $$
+          begin
+            if not exists(select 1 from vault.secrets where name = 'werdy_push_cron_secret') then
+              raise exception 'Missing Vault cron secret. Restore the matching function secret through manual setup.';
+            end if;
+          end $$;
+          select cron.schedule(
+            'werdy-push-each-minute',
+            '* * * * *',
+            $$
+            select net.http_post(
+              url := (
+                select decrypted_secret from vault.decrypted_secrets
+                where name = 'werdy_push_project_url'
+              ) || '/functions/v1/push-send',
+              headers := jsonb_build_object(
+                'Content-Type', 'application/json',
+                'Authorization', 'Bearer ' || (
+                  select decrypted_secret from vault.decrypted_secrets
+                  where name = 'werdy_push_cron_secret'
+                )
+              ),
+              body := '{}'::jsonb,
+              timeout_milliseconds := 5000
+            ) as request_id;
+            $$
+          );
+          commit;
+          SQL
+          then
+            echo '::error::Vault or Cron setup failed. Check that the push_cron migration is applied and Vault is enabled, then rerun. For existing keys, restore a missing Vault cron secret through the manual fallback.'
+            exit 1
+          fi
+          if [[ "$new_secrets" == true ]]; then
+            # Save the public marker last so a failed first setup can retry.
+            printf 'VAPID_PUBLIC_KEY=%s\n' "$VAPID_PUBLIC_KEY" | \
+              supabase secrets set --project-ref ysrvszrhkwgsqrrvvdhj --env-file /dev/stdin
+          fi
+          public_key=$(psql -X --set ON_ERROR_STOP=1 --tuples-only --no-align \
+            --command "select decrypted_secret from vault.decrypted_secrets where name = 'werdy_push_vapid_public_key'" 2>/dev/null)
+          if [[ -n "$public_key" ]]; then
+            # This key is public. Masking it would hide the setup result.
+            printf 'VAPID public key: `%s`\n\nPut this public key in `crates/werdy-app/src/account/config.rs`.\n' \
+              "$public_key" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::notice::Existing keys predate this workflow. Use the original public key from your setup records. Keys were not rotated.'
+            echo 'Existing VAPID keys kept. Public key is not stored in Vault; use the original setup records.' >> "$GITHUB_STEP_SUMMARY"
+          fi
