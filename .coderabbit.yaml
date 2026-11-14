@@ -31,7 +31,7 @@ reviews:
     - path: ".github/workflows/**"
       instructions: Keep permissions minimal. Secrets must never reach pull requests from forks or be printed in logs. Check that a failed step really fails the job.
     - path: "supabase/**"
-      instructions: Functions that are security definer must set search_path to an empty string and grant execute only to the roles that need it. Row level security stays on for every table.
+      instructions: Functions that are security definer must set search_path to an empty string and grant execute only to the roles that need it. Row level security stays on for every table. Migrations deploy to the live project on merge, so a migration already on main is never edited (add a new one), and every migration must be safe to rerun.
 
 knowledge_base:
   code_guidelines:
