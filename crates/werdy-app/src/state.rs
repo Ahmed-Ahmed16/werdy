@@ -450,11 +450,11 @@ impl AppState {
     /// Do not merge server revisions against phone times here.
     pub fn accept_sync(&mut self, records: OwnerData) {
         self.data = records;
-        self.adopt_first_run_view();
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
         self.first_run_dirty = false;
         self.deed_changes.clear();
+        self.adopt_first_run_view();
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
         crate::platform::reschedule_reminders(&self.data);
@@ -470,7 +470,7 @@ impl AppState {
         let migrated = crate::starter::migrate_legacy_prayers(&mut data);
         let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
             Self::first_run_view(&data);
-        Self {
+        let mut state = Self {
             data,
             today,
             viewing: today,
@@ -492,7 +492,9 @@ impl AppState {
             sets_dirty: migrated,
             first_run_dirty: false,
             deed_changes: BTreeMap::new(),
-        }
+        };
+        state.backfill_setup_deed_ids();
+        state
     }
 
     fn first_run_view(
@@ -554,6 +556,7 @@ impl AppState {
         if self.data.first_run_complete {
             return;
         }
+        self.backfill_setup_deed_ids();
         let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
             Self::first_run_view(&self.data);
         self.screen = screen;
@@ -1522,7 +1525,8 @@ impl AppState {
     }
 
     fn backfill_setup_deed_ids(&mut self) {
-        if !self.data.first_run.setup_deed_ids.is_empty()
+        if self.data.first_run_complete
+            || !self.data.first_run.setup_deed_ids.is_empty()
             || self.data.first_run.own_deed_ids.is_empty()
         {
             return;
@@ -2866,8 +2870,27 @@ mod tests {
         state.data.first_run.setup_deed_ids.clear();
         state.save_to(&store);
         assert_eq!(state.save_status, SaveStatus::Saved);
+        assert!(
+            store
+                .load()?
+                .ok_or("missing old save")?
+                .first_run
+                .setup_deed_ids
+                .is_empty()
+        );
         let mut loaded = AppState::start(&store, start, slot_order());
-        assert!(loaded.data.first_run.setup_deed_ids.is_empty());
+        assert_eq!(loaded.data.first_run.setup_deed_ids, setup_ids);
+        assert!(loaded.first_run_dirty);
+        loaded.save_to(&store);
+        assert_eq!(loaded.save_status, SaveStatus::Saved);
+        assert_eq!(
+            store
+                .load()?
+                .ok_or("missing recovered save")?
+                .first_run
+                .setup_deed_ids,
+            setup_ids
+        );
         let next = start.next()?;
         loaded.update_today(next);
         assert_eq!(
@@ -2889,12 +2912,81 @@ mod tests {
             assert_eq!(deed.created_on(), expected, "deed {:?}", deed.id);
         }
         assert_eq!(loaded.data.first_run.setup_deed_ids, setup_ids);
-        assert!(loaded.first_run_dirty);
         loaded.save_to(&store);
         assert_eq!(loaded.save_status, SaveStatus::Saved);
         let saved = store.load()?.ok_or("missing saved data")?;
         assert_eq!(saved.first_run.setup_deed_ids, setup_ids);
         assert_eq!(saved.deeds, loaded.data.deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_old_save_added_deeds_do_not_block_redating() -> TestResult {
+        for source in ["start", "reload", "sync"] {
+            let store = MemoryStore::default();
+            let start = today()?;
+            let mut state = AppState::start(&store, start, slot_order());
+            let outside = state.save_deed(
+                None,
+                &EditorDraft {
+                    name: "Outside setup".into(),
+                    ..EditorDraft::default()
+                },
+            )?;
+            state.select_first_run_level("level_1")?;
+            state.continue_first_run_level()?;
+            state.continue_first_run_extras()?;
+            state.add_first_run_deed("Walk", "morning")?;
+            let marked = state
+                .add_first_run_deed("Read", "night")?
+                .ok_or("missing marked deed")?;
+            state.tap(marked, Tap::Done);
+            let mut setup_ids = state.data.first_run.setup_deed_ids.clone();
+            state.data.first_run.setup_deed_ids.clear();
+            state.save_to(&store);
+            assert_eq!(state.save_status, SaveStatus::Saved);
+
+            let mut loaded = if source == "start" {
+                AppState::start(&store, start, slot_order())
+            } else {
+                let mut loaded = AppState::start(&MemoryStore::default(), start, slot_order());
+                if source == "reload" {
+                    loaded.reload_from(&store);
+                } else {
+                    loaded.accept_sync(store.load()?.ok_or("missing old save")?);
+                }
+                loaded
+            };
+            assert!(!loaded.data.first_run_complete);
+            let new = loaded
+                .add_first_run_deed("Rest", "night")?
+                .ok_or("missing new deed")?;
+            setup_ids.insert(new);
+            loaded.toggle_set("ramadan")?;
+            setup_ids.extend(loaded.data.starter_keys.keys().copied());
+            let next = start.next()?;
+            loaded.update_today(next);
+            loaded.finish_first_run(Screen::Sheet);
+            loaded.save_to(&store);
+            assert_eq!(loaded.save_status, SaveStatus::Saved);
+            let saved = AppState::start(&store, next, slot_order());
+            assert!(saved.data.first_run_complete);
+            for id in setup_ids.iter().copied().chain([outside]) {
+                let deed = saved
+                    .data
+                    .deeds
+                    .iter()
+                    .find(|deed| deed.id == id)
+                    .ok_or("missing saved deed")?;
+                let expected = if [outside, marked].contains(&id) {
+                    start
+                } else {
+                    next
+                };
+                assert_eq!(deed.created_on(), expected, "{source}: deed {id:?}");
+            }
+            assert_eq!(saved.data.marks[&(marked, start)].mark, Mark::Done);
+        }
         Ok(())
     }
 
