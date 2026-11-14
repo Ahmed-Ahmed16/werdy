@@ -66,7 +66,9 @@ jobs:
             echo '::error::Subject must start with mailto: or https: and contain a contact address. Supply subject or set PUSH_CONTACT_EMAIL.'
             exit 1
           fi
-          export PGDATABASE="$SUPABASE_DB_URL" PGCONNECT_TIMEOUT=30
+          # psql expands a connection URI only when it is passed as -d, not
+          # from PGDATABASE, so every psql call below passes it explicitly.
+          export PGCONNECT_TIMEOUT=30
           export VAPID_PUBLIC_KEY='' PUSH_CRON_SECRET=''
           new_secrets=false
           secrets=$(supabase secrets list --project-ref ysrvszrhkwgsqrrvvdhj --output json)
@@ -92,7 +94,7 @@ jobs:
           export NEW_PUSH_SECRETS="$new_secrets"
           # Read values from env inside psql, with SQL literal quoting.
           # Hide SQL errors too: an expanded statement could contain a key.
-          if ! psql -X --set ON_ERROR_STOP=1 > /dev/null 2>&1 <<'SQL'
+          if ! psql -X -d "$SUPABASE_DB_URL" --set ON_ERROR_STOP=1 > /dev/null 2>&1 <<'SQL'
           \getenv new_secrets NEW_PUSH_SECRETS
           \getenv public_key VAPID_PUBLIC_KEY
           \getenv cron_secret PUSH_CRON_SECRET
@@ -159,7 +161,7 @@ jobs:
             printf 'VAPID_PUBLIC_KEY=%s\n' "$VAPID_PUBLIC_KEY" | \
               supabase secrets set --project-ref ysrvszrhkwgsqrrvvdhj --env-file /dev/stdin
           fi
-          public_key=$(psql -X --set ON_ERROR_STOP=1 --tuples-only --no-align \
+          public_key=$(psql -X -d "$SUPABASE_DB_URL" --set ON_ERROR_STOP=1 --tuples-only --no-align \
             --command "select decrypted_secret from vault.decrypted_secrets where name = 'werdy_push_vapid_public_key'" 2>/dev/null)
           if [[ -n "$public_key" ]]; then
             # This key is public. Masking it would hide the setup result.
