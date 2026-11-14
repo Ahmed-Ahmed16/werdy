@@ -296,7 +296,10 @@ fn file_session_and_checkpoint_survive_reopen_and_replace() {
     );
     restored.sign_out(&records).unwrap();
     assert!(vault.read(File::Session).unwrap().is_none());
-    std::fs::remove_dir(folder).unwrap();
+    // Cleanup does not decide the result: on Windows a file just written or
+    // renamed can stay open for a moment (antivirus, the store), so removing
+    // the folder sometimes fails there. A leftover temp folder is harmless (#139).
+    let _ = std::fs::remove_dir_all(folder);
 }
 
 struct BrokenMirror;
