@@ -306,6 +306,66 @@ fn refresh_view(mut sharing: Signal<Sharing>, store: Rc<crate::account::AccountS
 }
 
 #[component]
+/// The "Their Google email" field and send buttons, shared by the sharing
+/// section and first run. `watch_them` adds "Ask to watch them"; `standalone`
+/// shows progress and send errors here, for screens without the section's own.
+pub fn WatchRequestForm(
+    #[props(default)] watch_them: bool,
+    #[props(default)] standalone: bool,
+) -> Element {
+    let i18n = use_i18n();
+    let store = use_context::<AccountHandle>().0;
+    let mut sharing = use_context::<Signal<Sharing>>();
+    let (request_email, request_sent, busy, error) = {
+        let request_state = sharing.read();
+        (
+            request_state.request_email.clone(),
+            request_state.request_sent,
+            request_state.busy,
+            request_state.error,
+        )
+    };
+    let send_error = error.filter(|key| {
+        matches!(
+            *key,
+            "sharing-email-invalid"
+                | "sharing-request-limit"
+                | "sharing-request-error"
+                | "sharing-error"
+        )
+    });
+    rsx! {
+        label { r#for:"watch-email", {i18n.t("sharing-request-email")} }
+        input { id:"watch-email",dir:"ltr",value:"{request_email}",disabled:busy,
+            oninput:move |event| {
+                let mut sharing = sharing.write();
+                sharing.request_email = event.value();
+                sharing.request_sent = false;
+            }
+        }
+        div { class:"settings-options",
+            button { class:"secondary-button",disabled:busy,onclick:{let store=store.clone();move |_| {
+                let request = sharing.write().send_request(WatchDirection::WatchMe);
+                if let Some(request) = request { run(sharing,store.clone(),request); }
+            }},{i18n.t("sharing-request-send")} }
+            if watch_them {
+                button { class:"secondary-button",disabled:busy,onclick:{let store=store.clone();move |_| {
+                    let request = sharing.write().send_request(WatchDirection::WatchThem);
+                    if let Some(request) = request { run(sharing,store.clone(),request); }
+                }},{i18n.t("sharing-request-send-watch-them")} }
+            }
+        }
+        if request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
+        if standalone {
+            if busy { p {role:"status",{i18n.t("sharing-loading")}} }
+            if let Some(error) = send_error {
+                p {role:"alert",{i18n.t_with(error, &[("limit", fluent_bundle::FluentValue::from(WATCH_REQUEST_LIMIT))])}}
+            }
+        }
+    }
+}
+
+#[component]
 pub fn WatchRequestCard(
     request: WatchRequest,
     #[props(default)] on_later: Option<EventHandler>,
@@ -413,25 +473,7 @@ pub fn SharingSection() -> Element {
                 button {disabled:data.busy,onclick:{let store=store.clone(); move |_| {
                     let code=input();input.set(String::new());run(sharing,store.clone(),Request::Redeem(code));
                 }},{i18n.t("sharing-redeem")}}
-                label { r#for:"watch-email", {i18n.t("sharing-request-email")} }
-                input { id:"watch-email",dir:"ltr",value:"{data.request_email}",disabled:data.busy,
-                    oninput:move |event| {
-                        let mut sharing = sharing.write();
-                        sharing.request_email = event.value();
-                        sharing.request_sent = false;
-                    }
-                }
-                div { class:"settings-options",
-                    button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
-                        let request = sharing.write().send_request(WatchDirection::WatchMe);
-                        if let Some(request) = request { run(sharing,store.clone(),request); }
-                    }},{i18n.t("sharing-request-send")} }
-                    button { class:"secondary-button",disabled:data.busy,onclick:{let store=store.clone();move |_| {
-                        let request = sharing.write().send_request(WatchDirection::WatchThem);
-                        if let Some(request) = request { run(sharing,store.clone(),request); }
-                    }},{i18n.t("sharing-request-send-watch-them")} }
-                }
-                if data.request_sent { p {role:"status",{i18n.t("sharing-request-sent")}} }
+                WatchRequestForm { watch_them: true }
                 if !data.outgoing.is_empty() {
                     h3 {{i18n.t("sharing-waiting")}}
                     for request in data.outgoing {

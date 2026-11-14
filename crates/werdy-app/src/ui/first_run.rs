@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use werdy_store::{DeedName, PrayerMethod, Settings};
 
 use super::context::{use_actions, use_i18n};
+use crate::account::runtime::{AccountHandle, AccountView};
 use crate::state::{AppState, EditorError, Screen};
 use crate::{editor_data, location, platform};
 
@@ -37,11 +38,16 @@ fn place_summary(i18n: &super::context::I18n, settings: &Settings) -> Option<Str
 #[component]
 fn StepIndicator(step: usize) -> Element {
     let i18n = use_i18n();
+    let total = if use_context::<AccountHandle>().0.enabled {
+        6
+    } else {
+        5
+    };
     rsx! {
         div { class: "first-run-progress",
-            span { class: "sr-only", {i18n.t_with("first-run-step", &[("step", FluentValue::from(step)), ("total", FluentValue::from(5))])} }
+            span { class: "sr-only", {i18n.t_with("first-run-step", &[("step", FluentValue::from(step)), ("total", FluentValue::from(total))])} }
             div { class: "first-run-dots", aria_hidden: "true",
-                for dot in 1..=5 { span { class: if dot == step { "first-run-dot current" } else { "first-run-dot" } } }
+                for dot in 1..=total { span { class: if dot == step { "first-run-dot current" } else { "first-run-dot" } } }
             }
         }
     }
@@ -52,6 +58,7 @@ pub fn LevelStep() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
     let state = use_context::<Signal<AppState>>();
+    let watcher_step = use_context::<AccountHandle>().0.enabled;
     let mut open_level = use_signal(|| None::<String>);
     let mut error = use_signal(|| false);
     let selected = state.read().pending_level.clone();
@@ -121,6 +128,11 @@ pub fn LevelStep() -> Element {
                 button { class: "text-button", onclick: move |_| {
                     if actions.change_deed(|state| state.start_first_run_empty()).is_err() { error.set(true); }
                 }, {i18n.t("first-run-level-empty")} }
+                if watcher_step {
+                    button { class: "text-button", onclick: move |_| {
+                        if actions.change_deed(|state| state.watch_only_first_run()).is_err() { error.set(true); }
+                    }, {i18n.t("first-run-watch-only")} }
+                }
             }
         }
     }
@@ -279,6 +291,7 @@ pub fn OwnDeedsStep() -> Element {
 pub fn SummaryStep() -> Element {
     let i18n = use_i18n();
     let actions = use_actions();
+    let watcher_step = use_context::<AccountHandle>().0.enabled;
     let state = use_context::<Signal<AppState>>();
     let Ok(catalog) = editor_data::catalog() else {
         return rsx! { p { class: "editor-error", role: "alert", {i18n.t("sets-data-error")} } };
@@ -291,6 +304,7 @@ pub fn SummaryStep() -> Element {
         section { class: "first-run-screen",
             header { class: "first-run-header",
                 span { class: "rail-brand", {i18n.t("app-name")} }
+                StepIndicator { step: if watcher_step { 6 } else { 5 } }
                 h1 { {i18n.t("first-run-summary-title")} }
                 p { {i18n.t("first-run-summary-help")} }
             }
@@ -308,7 +322,46 @@ pub fn SummaryStep() -> Element {
             }
             footer { class: "first-run-footer",
                 button { class: "primary-button", onclick: move |_| actions.change(|state| state.finish_first_run(Screen::Sheet)), {i18n.t("first-run-summary-open")} }
-                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_summary()), {i18n.t("first-run-extras-back")} }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_summary(watcher_step)), {i18n.t("first-run-extras-back")} }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn WatcherStep() -> Element {
+    let i18n = use_i18n();
+    let actions = use_actions();
+    let account = use_context::<Signal<AccountView>>().read().clone();
+    let mut yes = use_signal(|| false);
+    rsx! {
+        section { class: "first-run-screen",
+            header { class: "first-run-header",
+                span { class: "rail-brand", {i18n.t("app-name")} }
+                StepIndicator { step: 5 }
+                h1 { {i18n.t("first-run-watcher-title")} }
+                p { {i18n.t("first-run-watcher-help")} }
+            }
+            if yes() {
+                section { class: "first-run-card",
+                    if account.signed_in {
+                        super::sharing::WatchRequestForm { standalone: true }
+                    } else {
+                        p { {i18n.t("sharing-signin")} }
+                        super::account::SignInButton {}
+                        if account.busy { p { role: "status", {i18n.t("account-signing-in")} } }
+                        if let Some(error) = account.error { p { role: "status", {i18n.t(error)} } }
+                    }
+                }
+            }
+            footer { class: "first-run-footer",
+                if !yes() {
+                    button { class: "primary-button", onclick: move |_| yes.set(true), {i18n.t("first-run-watcher-yes")} }
+                } else if account.signed_in {
+                    button { class: "primary-button", onclick: move |_| actions.change(|state| state.continue_first_run_watcher()), {i18n.t("first-run-level-next")} }
+                }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.continue_first_run_watcher()), {i18n.t("first-run-watcher-not-now")} }
+                button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_watcher()), {i18n.t("first-run-extras-back")} }
             }
         }
     }
@@ -325,6 +378,7 @@ pub fn LocationStep() -> Element {
     let mut state = use_context::<Signal<AppState>>();
     let selected = state.read().data.settings.location.clone();
     let first_run = !state.read().data.first_run_complete;
+    let watcher_step = use_context::<AccountHandle>().0.enabled;
     let confirmation = place_summary(&i18n, &state.read().data.settings);
 
     rsx! {
@@ -398,8 +452,8 @@ pub fn LocationStep() -> Element {
             }
             footer { class: "first-run-footer",
                 if first_run {
-                    button { class: "primary-button", onclick: move |_| actions.change(|state| state.continue_first_run_location()), {i18n.t("first-run-level-next")} }
-                    button { class: "text-button", onclick: move |_| actions.change(|state| state.skip_first_run_location()), {i18n.t("location-skip")} }
+                    button { class: "primary-button", onclick: move |_| actions.change(|state| state.continue_first_run_location(watcher_step)), {i18n.t("first-run-level-next")} }
+                    button { class: "text-button", onclick: move |_| actions.change(|state| state.skip_first_run_location(watcher_step)), {i18n.t("location-skip")} }
                     button { class: "text-button", onclick: move |_| actions.change(|state| state.back_first_run_location()), {i18n.t("first-run-extras-back")} }
                 } else {
                     button { class: "primary-button", onclick: move |_| actions.view(|state| state.show_screen(state.location_return)), {i18n.t(if state.read().location_return == Screen::Settings { "settings-back-location" } else { "location-back-deeds" })} }

@@ -157,8 +157,16 @@ pub fn App() -> Element {
         ))
     });
     use_context_provider(|| crate::account::runtime::AccountHandle(account_store.clone()));
+    let account_enabled = account_store.enabled;
     let store: Rc<dyn werdy_store::Store> = account_store;
-    let initial = use_hook(|| start_app_state(mode, store.as_ref()));
+    let initial = use_hook(|| {
+        start_app_state(mode, store.as_ref()).map(|mut state| {
+            if !account_enabled && state.screen == Screen::FirstRunWatcher {
+                state.continue_first_run_watcher();
+            }
+            state
+        })
+    });
     use_context_provider(|| texts.clone());
 
     rsx! {
@@ -276,7 +284,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
             "data-theme": theme,
             if state.read().data.first_run_complete { rail::Rail {} }
             main { class: match state.read().screen {
-                Screen::FirstRunLevel | Screen::FirstRunExtras | Screen::FirstRunOwnDeeds | Screen::FirstRunLocation | Screen::FirstRunSummary | Screen::SetPicker => "onboarding-content",
+                Screen::FirstRunLevel | Screen::FirstRunExtras | Screen::FirstRunOwnDeeds | Screen::FirstRunLocation | Screen::FirstRunWatcher | Screen::FirstRunSummary | Screen::SetPicker => "onboarding-content",
                 Screen::Sheet => "panes",
                 Screen::Reports => "report-panes",
                 Screen::Deeds | Screen::Editor(_) | Screen::Settings => "page-content",
@@ -306,6 +314,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
                     Screen::FirstRunExtras => rsx! { first_run::ExtrasStep {} },
                     Screen::FirstRunOwnDeeds => rsx! { first_run::OwnDeedsStep {} },
                     Screen::FirstRunLocation => rsx! { first_run::LocationStep {} },
+                    Screen::FirstRunWatcher => rsx! { first_run::WatcherStep {} },
                     Screen::FirstRunSummary => rsx! { first_run::SummaryStep {} },
                     Screen::SetPicker => rsx! { first_run::SetPicker {} },
                     Screen::Sheet => rsx! {
