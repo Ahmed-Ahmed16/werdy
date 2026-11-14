@@ -435,6 +435,8 @@ pub struct AppState {
     pub report_steps_back: usize,
     /// Welcome stays visible for this app opening only.
     pub welcome_visible: bool,
+    /// Release notes waiting for dismissal on today's sheet.
+    pub whats_new: Vec<crate::whats_new::ReleaseNotes>,
     /// Today when the owner chose to see only unmarked deeds. A new day clears it.
     unmarked_day: Option<WerdyDay>,
     kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
@@ -485,6 +487,7 @@ impl AppState {
             report_period: Period::Week,
             report_steps_back: 0,
             welcome_visible: false,
+            whats_new: Vec::new(),
             unmarked_day: None,
             kept_days_cache: RefCell::new(None),
             pending_settings: PendingSettings::default(),
@@ -627,6 +630,45 @@ impl AppState {
 
     pub fn dismiss_milestone(&mut self, level: usize) {
         self.data.dismissed_milestones.insert(level);
+    }
+
+    /// Selects update notes. First run records the build without showing a card.
+    pub fn show_whats_new_on_open(&mut self, store: &dyn Store) {
+        self.whats_new.clear();
+        if !self.data.first_run_complete {
+            self.dismiss_whats_new(store);
+            return;
+        }
+        let Ok(releases) = crate::whats_new::load() else {
+            return;
+        };
+        self.whats_new = crate::whats_new::notes_to_show(
+            &releases,
+            self.data.last_seen_version.as_deref(),
+            crate::whats_new::CURRENT_VERSION,
+            crate::whats_new::MAX_VERSIONS,
+        );
+        if self.whats_new.is_empty() {
+            self.dismiss_whats_new(store);
+        }
+    }
+
+    /// Records this build without lowering a version saved by a newer build.
+    /// Saves only when the seen version moves, so a normal open writes nothing.
+    pub fn dismiss_whats_new(&mut self, store: &dyn Store) {
+        let before = self.data.last_seen_version.clone();
+        self.acknowledge_whats_new();
+        if self.data.last_seen_version != before {
+            self.save_to(store);
+        }
+    }
+
+    pub fn acknowledge_whats_new(&mut self) {
+        self.whats_new.clear();
+        self.data.last_seen_version = werdy_store::greater_app_version(
+            self.data.last_seen_version.as_deref(),
+            Some(crate::whats_new::CURRENT_VERSION),
+        );
     }
 
     /// Records a welcome before the first sheet renders on this opening.
@@ -1875,6 +1917,7 @@ impl AppState {
         self.screen = Screen::Sheet;
         self.report_steps_back = 0;
         self.welcome_visible = false;
+        self.whats_new.clear();
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
         self.first_run_dirty = false;
@@ -2034,6 +2077,67 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn whats_new_first_run_records_version_and_stays_hidden_after_finish() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.show_whats_new_on_open(&store);
+        assert!(state.whats_new.is_empty());
+        assert_eq!(
+            store
+                .load()?
+                .ok_or("missing records")?
+                .last_seen_version
+                .as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        state.finish_first_run(Screen::Sheet);
+        state.show_whats_new_on_open(&store);
+        assert!(state.whats_new.is_empty());
+        Ok(())
+    }
+    #[test]
+    fn whats_new_legacy_user_sees_notes_until_dismissed() -> TestResult {
+        let store = MemoryStore::default();
+        store.save(&five_prayers(today()?)?)?;
+        let mut state = started(&store)?;
+        state.show_whats_new_on_open(&store);
+        assert!(!state.whats_new.is_empty());
+        assert_eq!(state.data.last_seen_version, None);
+        state.dismiss_whats_new(&store);
+        assert!(state.whats_new.is_empty());
+        let mut next = started(&store)?;
+        next.show_whats_new_on_open(&store);
+        assert!(next.whats_new.is_empty());
+        assert_eq!(
+            next.data.last_seen_version.as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        Ok(())
+    }
+    #[test]
+    fn whats_new_newer_seen_version_is_never_lowered() -> TestResult {
+        for complete in [false, true] {
+            let store = MemoryStore::default();
+            let mut data = five_prayers(today()?)?;
+            data.first_run_complete = complete;
+            data.last_seen_version = Some("99.0.0".into());
+            store.save(&data)?;
+            let mut state = started(&store)?;
+            state.show_whats_new_on_open(&store);
+            assert!(state.whats_new.is_empty());
+            state.dismiss_whats_new(&store);
+            assert_eq!(
+                store
+                    .load()?
+                    .ok_or("missing records")?
+                    .last_seen_version
+                    .as_deref(),
+                Some("99.0.0")
+            );
+        }
+        Ok(())
+    }
     #[test]
     fn welcome_is_saved_once_per_day_after_gap() -> TestResult {
         let store = MemoryStore::default();
