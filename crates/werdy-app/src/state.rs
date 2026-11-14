@@ -452,11 +452,11 @@ impl AppState {
     /// Do not merge server revisions against phone times here.
     pub fn accept_sync(&mut self, records: OwnerData) {
         self.data = records;
-        self.adopt_first_run_view();
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
         self.first_run_dirty = false;
         self.deed_changes.clear();
+        self.adopt_first_run_view();
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
         crate::platform::reschedule_reminders(&self.data);
@@ -472,7 +472,7 @@ impl AppState {
         let migrated = crate::starter::migrate_legacy_prayers(&mut data);
         let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
             Self::first_run_view(&data);
-        Self {
+        let mut state = Self {
             data,
             today,
             viewing: today,
@@ -495,7 +495,9 @@ impl AppState {
             sets_dirty: migrated,
             first_run_dirty: false,
             deed_changes: BTreeMap::new(),
-        }
+        };
+        state.backfill_setup_deed_ids();
+        state
     }
 
     fn first_run_view(
@@ -557,6 +559,7 @@ impl AppState {
         if self.data.first_run_complete {
             return;
         }
+        self.backfill_setup_deed_ids();
         let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
             Self::first_run_view(&self.data);
         self.screen = screen;
@@ -1028,9 +1031,27 @@ impl AppState {
     }
 
     pub fn watch_only_first_run(&mut self) -> Result<(), EditorError> {
-        self.start_first_run_empty()?;
-        self.finish_first_run(Screen::Settings);
-        Ok(())
+        let previous = self.clone();
+        let result = (|| {
+            for key in self.data.chosen_sets.clone() {
+                self.toggle_set(&key)?;
+            }
+            for id in self.data.first_run.own_deed_ids.clone() {
+                if self.data.marks.keys().any(|(deed_id, _)| *deed_id == id) {
+                    continue;
+                }
+                self.delete_deed_confirmed(id, true)?;
+                self.data.first_run.own_deed_ids.remove(&id);
+                self.data.first_run.setup_deed_ids.remove(&id);
+            }
+            self.start_first_run_empty()?;
+            self.finish_first_run(Screen::Settings);
+            Ok(())
+        })();
+        if result.is_err() {
+            *self = previous;
+        }
+        result
     }
 
     fn apply_first_run_level(&mut self, chosen: &str) -> Result<(), EditorError> {
@@ -1545,7 +1566,30 @@ impl AppState {
         }
     }
 
+    fn backfill_setup_deed_ids(&mut self) {
+        if self.data.first_run_complete
+            || !self.data.first_run.setup_deed_ids.is_empty()
+            || self.data.first_run.own_deed_ids.is_empty()
+        {
+            return;
+        }
+        // Older saves tracked own deeds but had no separate setup ids.
+        self.data.first_run.setup_deed_ids = self.data.first_run.own_deed_ids.clone();
+        if let Ok(catalog) = crate::editor_data::catalog() {
+            let selected = crate::starter::selected_deeds(catalog, &self.data.chosen_sets);
+            self.data.first_run.setup_deed_ids.extend(
+                self.data
+                    .starter_keys
+                    .iter()
+                    .filter(|(_, key)| selected.contains(*key))
+                    .map(|(id, _)| *id),
+            );
+        }
+        self.first_run_dirty = true;
+    }
+
     fn redate_setup_deeds(&mut self) {
+        self.backfill_setup_deed_ids();
         let ids: Vec<_> = self
             .data
             .deeds
@@ -2824,29 +2868,229 @@ mod tests {
     }
 
     #[test]
-    fn first_run_watch_only_keeps_other_sets_and_opens_settings() -> TestResult {
+    fn first_run_watch_only_removes_all_sets_and_own_deeds() -> TestResult {
         let mut empty = AppState::start(&MemoryStore::default(), today()?, slot_order());
         empty.watch_only_first_run()?;
         assert!(empty.data.deeds.is_empty());
-        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
-        state.toggle_set("level_1")?;
-        state.toggle_set("quran")?;
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.toggle_first_run_extra("fasting_seasons")?;
+        state.continue_first_run_extras()?;
+        assert!(state.data.chosen_sets.contains("five_prayers"));
+        assert!(state.data.chosen_sets.contains("fasting_seasons"));
+        state.add_first_run_deed("Walk", "morning")?;
+        state.save_to(&store);
+        state.back_first_run_own_deeds();
+        state.back_first_run_extras();
+        assert_eq!(state.screen, Screen::FirstRunLevel);
         state.watch_only_first_run()?;
         assert!(state.data.first_run_complete);
         assert_eq!(state.screen, Screen::Settings);
-        assert_eq!(state.data.chosen_sets, BTreeSet::from(["quran".into()]));
-        let level = werdy_data::builtin()?
-            .set("level_1")
-            .ok_or("missing level")?
-            .deeds
-            .clone();
+        assert!(state.data.chosen_sets.is_empty());
+        assert!(state.data.deeds.is_empty());
+        assert!(state.pending_level.is_none());
+        assert!(state.pending_extra_level.is_none());
+        assert!(state.pending_extra_ticks.is_empty());
+        state.save_to(&store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
+        let loaded = AppState::start(&store, today()?, slot_order());
+        assert!(loaded.data.first_run_complete);
+        assert!(loaded.data.chosen_sets.is_empty());
+        assert!(loaded.data.deeds.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_watch_only_keeps_marked_own_deeds() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.start_first_run_empty()?;
+        let id = state
+            .add_first_run_deed("Walk", "morning")?
+            .ok_or("missing deed")?;
+        state.tap(id, Tap::Done);
+        state.back_first_run_own_deeds();
+        state.watch_only_first_run()?;
+        state.save_to(&store);
+        let loaded = AppState::start(&store, today()?, slot_order());
+        assert!(loaded.data.first_run_complete);
+        assert!(loaded.data.deeds.iter().any(|deed| deed.id == id));
+        assert_eq!(loaded.mark(id), Some(Mark::Done));
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_watch_only_rolls_back_all_changes_on_error() -> TestResult {
+        let mut state = AppState::start(&MemoryStore::default(), today()?, slot_order());
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
+        state.add_first_run_deed("Walk", "morning")?;
+        state.back_first_run_own_deeds();
+        state.back_first_run_extras();
+        state.data.chosen_sets.insert("unknown_set".into());
+        let previous = state.clone();
+        assert_eq!(state.watch_only_first_run(), Err(EditorError::RuleChange));
+        assert_eq!(state.data, previous.data);
+        assert_eq!(state.screen, previous.screen);
+        assert_eq!(state.pending_level, previous.pending_level);
+        assert_eq!(state.pending_extra_level, previous.pending_extra_level);
+        assert_eq!(state.pending_extra_ticks, previous.pending_extra_ticks);
+        assert_eq!(state.deed_changes, previous.deed_changes);
+        assert_eq!(state.sets_dirty, previous.sets_dirty);
+        assert_eq!(state.first_run_dirty, previous.first_run_dirty);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_old_save_redates_only_unmarked_active_setup_deeds() -> TestResult {
+        let store = MemoryStore::default();
+        let start = today()?;
+        let mut state = AppState::start(&store, start, slot_order());
+        let outside = state.save_deed(
+            None,
+            &EditorDraft {
+                name: "Outside setup".into(),
+                ..EditorDraft::default()
+            },
+        )?;
+        state.select_first_run_level("level_1")?;
+        state.continue_first_run_level()?;
+        state.continue_first_run_extras()?;
+        let own = state
+            .add_first_run_deed("Walk", "morning")?
+            .ok_or("missing own deed")?;
+        let marked = state
+            .add_first_run_deed("Read", "night")?
+            .ok_or("missing marked deed")?;
+        state.tap(marked, Tap::Done);
+        let archived = state
+            .add_first_run_deed("Rest", "night")?
+            .ok_or("missing archived deed")?;
+        state.archive_deed(archived)?;
+        let setup_ids = state.data.first_run.setup_deed_ids.clone();
+        state.data.first_run.setup_deed_ids.clear();
+        state.save_to(&store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
         assert!(
-            state
-                .data
-                .starter_keys
-                .values()
-                .all(|key| !level.contains(key))
+            store
+                .load()?
+                .ok_or("missing old save")?
+                .first_run
+                .setup_deed_ids
+                .is_empty()
         );
+        let mut loaded = AppState::start(&store, start, slot_order());
+        assert_eq!(loaded.data.first_run.setup_deed_ids, setup_ids);
+        assert!(loaded.first_run_dirty);
+        loaded.save_to(&store);
+        assert_eq!(loaded.save_status, SaveStatus::Saved);
+        assert_eq!(
+            store
+                .load()?
+                .ok_or("missing recovered save")?
+                .first_run
+                .setup_deed_ids,
+            setup_ids
+        );
+        let next = start.next()?;
+        loaded.update_today(next);
+        assert_eq!(
+            loaded
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == own)
+                .ok_or("missing own deed")?
+                .created_on(),
+            next
+        );
+        for deed in &loaded.data.deeds {
+            let expected = if [outside, marked, archived].contains(&deed.id) {
+                start
+            } else {
+                next
+            };
+            assert_eq!(deed.created_on(), expected, "deed {:?}", deed.id);
+        }
+        assert_eq!(loaded.data.first_run.setup_deed_ids, setup_ids);
+        loaded.save_to(&store);
+        assert_eq!(loaded.save_status, SaveStatus::Saved);
+        let saved = store.load()?.ok_or("missing saved data")?;
+        assert_eq!(saved.first_run.setup_deed_ids, setup_ids);
+        assert_eq!(saved.deeds, loaded.data.deeds);
+        Ok(())
+    }
+
+    #[test]
+    fn first_run_old_save_added_deeds_do_not_block_redating() -> TestResult {
+        for source in ["start", "reload", "sync"] {
+            let store = MemoryStore::default();
+            let start = today()?;
+            let mut state = AppState::start(&store, start, slot_order());
+            let outside = state.save_deed(
+                None,
+                &EditorDraft {
+                    name: "Outside setup".into(),
+                    ..EditorDraft::default()
+                },
+            )?;
+            state.select_first_run_level("level_1")?;
+            state.continue_first_run_level()?;
+            state.continue_first_run_extras()?;
+            state.add_first_run_deed("Walk", "morning")?;
+            let marked = state
+                .add_first_run_deed("Read", "night")?
+                .ok_or("missing marked deed")?;
+            state.tap(marked, Tap::Done);
+            let mut setup_ids = state.data.first_run.setup_deed_ids.clone();
+            state.data.first_run.setup_deed_ids.clear();
+            state.save_to(&store);
+            assert_eq!(state.save_status, SaveStatus::Saved);
+
+            let mut loaded = if source == "start" {
+                AppState::start(&store, start, slot_order())
+            } else {
+                let mut loaded = AppState::start(&MemoryStore::default(), start, slot_order());
+                if source == "reload" {
+                    loaded.reload_from(&store);
+                } else {
+                    loaded.accept_sync(store.load()?.ok_or("missing old save")?);
+                }
+                loaded
+            };
+            assert!(!loaded.data.first_run_complete);
+            let new = loaded
+                .add_first_run_deed("Rest", "night")?
+                .ok_or("missing new deed")?;
+            setup_ids.insert(new);
+            loaded.toggle_set("ramadan")?;
+            setup_ids.extend(loaded.data.starter_keys.keys().copied());
+            let next = start.next()?;
+            loaded.update_today(next);
+            loaded.finish_first_run(Screen::Sheet);
+            loaded.save_to(&store);
+            assert_eq!(loaded.save_status, SaveStatus::Saved);
+            let saved = AppState::start(&store, next, slot_order());
+            assert!(saved.data.first_run_complete);
+            for id in setup_ids.iter().copied().chain([outside]) {
+                let deed = saved
+                    .data
+                    .deeds
+                    .iter()
+                    .find(|deed| deed.id == id)
+                    .ok_or("missing saved deed")?;
+                let expected = if [outside, marked].contains(&id) {
+                    start
+                } else {
+                    next
+                };
+                assert_eq!(deed.created_on(), expected, "{source}: deed {id:?}");
+            }
+            assert_eq!(saved.data.marks[&(marked, start)].mark, Mark::Done);
+        }
         Ok(())
     }
 
