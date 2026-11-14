@@ -16,6 +16,7 @@ mod reminders;
 mod starter;
 mod state;
 mod ui;
+mod whats_new;
 
 #[cfg(test)]
 mod style_check;

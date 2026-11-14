@@ -70,6 +70,9 @@ fn start_app_state(
         state.save_status = SaveStatus::SaveFailed;
     }
     state.show_welcome_on_open(store);
+    if mode == platform::DataMode::Normal {
+        state.show_whats_new_on_open(store);
+    }
     Ok(state)
 }
 
@@ -90,6 +93,17 @@ mod tests {
     use crate::platform::DataMode;
     use crate::state::Tap;
 
+    #[test]
+    fn demo_never_shows_or_records_whats_new() -> Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryStore::default();
+        let state = start_app_state(DataMode::Demo, &store)?;
+        assert!(state.whats_new.is_empty());
+        assert_eq!(
+            store.load()?.ok_or("missing records")?.last_seen_version,
+            None
+        );
+        Ok(())
+    }
     #[test]
     fn reset_demo_replaces_stale_tabs_without_restoring_marks_or_deleted_deeds()
     -> Result<(), Box<dyn std::error::Error>> {

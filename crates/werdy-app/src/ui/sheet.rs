@@ -40,6 +40,15 @@ pub fn Sheet() -> Element {
             (false, None, app.is_today())
         }
     };
+    let whats_new = {
+        let app = state.read();
+        if app.is_today() && !super::sharing::read_only() {
+            app.whats_new.clone()
+        } else {
+            Vec::new()
+        }
+    };
+    let has_whats_new = !whats_new.is_empty();
     let saying = if welcome {
         crate::consistency_data::notices()
             .ok()
@@ -80,7 +89,11 @@ pub fn Sheet() -> Element {
             last_scroll_day.set(Some(day));
             return;
         }
-        if !should_scroll_to_slot(app.is_today(), welcome, milestone.is_some()) {
+        if !should_scroll_to_slot(
+            app.is_today(),
+            welcome || has_whats_new,
+            milestone.is_some(),
+        ) {
             return;
         }
         last_scroll_day.set(Some(day));
@@ -100,6 +113,25 @@ pub fn Sheet() -> Element {
     rsx! {
         section { class: "sheet",
             super::sharing::SheetWatchRequests {}
+            if has_whats_new {
+                section { class: "sheet-notice whats-new", role: "region", aria_label: i18n.t("whats-new-region"),
+                    h2 { {i18n.t("whats-new-title")} }
+                    for release in &whats_new {
+                        div {
+                            h3 { {i18n.t_with("whats-new-version", &[("version", FluentValue::from(i18n.num(&release.version)))])} }
+                            ul {
+                                for note in &release.notes {
+                                    li { {i18n.t(note)} }
+                                }
+                            }
+                        }
+                    }
+                    button { id: "whats-new-close", class: "notice-dismiss",
+                        onclick: move |_| actions.change(AppState::acknowledge_whats_new),
+                        {i18n.t("whats-new-close")}
+                    }
+                }
+            }
             if welcome {
                 div { class: "sheet-notice",
                     p { {i18n.t("sheet-welcome-back")} }

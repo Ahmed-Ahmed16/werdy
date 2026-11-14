@@ -1916,3 +1916,13 @@ textarea:focus-visible {
   color: var(--qr-ink);
   line-height: 0;
 }
+
+.whats-new {
+  display: block;
+}
+
+.whats-new h2,
+.whats-new h3,
+.whats-new ul {
+  margin-block: var(--gap-s);
+}

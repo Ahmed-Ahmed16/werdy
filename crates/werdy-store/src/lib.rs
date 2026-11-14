@@ -11,6 +11,9 @@ mod file_store;
 #[cfg(not(target_arch = "wasm32"))]
 pub use file_store::FileStore;
 
+mod version;
+pub use version::{AppVersion, greater_app_version};
+
 mod reminders;
 pub use reminders::{ClockTime, PrayerDelay, ReminderSettings, SlotReminder};
 
@@ -24,7 +27,7 @@ use werdy_core::{
 };
 
 /// Version of the JSON layout written by this code.
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// Stable identity for a deed across installs and account sessions. It contains
 /// no account identity, credential, cursor or server revision.
@@ -222,6 +225,8 @@ pub struct OwnerData {
     pub dismissed_milestones: BTreeSet<usize>,
     /// Last werdy day when a welcome was shown.
     pub last_welcome_day: Option<WerdyDay>,
+    /// Latest app version whose release notes have been seen.
+    pub last_seen_version: Option<String>,
     /// Settings.
     pub settings: Settings,
 }
@@ -468,6 +473,10 @@ pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData,
         .dismissed_milestones
         .extend(&local.dismissed_milestones);
     merged.last_welcome_day = merged.last_welcome_day.max(local.last_welcome_day);
+    merged.last_seen_version = greater_app_version(
+        stored.last_seen_version.as_deref(),
+        local.last_seen_version.as_deref(),
+    );
     merged.last_deed_id = merged.last_deed_id.max(local.last_deed_id);
     merged.deleted_deeds.extend(&local.deleted_deeds);
     merge_live_marks(&mut merged, local);
@@ -632,6 +641,8 @@ struct DataFile<S = Settings> {
     dismissed_milestones: Vec<usize>,
     #[serde(default)]
     last_welcome_day: Option<WerdyDay>,
+    #[serde(default)]
+    last_seen_version: Option<String>,
     settings: S,
 }
 
@@ -698,6 +709,7 @@ impl<S> DataFile<S> {
             cleared_notes: self.cleared_notes,
             dismissed_milestones: self.dismissed_milestones,
             last_welcome_day: self.last_welcome_day,
+            last_seen_version: self.last_seen_version,
             settings: convert(self.settings),
         }
     }
@@ -824,6 +836,7 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
             .collect(),
         dismissed_milestones: data.dismissed_milestones.iter().copied().collect(),
         last_welcome_day: data.last_welcome_day,
+        last_seen_version: data.last_seen_version.clone(),
         settings: data.settings.clone(),
     };
     serde_json::to_string(&file).map_err(|error| StoreError::Corrupt(error.to_string()))
@@ -974,6 +987,7 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         cleared_notes,
         dismissed_milestones,
         last_welcome_day: file.last_welcome_day,
+        last_seen_version: file.last_seen_version,
         settings: file.settings,
     })
 }

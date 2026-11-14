@@ -67,6 +67,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         cleared_notes: BTreeMap::new(),
         dismissed_milestones: [7, 30].into(),
         last_welcome_day: Some(WerdyDay::new(2026, 10, 20)?),
+        last_seen_version: None,
         settings: Settings {
             language: "ar".to_owned(),
             theme: Theme::Dark,
@@ -587,5 +588,43 @@ fn version_two_decimal_marks_still_load() -> TestResult {
             .offset_on(WerdyDay::new(2026, 10, 1)?),
         HijriOffset::PLUS_ONE
     );
+    Ok(())
+}
+
+#[test]
+fn last_seen_version_round_trips_and_old_file_defaults() -> TestResult {
+    let mut data = sample()?;
+    data.last_seen_version = Some("0.2.0".into());
+    let json = to_json(&data)?;
+    assert_eq!(from_json(&json)?.last_seen_version, data.last_seen_version);
+    let mut old: serde_json::Value = serde_json::from_str(&json)?;
+    old["schema_version"] = 12.into();
+    old.as_object_mut()
+        .ok_or("expected object")?
+        .remove("last_seen_version");
+    assert_eq!(from_json(&old.to_string())?.last_seen_version, None);
+    Ok(())
+}
+#[test]
+fn last_seen_version_merge_never_lowers_valid_version() -> TestResult {
+    for (stored, local, expected) in [
+        (Some("0.9.3"), Some("0.10.0"), Some("0.10.0")),
+        (Some("0.10.0"), Some("0.9.3"), Some("0.10.0")),
+        (Some("bad"), Some("0.2.0"), Some("0.2.0")),
+        (Some("0.2.0"), Some("bad"), Some("0.2.0")),
+        (Some("0.2.0"), None, Some("0.2.0")),
+        (None, Some("0.2.0"), Some("0.2.0")),
+    ] {
+        let mut first = sample()?;
+        first.last_seen_version = stored.map(str::to_owned);
+        let mut second = first.clone();
+        second.last_seen_version = local.map(str::to_owned);
+        assert_eq!(
+            werdy_store::merge_records(&first, &second)?
+                .last_seen_version
+                .as_deref(),
+            expected
+        );
+    }
     Ok(())
 }
