@@ -850,9 +850,19 @@ impl AppState {
         self.settings_back_to_deeds = true;
     }
 
+    pub fn choose_first_run_location(&mut self, choice: werdy_store::LocationChoice) {
+        self.clear_location();
+        self.data.first_run.location_choice = choice;
+        self.first_run_dirty = true;
+    }
+
     pub fn set_location(&mut self, location: Location) -> Result<(), EditorError> {
         let method = crate::location::method_for_country(location.country.as_deref().unwrap_or(""))
             .map_err(|_| EditorError::RuleChange)?;
+        if !self.data.first_run_complete && location.city_key.is_some() {
+            self.data.first_run.location_choice = werdy_store::LocationChoice::Manual;
+            self.first_run_dirty = true;
+        }
         self.data.settings.prayer_method = method;
         self.pending_settings.prayer_method = Some(method);
         self.pending_settings.location = Some(Some(location.clone()));
@@ -1146,7 +1156,7 @@ impl AppState {
         });
     }
     pub fn skip_first_run_location(&mut self, watcher_step: bool) {
-        self.clear_location();
+        self.choose_first_run_location(werdy_store::LocationChoice::Undecided);
         self.continue_first_run_location(watcher_step);
     }
     pub fn back_first_run_watcher(&mut self) {
@@ -1952,6 +1962,14 @@ impl AppState {
         }
         match store.load() {
             Ok(Some(stored)) => {
+                if !self.data.first_run_complete
+                    && (stored.first_run_complete
+                        || stored.first_run.step != self.data.first_run.step
+                        || stored.first_run.location_choice != self.data.first_run.location_choice
+                        || stored.settings.location != self.data.settings.location)
+                {
+                    self.location_request.cancel();
+                }
                 if self.adopt_demo_reset(&stored) {
                     return;
                 }
@@ -2057,6 +2075,29 @@ mod tests {
         assert!(request.start().is_some());
         assert!(request.is_finding());
         assert_eq!(request.error_key(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn manual_choice_in_another_tab_cancels_pending_detection() -> TestResult {
+        use werdy_store::LocationChoice;
+        let store = MemoryStore::default();
+        let mut first = AppState::start(&store, today()?, slot_order());
+        first.show_screen(Screen::FirstRunLocation);
+        first.choose_first_run_location(LocationChoice::Automatic);
+        first.save_to(&store);
+        let id = first
+            .location_request
+            .start()
+            .ok_or("request did not start")?;
+        let mut second = AppState::start(&store, today()?, slot_order());
+        second.choose_first_run_location(LocationChoice::Manual);
+        second.save_to(&store);
+        first.reload_from(&store);
+        assert_eq!(first.data.first_run.location_choice, LocationChoice::Manual);
+        let gps = Location::new(None, None, 31.0, 32.0).ok_or("bad GPS place")?;
+        assert!(!first.accept_location(id, gps)?);
+        assert!(!first.location_request.fail(id));
         Ok(())
     }
 
