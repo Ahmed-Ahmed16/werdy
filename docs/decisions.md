@@ -2,6 +2,29 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0047 (2026-11-20): Two new schedules: once a week, and when it comes up
+This extends 0009 with two schedules. Every due deed is still due on a day, so scoring stays "mark fractions over due deeds, per day".
+
+**Once a week.** The deed is due on one day of each week, any day the owner picks by marking it. The week runs Saturday to Friday, with no setting for now. Until it has a mark that week, it shows on the sheet every day with a "this week" tag and is open, never Missed. The first day it gets a mark (Done, Partial or Missed), it is due on that day and leaves the sheet for the rest of the week. If Friday ends with no mark that week, it is due on that Friday and counts as Missed. Archiving, deeds made in the middle of a week, late marks and excuse credit follow their usual rules on that one due day.
+
+**When it comes up** (عند الحاجة). The deed shows every day in its section with a quiet tag, but it is due only on a day it has a mark. Done and Partial count as usual, and Missed counts as Missed ("I needed istikhara and did not pray it"). Left unmarked when the day ends, it is not due: it is not Missed, it is not in the section's count, and it does not stop a section from folding by itself (0046).
+
+Level deeds that get these schedules:
+* Once a week: visiting graves, and the advanced level's sunan al fitra. Levels 1 to 3 keep sunan al fitra on Fridays.
+* When it comes up: istikhara, hajah, the five makeups of missed prayers, and the advanced level's fasting, which names no days.
+* Everything else stays as it is, including all situational adhkar (riding too), since they happen almost every day.
+
+Scoring cases the tests must cover:
+1. A weekly deed marked Done on Tuesday is due only on Tuesday that week.
+2. A weekly deed with no mark all week is due on Friday and Missed.
+3. A weekly deed with no mark is open on every day before Friday ends, and today's line counts it as open.
+4. A weekly deed marked Missed on Monday is due on Monday and Missed, and is not due again that week.
+5. A when it comes up deed with no mark is due on no day, and a day with only such deeds unmarked scores as if they were absent.
+6. A when it comes up deed marked Partial or Missed counts that fraction on that day.
+7. An excuse credit lifts a weekly deed only on its one due day.
+
+Why: the advanced sheet has deeds due once a week on a day the person picks, and deeds that only apply when a need comes up. Counting those as due every day shows them as missed on days they never applied. Pinning each to one due day keeps the day based model and every existing rule. Rejected: a fourth mark "did not apply" on every deed (changes the mark model for all deeds), and "N times a week" goals (still rejected, as in 0009). Decided by the owner in chat on 2026-11-20 (issue #108, map #104). Revisit: if owners want the week to start on another day, or want a weekly deed more than once a week.
+
 ## 0046 (2026-11-20): A shorter daily sheet that still shows the whole day
 The daily sheet always shows the whole day; it never hides sections on its own. To make it shorter:
 * **One surface.** The sheet is one surface instead of a card per section. Section headings (time slots, groups from 0045, and "any time") are thin and sticky, with a count such as "1 of 3". The today card becomes one line with a thin progress bar.
