@@ -71,7 +71,7 @@ pub fn use_background(mut state: Signal<AppState>) {
                             return;
                         }
                         let success = match outcome {
-                            Ok(completed) => {
+                            Ok(outcome) => {
                                 let latest = state.read().data.clone();
                                 let needs_save =
                                     store.load().map(|saved| saved.as_ref() != Some(&latest));
@@ -80,17 +80,26 @@ pub fn use_background(mut state: Signal<AppState>) {
                                         .and_then(|changed| {
                                             if changed { store.save(&latest) } else { Ok(()) }
                                         })
-                                        .and_then(|()| {
-                                            store.complete(
-                                                &completed,
+                                        .and_then(|()| match &outcome {
+                                            Attempt::Synced(completed) => store.complete(
+                                                completed,
                                                 generation,
                                                 crate::platform::change_time(),
-                                            )
+                                            ),
+                                            Attempt::Collision(failed) => {
+                                                store.recover_collision(failed, generation)
+                                            }
                                         });
                                 match saved {
                                     Ok(Some(records)) => {
                                         state.write().accept_sync(records);
-                                        true
+                                        if matches!(outcome, Attempt::Collision(_)) {
+                                            store.account.borrow_mut().error =
+                                                Some(error_key(&SyncError::OperationReused));
+                                            false
+                                        } else {
+                                            true
+                                        }
                                     }
                                     Ok(None) => false,
                                     Err(_) => {
@@ -123,12 +132,17 @@ pub fn use_background(mut state: Signal<AppState>) {
     });
 }
 
+enum Attempt {
+    Synced(Checkpoint),
+    Collision(Checkpoint),
+}
+
 async fn attempt(
     store: &AccountStore,
     mut session: Session,
     mut checkpoint: Checkpoint,
     generation: u64,
-) -> Result<Checkpoint, SyncError> {
+) -> Result<Attempt, SyncError> {
     let auth = SupabaseAuth::new(config::SUPABASE_URL, config::SUPABASE_KEY)?;
     // Retry saving a rotated token if the previous attempt hit a storage error.
     store
@@ -165,6 +179,9 @@ async fn attempt(
             .sync(&mut backend, &mut records, crate::platform::change_time)
             .await;
     }
+    if matches!(synced, Err(SyncError::OperationReused)) {
+        return Ok(Attempt::Collision(checkpoint));
+    }
     let offset = synced?;
     for error in checkpoint.engine.local_only_errors() {
         warn!("Sync keeps a legacy row local: {error}");
@@ -174,7 +191,7 @@ async fn attempt(
     }
     checkpoint.records = werdy_store::to_json(&records)
         .map_err(|_| SyncError::Invalid("invalid synced records".into()))?;
-    Ok(checkpoint)
+    Ok(Attempt::Synced(checkpoint))
 }
 
 pub(crate) fn save_refresh(

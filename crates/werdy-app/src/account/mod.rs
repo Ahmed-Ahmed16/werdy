@@ -195,6 +195,23 @@ impl AccountStore {
         generation: u64,
         now: u64,
     ) -> Result<Option<OwnerData>, StoreError> {
+        self.finish_attempt(completed, generation, Some(now))
+    }
+
+    fn recover_collision(
+        &self,
+        failed: &Checkpoint,
+        generation: u64,
+    ) -> Result<Option<OwnerData>, StoreError> {
+        self.finish_attempt(failed, generation, None)
+    }
+
+    fn finish_attempt(
+        &self,
+        completed: &Checkpoint,
+        generation: u64,
+        synced_at: Option<u64>,
+    ) -> Result<Option<OwnerData>, StoreError> {
         let mut account = self.account.borrow_mut();
         if account.generation != generation || account.session.is_none() {
             return Ok(None);
@@ -219,7 +236,16 @@ impl AccountStore {
             account.schedule.saved(runtime::elapsed_ms());
         }
         current.records = to_json(&records)?;
-        current.last_sync = Some(now);
+        if let Some(now) = synced_at {
+            current.last_sync = Some(now);
+        } else {
+            let install = signin::random_hex::<16>().map_err(|_| storage_error())?;
+            current
+                .engine
+                .move_install(&install)
+                .map_err(|_| storage_error())?;
+            current.install_id = install;
+        }
         self.write_checkpoint(&current)?;
         account.checkpoint = Some(current);
         if self.inner.save(&records).is_err() {

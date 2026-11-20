@@ -42,7 +42,7 @@ impl FakeBackend {
             row.pending.install == pending.install && row.pending.operation == pending.operation
         }) {
             if previous.pending != *pending {
-                return Err(invalid("operation id reused for different change"));
+                return Err(SyncError::OperationReused);
             }
             return Ok(previous.clone());
         }

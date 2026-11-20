@@ -245,17 +245,22 @@ fn check_status(status: StatusCode) -> Result<(), SyncError> {
 }
 
 fn check_rpc_status(function: &str, status: StatusCode, body: &[u8]) -> Result<(), SyncError> {
-    if function == "werdy_request_send" && status == StatusCode::BAD_REQUEST {
+    if status == StatusCode::BAD_REQUEST {
         #[derive(Deserialize)]
         struct RpcError {
             code: String,
             message: String,
         }
-        if let Ok(error) = serde_json::from_slice::<RpcError>(body)
-            && error.code == "P0001"
-            && error.message == "watch request limit reached"
-        {
-            return Err(SyncError::WatchRequestLimit);
+        if let Ok(error) = serde_json::from_slice::<RpcError>(body) {
+            match (function, error.code.as_str(), error.message.as_str()) {
+                ("werdy_request_send", "P0001", "watch request limit reached") => {
+                    return Err(SyncError::WatchRequestLimit);
+                }
+                ("werdy_sync_push", "22023", "operation id reused for different change") => {
+                    return Err(SyncError::OperationReused);
+                }
+                _ => {}
+            }
         }
     }
     check_status(status)

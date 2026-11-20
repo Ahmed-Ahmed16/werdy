@@ -972,3 +972,97 @@ fn watched_pages_preserve_late_and_excuse_signs_without_touching_owner_state() {
     assert_eq!(watched.records(), &before);
     assert_eq!(watched.cursor(), cursor);
 }
+
+#[test]
+fn moving_install_keeps_deed_keys_and_renumbers_pending_changes() {
+    let mut engine = Sync::new("old").unwrap();
+    let mut records = history("first");
+    engine.capture(&records).unwrap();
+    engine.remember_deed_keys(&mut records);
+    let original = records.deed_keys.clone();
+    let queued = engine.outbox().to_vec();
+    assert!(engine.move_install("").is_err());
+    assert!(engine.move_install("old").is_err());
+    assert_eq!(engine.outbox(), queued);
+    engine.move_install("fresh").unwrap();
+    for (index, (before, after)) in queued.iter().zip(engine.outbox()).enumerate() {
+        assert_eq!(after.change, before.change);
+        assert_eq!(after.operation, index as u64 + 1);
+        assert_eq!(after.install, "fresh");
+    }
+    let second = records.next_deed_id();
+    records.last_deed_id = second.0;
+    records.deeds.push(Deed::new(second, day(), rule("noon")));
+    engine.capture(&records).unwrap();
+    engine.remember_deed_keys(&mut records);
+    assert_eq!(records.deed_keys[&DeedId(1)], original[&DeedId(1)]);
+    assert_eq!(records.deed_keys[&second].install, "fresh");
+    assert_eq!(
+        engine.outbox()[queued.len()].operation,
+        queued.len() as u64 + 1
+    );
+}
+
+#[test]
+fn copies_with_one_install_recover_both_edits_on_one_deed() {
+    let mut backend = FakeBackend::new(1000);
+    let mut first = Sync::new("shared").unwrap();
+    let mut records = history("original");
+    sync(&mut first, &mut backend, &mut records);
+    let mut second = first.clone();
+    let mut other = records.clone();
+    records
+        .names
+        .insert(DeedId(1), DeedName::Text("renamed".into()));
+    other.set_mark(
+        DeedId(1),
+        day(),
+        Some(MarkEntry::new(Mark::Missed, day())),
+        2,
+    );
+    sync(&mut first, &mut backend, &mut records);
+    assert_eq!(
+        run(second.sync(&mut backend, &mut other, || 1000)),
+        Err(SyncError::OperationReused)
+    );
+    assert_eq!(other.names, records.names);
+    second.move_install("fresh").unwrap();
+    sync(&mut second, &mut backend, &mut other);
+    let mut reader = OwnerData::default();
+    sync(&mut Sync::new("reader").unwrap(), &mut backend, &mut reader);
+    assert_eq!(reader.deeds.len(), 1);
+    assert_eq!(reader.names, records.names);
+    assert_eq!(reader.marks[&(DeedId(1), day())].mark, Mark::Missed);
+}
+
+#[test]
+fn collision_after_accepted_batch_retries_only_missing_rows() {
+    let mut backend = FakeBackend::new(1000);
+    let mut engine = Sync::new("shared").unwrap();
+    let mut records = OwnerData::default();
+    let mut date = day();
+    for _ in 0..33 {
+        records.set_day_note(
+            date,
+            Some(DayNote::new("local", ExcuseCredit::None, date).unwrap()),
+            1,
+        );
+        date = date.next().unwrap();
+    }
+    engine.capture(&records).unwrap();
+    let mut taken = engine.outbox()[0].clone();
+    taken.operation = engine.outbox()[32].operation;
+    run(backend.push(&[taken])).unwrap();
+    assert_eq!(
+        run(engine.sync(&mut backend, &mut records, || 1000)),
+        Err(SyncError::OperationReused)
+    );
+    assert_eq!(engine.outbox().len(), 1);
+    assert_eq!(run(backend.pull(0)).unwrap().cursor, 33);
+    engine.move_install("fresh").unwrap();
+    sync(&mut engine, &mut backend, &mut records);
+    let log = run(backend.pull(0)).unwrap();
+    assert_eq!(log.cursor, 34);
+    assert_eq!(log.changes.last().unwrap().pending.install, "fresh");
+    assert_eq!(records.day_notes.len(), 33);
+}

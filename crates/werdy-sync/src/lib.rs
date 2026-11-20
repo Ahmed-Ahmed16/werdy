@@ -49,6 +49,7 @@ pub enum SyncError {
     Invalid(String),
     Exhausted,
     WatchRequestLimit,
+    OperationReused,
 }
 
 impl std::fmt::Display for SyncError {
@@ -57,6 +58,9 @@ impl std::fmt::Display for SyncError {
             Self::Http(status) => write!(formatter, "Supabase returned HTTP {status}"),
             Self::Backend(reason) => write!(formatter, "sync backend failed: {reason}"),
             Self::Invalid(reason) => write!(formatter, "invalid sync data: {reason}"),
+            Self::OperationReused => {
+                formatter.write_str("operation id reused for different change")
+            }
             Self::Exhausted => formatter.write_str("sync counter exhausted"),
             Self::WatchRequestLimit => formatter.write_str("watch request limit reached"),
         }
@@ -178,6 +182,26 @@ impl Sync {
         })
     }
 
+    /// Moves queued operations to a fresh id supplied by the caller.
+    /// Deed keys already bound to local deeds keep their original install.
+    pub fn move_install(&mut self, new_install: &str) -> Result<(), SyncError> {
+        rows::validate_install(new_install)?;
+        if new_install == self.install {
+            return Err(invalid("new install matches current install"));
+        }
+        let next = u64::try_from(self.outbox.len())
+            .ok()
+            .and_then(|count| count.checked_add(1))
+            .ok_or(SyncError::Exhausted)?;
+        self.install = new_install.to_owned();
+        for (operation, row) in (1..next).zip(&mut self.outbox) {
+            row.install.clone_from(&self.install);
+            row.operation = operation;
+        }
+        self.next_operation = next;
+        Ok(())
+    }
+
     pub fn outbox(&self) -> &[Pending] {
         &self.outbox
     }
@@ -214,7 +238,7 @@ impl Sync {
         }
     }
 
-    /// Installs a completed background copy while keeping edits captured since
+    /// Installs a background copy after success or collision, keeping edits captured since
     /// that copy started. Existing local id bindings take priority, so a deed
     /// created during the request cannot alias a newly downloaded deed.
     /// The caller must save this engine and the resulting records atomically.
@@ -226,7 +250,6 @@ impl Sync {
         if self.install != completed.install
             || self.next_operation < completed.next_operation
             || self.cursor > completed.cursor
-            || !completed.outbox.is_empty()
         {
             return Err(invalid("background sync belongs to another state"));
         }
@@ -244,9 +267,9 @@ impl Sync {
                 staged.local_only.push(row.clone());
             }
         }
-        staged
-            .outbox
-            .retain(|pending| pending.operation >= completed.next_operation);
+        staged.outbox.retain(|pending| {
+            pending.operation >= completed.next_operation || completed.outbox.contains(pending)
+        });
         staged.local_only.retain(|row| {
             !staged
                 .outbox
@@ -370,10 +393,10 @@ impl Sync {
 
     /// Captures edits, measures the clock, pushes then pulls from the last read
     /// cursor. The push cursor must not skip changes made by another phone.
-    /// Failed pushes, pulls, validation and cancelled futures keep valid outbox rows.
+    /// After an operation collision, pull first and keep only unacknowledged rows.
     /// Oversized rows are retained separately as local only data.
     /// Backend retries keep original server stamps, even if a reply was lost.
-    /// Only a fully validated exchange replaces records and clears the queue.
+    /// A failed pull or validation keeps the queue available for retry.
     pub async fn sync<B: Backend>(
         &mut self,
         backend: &mut B,
@@ -392,9 +415,16 @@ impl Sync {
             changes: Vec::new(),
             cursor: self.cursor,
         };
+        let mut collision = false;
         // Keep each deed header and its pending rules in one atomic request.
         for batch in self.push_batches() {
-            let receipt = backend.push(&batch).await?;
+            let receipt = match backend.push(&batch).await {
+                Err(SyncError::OperationReused) => {
+                    collision = true;
+                    break;
+                }
+                result => result?,
+            };
             if receipt.changes.len() != batch.len()
                 || receipt
                     .changes
@@ -411,7 +441,9 @@ impl Sync {
         if self.outbox.is_empty() {
             pushed = backend.push(&[]).await?;
         }
-        self.validate_push(&pushed)?;
+        if !collision {
+            self.validate_push(&pushed)?;
+        }
         let pulled = backend.pull(self.cursor).await?;
         self.validate_pull(&pulled, pushed.cursor)?;
         for receipt in &pushed.changes {
@@ -420,16 +452,25 @@ impl Sync {
             }
         }
         let mut staged = self.clone();
-        for accepted in pushed.changes.into_iter().chain(pulled.changes) {
+        if collision {
+            staged
+                .outbox
+                .retain(|pending| !pulled.changes.iter().any(|row| row.pending == *pending));
+        } else {
+            staged.outbox.clear();
+        }
+        for accepted in pulled.changes {
             staged.accept(accepted)?;
         }
         let mut merged = records.clone();
-        rows::project(&mut staged, &mut merged)?;
+        rows::project_with_outbox(&mut staged, &mut merged)?;
         staged.cursor = pulled.cursor;
-        staged.outbox.clear();
         staged.observed = rows::snapshot(&mut staged, &merged)?;
         *records = merged;
         *self = staged;
+        if collision {
+            return Err(SyncError::OperationReused);
+        }
         Ok(ClockOffset {
             milliseconds,
             round_trip_ms,
