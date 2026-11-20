@@ -1003,6 +1003,15 @@ fn moving_install_keeps_deed_keys_and_renumbers_pending_changes() {
     );
 }
 
+fn recover(engine: &mut Sync, backend: &mut FakeBackend, records: &mut OwnerData) {
+    let Err(SyncError::Collision(collision)) = run(engine.sync(backend, records, || 1000)) else {
+        panic!("expected an operation collision");
+    };
+    engine
+        .recover_collision(&collision, "fresh", records)
+        .unwrap();
+}
+
 #[test]
 fn copies_with_one_install_recover_both_edits_on_one_deed() {
     let mut backend = FakeBackend::new(1000);
@@ -1021,12 +1030,8 @@ fn copies_with_one_install_recover_both_edits_on_one_deed() {
         2,
     );
     sync(&mut first, &mut backend, &mut records);
-    assert_eq!(
-        run(second.sync(&mut backend, &mut other, || 1000)),
-        Err(SyncError::OperationReused)
-    );
+    recover(&mut second, &mut backend, &mut other);
     assert_eq!(other.names, records.names);
-    second.move_install("fresh").unwrap();
     sync(&mut second, &mut backend, &mut other);
     let mut reader = OwnerData::default();
     sync(&mut Sync::new("reader").unwrap(), &mut backend, &mut reader);
@@ -1053,16 +1058,85 @@ fn collision_after_accepted_batch_retries_only_missing_rows() {
     let mut taken = engine.outbox()[0].clone();
     taken.operation = engine.outbox()[32].operation;
     run(backend.push(&[taken])).unwrap();
-    assert_eq!(
-        run(engine.sync(&mut backend, &mut records, || 1000)),
-        Err(SyncError::OperationReused)
-    );
+    recover(&mut engine, &mut backend, &mut records);
     assert_eq!(engine.outbox().len(), 1);
     assert_eq!(run(backend.pull(0)).unwrap().cursor, 33);
-    engine.move_install("fresh").unwrap();
     sync(&mut engine, &mut backend, &mut records);
     let log = run(backend.pull(0)).unwrap();
     assert_eq!(log.cursor, 34);
     assert_eq!(log.changes.last().unwrap().pending.install, "fresh");
     assert_eq!(records.day_notes.len(), 33);
+}
+
+#[test]
+fn collision_keeps_note_and_mark_clears() {
+    let mut backend = FakeBackend::new(1000);
+    let mut first = Sync::new("shared").unwrap();
+    let mut a = history("shared");
+    sync(&mut first, &mut backend, &mut a);
+    let mut second = first.clone();
+    let mut b = a.clone();
+    let tomorrow = day().next().unwrap();
+    for (engine, records, text, mark) in [
+        (&mut first, &mut a, "one", Mark::Missed),
+        (&mut second, &mut b, "two", Mark::partial_without_target()),
+    ] {
+        for date in [day(), tomorrow] {
+            records.set_day_note(
+                date,
+                Some(DayNote::new(text, ExcuseCredit::None, date).unwrap()),
+                1,
+            );
+        }
+        records.set_mark(DeedId(1), day(), Some(MarkEntry::new(mark, day())), 1);
+        engine.capture(records).unwrap();
+        records.set_day_note(day(), None, 2);
+        records.set_day_note(tomorrow, None, 2);
+        records.set_mark(DeedId(1), day(), None, 2);
+        engine.capture(records).unwrap();
+    }
+    sync(&mut first, &mut backend, &mut a);
+    let newer = DayNote::new("later edit", ExcuseCredit::None, tomorrow).unwrap();
+    b.set_day_note(tomorrow, Some(newer.clone()), 3);
+    recover(&mut second, &mut backend, &mut b);
+    sync(&mut second, &mut backend, &mut b);
+    let mut reader = OwnerData::default();
+    sync(&mut Sync::new("reader").unwrap(), &mut backend, &mut reader);
+    assert!(!reader.day_notes.contains_key(&day()));
+    assert_eq!(reader.day_notes.get(&tomorrow), Some(&newer));
+    assert!(reader.marks.is_empty());
+}
+
+#[test]
+fn collision_keeps_two_new_deeds_with_their_own_marks() {
+    let mut backend = FakeBackend::new(1000);
+    let mut first = Sync::new("shared").unwrap();
+    let mut second = first.clone();
+    let mut a = history("first");
+    let mut b = history("second");
+    b.set_mark(
+        DeedId(1),
+        day(),
+        Some(MarkEntry::new(Mark::Missed, day())),
+        1,
+    );
+    sync(&mut first, &mut backend, &mut a);
+    recover(&mut second, &mut backend, &mut b);
+    sync(&mut second, &mut backend, &mut b);
+    let mut reader = OwnerData::default();
+    sync(&mut Sync::new("reader").unwrap(), &mut backend, &mut reader);
+    assert_eq!(reader.deeds.len(), 2);
+    for (name, install, mark) in [
+        ("first", "shared", Mark::Done),
+        ("second", "fresh", Mark::Missed),
+    ] {
+        let id = reader
+            .names
+            .iter()
+            .find(|(_, value)| **value == DeedName::Text(name.into()))
+            .unwrap()
+            .0;
+        assert_eq!(reader.deed_keys[id].install, install);
+        assert_eq!(reader.marks[&(*id, day())].mark, mark);
+    }
 }

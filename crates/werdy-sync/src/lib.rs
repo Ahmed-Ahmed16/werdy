@@ -37,12 +37,13 @@ pub use supabase::sharing::{
 };
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use werdy_core::{DeedId, WerdyDay};
 use werdy_store::OwnerData;
 
 /// Failures leave local records and queued operations available for retry.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SyncError {
     Http(u16),
     Backend(String),
@@ -50,6 +51,7 @@ pub enum SyncError {
     Exhausted,
     WatchRequestLimit,
     OperationReused,
+    Collision(Box<Collision>),
 }
 
 impl std::fmt::Display for SyncError {
@@ -58,7 +60,7 @@ impl std::fmt::Display for SyncError {
             Self::Http(status) => write!(formatter, "Supabase returned HTTP {status}"),
             Self::Backend(reason) => write!(formatter, "sync backend failed: {reason}"),
             Self::Invalid(reason) => write!(formatter, "invalid sync data: {reason}"),
-            Self::OperationReused => {
+            Self::OperationReused | Self::Collision(_) => {
                 formatter.write_str("operation id reused for different change")
             }
             Self::Exhausted => formatter.write_str("sync counter exhausted"),
@@ -102,6 +104,14 @@ pub struct Accepted {
 pub struct Batch {
     pub changes: Vec<Accepted>,
     pub cursor: u64,
+}
+
+/// A checked pull from an attempt whose push hit an operation collision.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Collision {
+    install: String,
+    from_cursor: u64,
+    pulled: Batch,
 }
 
 /// Werdy operations, scoped by the adapter to one authenticated owner.
@@ -202,6 +212,109 @@ impl Sync {
         Ok(())
     }
 
+    /// Applies the checked pull to the current queue, including edits made during the push.
+    /// The caller supplies a fresh install and saves the engine and records together.
+    pub fn recover_collision(
+        &mut self,
+        collision: &Collision,
+        new_install: &str,
+        records: &mut OwnerData,
+    ) -> Result<(), SyncError> {
+        if self.install != collision.install || self.cursor != collision.from_cursor {
+            return Err(invalid("collision belongs to another state"));
+        }
+        let mut staged = self.clone();
+        let mut merged = records.clone();
+        let pulled = &collision.pulled;
+        staged.rebind_new_deeds(pulled, new_install);
+        staged.drop_superseded(pulled);
+        staged.move_install(new_install)?;
+        for row in &pulled.changes {
+            staged.accept(row.clone())?;
+        }
+        rows::project_with_outbox(&mut staged, &mut merged)?;
+        staged.remember_deed_keys(&mut merged);
+        staged.observed = rows::snapshot(&mut staged, &merged)?;
+        staged.cursor = pulled.cursor;
+        *self = staged;
+        *records = merged;
+        Ok(())
+    }
+
+    fn rebind_new_deeds(&mut self, pulled: &Batch, new_install: &str) {
+        // Compare the first headers. Later renames of a shared deed keep its key.
+        let mut first_headers = BTreeMap::new();
+        for accepted in &pulled.changes {
+            if let Change::Deed { id, row } = &accepted.pending.change {
+                first_headers.entry(id).or_insert(row);
+            }
+        }
+        for accepted in &self.accepted {
+            if let Change::Deed { id, .. } = &accepted.pending.change {
+                first_headers.remove(id);
+            }
+        }
+        let mut conflicts = BTreeSet::new();
+        for change in self
+            .outbox
+            .iter()
+            .map(|row| &row.change)
+            .chain(&self.local_only)
+        {
+            if let Change::Deed { id, row } = change
+                && id.install == self.install
+                && first_headers.remove(id).is_some_and(|server| server != row)
+            {
+                conflicts.insert(id.clone());
+            }
+        }
+        for binding in &mut self.bindings {
+            if conflicts.contains(&binding.remote) {
+                binding.remote.install = new_install.to_owned();
+            }
+        }
+        for change in self
+            .outbox
+            .iter_mut()
+            .map(|row| &mut row.change)
+            .chain(&mut self.observed)
+            .chain(&mut self.local_only)
+        {
+            if let Change::Deed { id, .. } | Change::Rule { id, .. } | Change::Mark { id, .. } =
+                change
+                && conflicts.contains(id)
+            {
+                id.install = new_install.to_owned();
+            }
+        }
+    }
+
+    fn drop_superseded(&mut self, pulled: &Batch) {
+        let receipts: BTreeMap<_, _> = pulled
+            .changes
+            .iter()
+            .map(|row| {
+                (
+                    (row.pending.install.as_str(), row.pending.operation),
+                    &row.pending,
+                )
+            })
+            .collect();
+        let mut matched = BTreeSet::new();
+        // Walk newest first. A matching clear also settles older values of that row.
+        self.outbox.reverse();
+        self.outbox.retain(|pending| {
+            let key = pending.change.key();
+            if receipts.get(&(pending.install.as_str(), pending.operation)) == Some(&pending) {
+                matched.insert(key);
+                false
+            } else {
+                !matched.contains(&key)
+            }
+        });
+        self.outbox.reverse();
+    }
+
     pub fn outbox(&self) -> &[Pending] {
         &self.outbox
     }
@@ -238,7 +351,7 @@ impl Sync {
         }
     }
 
-    /// Installs a background copy after success or collision, keeping edits captured since
+    /// Installs a completed background copy while keeping edits captured since
     /// that copy started. Existing local id bindings take priority, so a deed
     /// created during the request cannot alias a newly downloaded deed.
     /// The caller must save this engine and the resulting records atomically.
@@ -250,6 +363,7 @@ impl Sync {
         if self.install != completed.install
             || self.next_operation < completed.next_operation
             || self.cursor > completed.cursor
+            || !completed.outbox.is_empty()
         {
             return Err(invalid("background sync belongs to another state"));
         }
@@ -267,9 +381,9 @@ impl Sync {
                 staged.local_only.push(row.clone());
             }
         }
-        staged.outbox.retain(|pending| {
-            pending.operation >= completed.next_operation || completed.outbox.contains(pending)
-        });
+        staged
+            .outbox
+            .retain(|pending| pending.operation >= completed.next_operation);
         staged.local_only.retain(|row| {
             !staged
                 .outbox
@@ -393,7 +507,7 @@ impl Sync {
 
     /// Captures edits, measures the clock, pushes then pulls from the last read
     /// cursor. The push cursor must not skip changes made by another phone.
-    /// After an operation collision, pull first and keep only unacknowledged rows.
+    /// On collision, return a checked pull for `recover_collision` and keep the queue.
     /// Oversized rows are retained separately as local only data.
     /// Backend retries keep original server stamps, even if a reply was lost.
     /// A failed pull or validation keeps the queue available for retry.
@@ -451,14 +565,15 @@ impl Sync {
                 return Err(invalid("push receipt differs from pull stream"));
             }
         }
-        let mut staged = self.clone();
         if collision {
-            staged
-                .outbox
-                .retain(|pending| !pulled.changes.iter().any(|row| row.pending == *pending));
-        } else {
-            staged.outbox.clear();
+            return Err(SyncError::Collision(Box::new(Collision {
+                install: self.install.clone(),
+                from_cursor: self.cursor,
+                pulled,
+            })));
         }
+        let mut staged = self.clone();
+        staged.outbox.clear();
         for accepted in pulled.changes {
             staged.accept(accepted)?;
         }
@@ -468,9 +583,6 @@ impl Sync {
         staged.observed = rows::snapshot(&mut staged, &merged)?;
         *records = merged;
         *self = staged;
-        if collision {
-            return Err(SyncError::OperationReused);
-        }
         Ok(ClockOffset {
             milliseconds,
             round_trip_ms,

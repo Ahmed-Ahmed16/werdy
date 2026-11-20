@@ -195,22 +195,36 @@ impl AccountStore {
         generation: u64,
         now: u64,
     ) -> Result<Option<OwnerData>, StoreError> {
-        self.finish_attempt(completed, generation, Some(now))
+        self.finish_attempt(generation, |current, records| {
+            current
+                .engine
+                .finish_from(&completed.engine, records)
+                .map_err(|_| storage_error())?;
+            current.last_sync = Some(now);
+            Ok(())
+        })
     }
 
     fn recover_collision(
         &self,
-        failed: &Checkpoint,
+        collision: &werdy_sync::Collision,
         generation: u64,
     ) -> Result<Option<OwnerData>, StoreError> {
-        self.finish_attempt(failed, generation, None)
+        self.finish_attempt(generation, |current, records| {
+            let install = signin::random_hex::<16>().map_err(|_| storage_error())?;
+            current
+                .engine
+                .recover_collision(collision, &install, records)
+                .map_err(|_| storage_error())?;
+            current.install_id = install;
+            Ok(())
+        })
     }
 
     fn finish_attempt(
         &self,
-        completed: &Checkpoint,
         generation: u64,
-        synced_at: Option<u64>,
+        merge: impl FnOnce(&mut Checkpoint, &mut OwnerData) -> Result<(), StoreError>,
     ) -> Result<Option<OwnerData>, StoreError> {
         let mut account = self.account.borrow_mut();
         if account.generation != generation || account.session.is_none() {
@@ -218,10 +232,7 @@ impl AccountStore {
         }
         let mut current = account.checkpoint.clone().ok_or_else(storage_error)?;
         let mut records = from_json(&current.records)?;
-        current
-            .engine
-            .finish_from(&completed.engine, &mut records)
-            .map_err(|_| storage_error())?;
+        merge(&mut current, &mut records)?;
         // The first sync after sign in can bring the account's copy of each
         // starter deed next to this device's copy. Merge them and queue the
         // repair, so every device and the account end with one copy.
@@ -236,16 +247,6 @@ impl AccountStore {
             account.schedule.saved(runtime::elapsed_ms());
         }
         current.records = to_json(&records)?;
-        if let Some(now) = synced_at {
-            current.last_sync = Some(now);
-        } else {
-            let install = signin::random_hex::<16>().map_err(|_| storage_error())?;
-            current
-                .engine
-                .move_install(&install)
-                .map_err(|_| storage_error())?;
-            current.install_id = install;
-        }
         self.write_checkpoint(&current)?;
         account.checkpoint = Some(current);
         if self.inner.save(&records).is_err() {

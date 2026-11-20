@@ -86,8 +86,8 @@ pub fn use_background(mut state: Signal<AppState>) {
                                                 generation,
                                                 crate::platform::change_time(),
                                             ),
-                                            Attempt::Collision(failed) => {
-                                                store.recover_collision(failed, generation)
+                                            Attempt::Collision(collision) => {
+                                                store.recover_collision(collision, generation)
                                             }
                                         });
                                 match saved {
@@ -133,8 +133,8 @@ pub fn use_background(mut state: Signal<AppState>) {
 }
 
 enum Attempt {
-    Synced(Checkpoint),
-    Collision(Checkpoint),
+    Synced(Box<Checkpoint>),
+    Collision(Box<werdy_sync::Collision>),
 }
 
 async fn attempt(
@@ -179,8 +179,8 @@ async fn attempt(
             .sync(&mut backend, &mut records, crate::platform::change_time)
             .await;
     }
-    if matches!(synced, Err(SyncError::OperationReused)) {
-        return Ok(Attempt::Collision(checkpoint));
+    if let Err(SyncError::Collision(collision)) = synced {
+        return Ok(Attempt::Collision(collision));
     }
     let offset = synced?;
     for error in checkpoint.engine.local_only_errors() {
@@ -191,7 +191,7 @@ async fn attempt(
     }
     checkpoint.records = werdy_store::to_json(&records)
         .map_err(|_| SyncError::Invalid("invalid synced records".into()))?;
-    Ok(Attempt::Synced(checkpoint))
+    Ok(Attempt::Synced(Box::new(checkpoint)))
 }
 
 pub(crate) fn save_refresh(

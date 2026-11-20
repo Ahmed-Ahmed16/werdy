@@ -506,14 +506,15 @@ fn collision_recovery_saves_new_install_and_edits_made_during_push() {
     store.save(&local).unwrap();
     failed = store.account.borrow().checkpoint.clone().unwrap();
     run(other.sync(&mut backend, &mut remote, || 1000)).unwrap();
-    assert_eq!(
-        run(failed.engine.sync(&mut backend, &mut local, || 1000)),
-        Err(werdy_sync::SyncError::OperationReused)
-    );
+    let Err(werdy_sync::SyncError::Collision(collision)) =
+        run(failed.engine.sync(&mut backend, &mut local, || 1000))
+    else {
+        panic!("expected an operation collision");
+    };
     let mut edited = store.load().unwrap().unwrap();
     edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
     store.save(&edited).unwrap();
-    assert!(store.recover_collision(&failed, 0).unwrap().is_none());
+    assert!(store.recover_collision(&collision, 0).unwrap().is_none());
     assert_eq!(
         store
             .account
@@ -524,7 +525,7 @@ fn collision_recovery_saves_new_install_and_edits_made_during_push() {
             .install_id,
         failed.install_id
     );
-    let merged = store.recover_collision(&failed, 1).unwrap().unwrap();
+    let merged = store.recover_collision(&collision, 1).unwrap().unwrap();
     assert_eq!(merged.settings.theme, remote.settings.theme);
     assert_eq!(merged.settings.language, "en");
     assert_eq!(merged.marks, edited.marks);
