@@ -231,9 +231,20 @@ pub struct OwnerData {
     pub settings: Settings,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocationChoice {
+    #[default]
+    Undecided,
+    Automatic,
+    Manual,
+    Fallback,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FirstRunProgress {
+    pub location_choice: LocationChoice,
     pub step: String,
     pub pending_level: Option<String>,
     pub extra_level: Option<String>,

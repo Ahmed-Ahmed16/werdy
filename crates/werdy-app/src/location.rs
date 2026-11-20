@@ -16,6 +16,31 @@ struct CityFile {
     cities: Vec<City>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocationView {
+    Choose,
+    Finding,
+    Detected,
+    Fallback,
+    Manual,
+}
+
+pub fn first_run_location_view(
+    choice: werdy_store::LocationChoice,
+    finding: bool,
+    saved_is_gps: Option<bool>,
+) -> LocationView {
+    use werdy_store::LocationChoice;
+    match choice {
+        LocationChoice::Manual => LocationView::Manual,
+        LocationChoice::Fallback => LocationView::Fallback,
+        LocationChoice::Automatic if finding => LocationView::Finding,
+        LocationChoice::Undecided if saved_is_gps == Some(false) => LocationView::Manual,
+        _ if saved_is_gps == Some(true) => LocationView::Detected,
+        _ => LocationView::Choose,
+    }
+}
+
 pub fn cities() -> Result<Vec<City>, serde_json::Error> {
     let file = include_str!("../../../data/cities.jsonc");
     let json = file.lines().skip(1).collect::<Vec<_>>().join("\n");
@@ -44,6 +69,25 @@ mod tests {
     use super::{cities, method_for_country};
     use crate::i18n::{Language, Texts};
     use werdy_store::PrayerMethod;
+
+    #[test]
+    fn first_run_location_shows_the_path_chosen() {
+        use super::{LocationView as View, first_run_location_view};
+        use werdy_store::LocationChoice as Choice;
+
+        for (choice, finding, saved, expected) in [
+            (Choice::Undecided, false, None, View::Choose),
+            (Choice::Automatic, true, None, View::Finding),
+            (Choice::Automatic, false, Some(true), View::Detected),
+            (Choice::Fallback, false, None, View::Fallback),
+            (Choice::Manual, false, None, View::Manual),
+            (Choice::Automatic, false, None, View::Choose),
+            (Choice::Undecided, false, Some(true), View::Detected),
+            (Choice::Undecided, false, Some(false), View::Manual),
+        ] {
+            assert_eq!(first_run_location_view(choice, finding, saved), expected);
+        }
+    }
 
     #[test]
     fn bundled_cities_have_valid_two_decimal_coordinates() -> Result<(), Box<dyn std::error::Error>>

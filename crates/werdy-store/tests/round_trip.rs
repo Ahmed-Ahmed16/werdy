@@ -11,6 +11,32 @@ use werdy_store::{
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+#[test]
+fn old_first_run_progress_loads_without_a_location_choice() -> TestResult {
+    use werdy_store::{FirstRunProgress, LocationChoice};
+
+    let progress: FirstRunProgress =
+        serde_json::from_str(r#"{"step":"location","extra_ticks":["prayers"]}"#)?;
+    assert_eq!(progress.step, "location");
+    assert!(progress.extra_ticks.contains("prayers"));
+    assert_eq!(progress.location_choice, LocationChoice::Undecided);
+    for location_choice in [
+        LocationChoice::Manual,
+        LocationChoice::Fallback,
+        LocationChoice::Automatic,
+    ] {
+        let saved = FirstRunProgress {
+            location_choice,
+            ..progress.clone()
+        };
+        assert_eq!(
+            serde_json::from_str::<FirstRunProgress>(&serde_json::to_string(&saved)?)?,
+            saved
+        );
+    }
+    Ok(())
+}
+
 fn rule(slot: &str, target: Option<Target>) -> DeedRule {
     DeedRule {
         schedule: Schedule::EveryDay,

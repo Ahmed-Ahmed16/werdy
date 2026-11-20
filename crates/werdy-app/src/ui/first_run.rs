@@ -3,10 +3,11 @@
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use std::collections::BTreeSet;
-use werdy_store::{DeedName, PrayerMethod, Settings};
+use werdy_store::{DeedName, LocationChoice, PrayerMethod, Settings};
 
 use super::context::{use_actions, use_i18n};
 use crate::account::runtime::{AccountHandle, AccountView};
+use crate::location::LocationView;
 use crate::state::{AppState, EditorError, Screen};
 use crate::{editor_data, location, platform};
 
@@ -378,6 +379,12 @@ pub fn LocationStep() -> Element {
     let mut state = use_context::<Signal<AppState>>();
     let selected = state.read().data.settings.location.clone();
     let first_run = !state.read().data.first_run_complete;
+    let view = location::first_run_location_view(
+        state.read().data.first_run.location_choice,
+        state.read().location_request.is_finding(),
+        selected.as_ref().map(|place| place.city_key.is_none()),
+    );
+    let manual_picker = !first_run || matches!(view, LocationView::Manual | LocationView::Fallback);
     let watcher_step = use_context::<AccountHandle>().0.enabled;
     let confirmation = place_summary(&i18n, &state.read().data.settings);
 
@@ -392,7 +399,13 @@ pub fn LocationStep() -> Element {
             section { class: "first-run-card",
                 h2 { {i18n.t("first-run-location-title")} }
                 p { {i18n.t("first-run-location-help")} }
+                if first_run && view == LocationView::Choose {
+                    p { {i18n.t("first-run-location-choice")} }
+                }
                 button { class: "secondary-button", disabled: state.read().location_request.is_finding(), onclick: move |_| {
+                    if first_run {
+                        actions.change(|state| state.choose_first_run_location(LocationChoice::Automatic));
+                    }
                     let Some(request_id) = state.write().location_request.start() else { return; };
                     platform::request_location(
                         move |place| {
@@ -401,26 +414,41 @@ pub fn LocationStep() -> Element {
                                 actions.view(|state| { state.location_request.fail_to_save(request_id); });
                             }
                         },
-                        move || actions.view(|state| { state.location_request.fail(request_id); }),
-                    );
-                }, {i18n.t("location-use-current")} }
-                if state.read().location_request.is_finding() { p { role: "status", {i18n.t("location-finding")} } }
-                label { r#for: "city-choice", {i18n.t("location-choose-city")} }
-                select { id: "city-choice", class: "editor-input", value: selected.as_ref().and_then(|place| place.city_key.clone()).unwrap_or_default(),
-                    onchange: move |event| {
-                        if let Some(city) = location::cities().ok().and_then(|cities| cities.into_iter().find(|city| city.key == event.value()))
-                            && let Some(place) = city.location() {
-                            actions.view(|state| state.location_request.cancel());
-                            if actions.change_deed(|state| state.set_location(place)).is_err() {
-                                actions.view(|state| state.location_request.save_error());
+                        move || {
+                            if !state.read().location_request.is_current(request_id) { return; }
+                            if first_run {
+                                actions.change(|state| state.choose_first_run_location(LocationChoice::Fallback));
+                            } else {
+                                actions.view(|state| { state.location_request.fail(request_id); });
                             }
-                        }
-                    },
-                    option { value: "", {i18n.t("location-choose-placeholder")} }
-                    for city in cities { option { key: "{city.key}", value: "{city.key}", {i18n.t(&format!("city-{}", city.key))} } }
+                        },
+                    );
+                }, {i18n.t(if first_run { "first-run-location-auto" } else { "location-use-current" })} }
+                if first_run && !manual_picker {
+                    button { class: "secondary-button", onclick: move |_| actions.change(|state| state.choose_first_run_location(LocationChoice::Manual)), {i18n.t("first-run-location-manual")} }
+                }
+                if first_run && view == LocationView::Fallback {
+                    p { role: "status", {i18n.t("first-run-location-fallback")} }
+                }
+                if view == LocationView::Finding || (!first_run && state.read().location_request.is_finding()) { p { role: "status", {i18n.t("location-finding")} } }
+                if manual_picker {
+                    label { r#for: "city-choice", {i18n.t("location-choose-city")} }
+                    select { id: "city-choice", class: "editor-input", value: selected.as_ref().and_then(|place| place.city_key.clone()).unwrap_or_default(),
+                        onchange: move |event| {
+                            if let Some(city) = location::cities().ok().and_then(|cities| cities.into_iter().find(|city| city.key == event.value()))
+                                && let Some(place) = city.location() {
+                                actions.view(|state| state.location_request.cancel());
+                                if actions.change_deed(|state| state.set_location(place)).is_err() {
+                                    actions.view(|state| state.location_request.save_error());
+                                }
+                            }
+                        },
+                        option { value: "", {i18n.t("location-choose-placeholder")} }
+                        for city in cities { option { key: "{city.key}", value: "{city.key}", {i18n.t(&format!("city-{}", city.key))} } }
+                    }
                 }
                 if let Some(confirmation) = confirmation { p { class: "location-confirmation", "{confirmation}" } }
-                if let Some(place) = selected.as_ref().filter(|place| place.city_key.is_none()) {
+                if let Some(place) = selected.as_ref().filter(|place| !first_run && place.city_key.is_none()) {
                     label { r#for: "gps-country", {i18n.t("location-country")} }
                     select { id: "gps-country", class: "editor-input", value: place.country.clone().unwrap_or_default(),
                         onchange: move |event| {
