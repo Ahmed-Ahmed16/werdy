@@ -44,6 +44,7 @@ _Avoid_: section, tag
 
 **Schedule**:
 The rule that says on which days a deed is due: every day, given weekdays, a Hijri date range (Ramadan, the last ten nights, the first ten days of Dhul Hijjah, Ayyam al Bid), once a week, or when it comes up.
+_Avoid_: frequency, recurrence, repeat
 
 **Once a week**:
 A schedule for a deed due on one day of each Saturday to Friday week, the day the owner marks it. With no mark by the end of Friday, it is due on Friday and Missed.
@@ -52,7 +53,6 @@ _Avoid_: weekly goal, N times a week
 **When it comes up**:
 A schedule for a deed that applies only when a need arises, such as istikhara. It is due only on a day it has a mark; unmarked, it is never Missed.
 _Avoid_: optional, situational, not applicable
-_Avoid_: frequency, recurrence, repeat
 
 **Due**:
 A deed is due on a werdy day when its schedule includes that day and the deed already existed that day. For once a week and when it comes up, the marks decide which day that is. Only due deeds count.
