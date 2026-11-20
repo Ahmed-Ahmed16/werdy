@@ -2,6 +2,22 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0045 (2026-11-20): Groups split "any time" on the daily sheet
+A deed sits in one place on the sheet: a time slot or a group. A group holds deeds tied to a kind of deed rather than a time. There are six, a fixed list kept as data like slots and categories: situational adhkar (الأذكار المقيدة), Quran (القرآن), dua (الدعاء), heart and character (القلب والأخلاق), knowledge (العلم) and self review (المحاسبة). The sheet shows the time slots in day order, then the six groups in this order, then "any time" last for deeds that fit neither. Empty groups are hidden, as empty slots are (0007). Categories stay for reports only. A custom deed can pick a group the same way it picks a slot. A group's reminder works like the "any time" reminder: a clock time the owner picks (0038). The Arabic UI word for group is مجموعة.
+
+The level deeds go in groups like this:
+* Situational adhkar: the adhkar for waking, the toilet, clothes, wudu, home, the mosque, walking to the mosque, eating, riding and sleep, plus istighfar 100, istighfar in gatherings and kaffarat al majlis.
+* Quran: memorising, reading, recitation and reflection, revision and memorisation. The night ward stays in the night slot, where the sheet puts it.
+* Dua: for yourself, the teachers, the brothers and all Muslims.
+* Heart and character: avoiding the faults of the tongue, lowering the gaze, treating the heart, kindness to parents, family ties, giving people their rights, and dawah.
+* Knowledge: attending lessons, reviewing lessons, worldly knowledge.
+* Self review: self review and repentance.
+* Any time keeps fasting, charity, istikhara, hajah, staying in wudu, wudu before sleep, general istighfar, salawat, study or work, and the Friday Kahf and salawat 100.
+
+The sheets name only some of these headings; heart and character and self review are unnamed blocks on the advanced sheet, and the owner placed those deeds. When the update arrives, werdy moves each level deed that still sits in "any time" to its group, once, from today on. Past days keep their place (0020), and a deed the owner already moved by hand is left alone; the saved starter key (0041) says which deed is which.
+
+Why: the advanced level puts about 51 of its 113 deeds in "any time", one long pile; the level sheets already sort them by kind, and people know those headings. A separate group field beside slot and category was rejected (three axes on every deed), and so was sorting "any time" by category (it would turn the reports list into a sheet tool and grow it). Decided by the owner in chat on 2026-11-20 (issue #107, map #104). Revisit: if owners ask for their own groups, or want a deed in a slot and a group at once.
+
 ## 0044 (2026-11-14): Supabase changes deploy from CI on merge
 Migrations and Edge Functions deploy to the live project from `.github/workflows/supabase-deploy.yml` after a merge to `main`. CI previews migrations before applying them, then deploys functions through the API. Only trusted main code receives deployment secrets. Deploy runs share a lock and never cancel a running deploy. A missing access token skips functions with a notice; a missing database URL fails migrations. Never edit a migration already on main. Add a new migration that is safe to rerun.
 

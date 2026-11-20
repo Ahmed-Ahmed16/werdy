@@ -34,9 +34,13 @@ _Avoid_: task, habit, item, werd
 The part of the day a deed belongs to on the sheet: Fajr, morning, Dhuhr, Asr, Maghrib, Isha, night, or any time.
 _Avoid_: section, period
 
+**Group**:
+A part of the daily sheet for deeds tied to a kind of deed rather than a time, from a fixed list: situational adhkar, Quran, dua, heart and character, knowledge, self review. A deed sits in either a time slot or a group, never both. In Arabic: مجموعة.
+_Avoid_: section, category, block
+
 **Category**:
 What kind of deed it is, from a fixed list: Prayer, Quran, Adhkar, Fasting, Charity, Study, Family, Health, Work, Other. Used to slice reports, not to order the sheet.
-_Avoid_: section, tag, group
+_Avoid_: section, tag
 
 **Schedule**:
 The rule that says on which days a deed is due: every day, given weekdays, or a Hijri date range (Ramadan, the last ten nights, the first ten days of Dhul Hijjah, Ayyam al Bid).
@@ -65,7 +69,7 @@ A day that runs from one Fajr to the next, at the owner's location. Qiyam and wi
 _Avoid_: date, calendar day
 
 **Daily sheet**:
-The list of deeds due on one werdy day, grouped by time slot.
+The list of deeds due on one werdy day, in time slots first, then groups, then any time.
 _Avoid_: program, checklist, page
 
 **Mark**:
