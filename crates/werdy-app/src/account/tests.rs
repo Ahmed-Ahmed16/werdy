@@ -483,3 +483,65 @@ fn late_delete_reply_does_not_sign_out_a_newer_session() {
     assert_eq!(store.settle_delete(Ok(()), &records, old), Ok(()));
     assert!(store.account.borrow().session.is_some());
 }
+
+#[test]
+fn reused_operation_shows_sync_error() {
+    assert_eq!(
+        runtime::error_key(&werdy_sync::SyncError::OperationReused),
+        "account-sync-error"
+    );
+}
+
+#[test]
+fn collision_recovery_saves_new_install_and_edits_made_during_push() {
+    let store = store();
+    store.sign_in(session(), &records()).unwrap();
+    let mut backend = FakeBackend::new(1000);
+    let mut failed = store.account.borrow().checkpoint.clone().unwrap();
+    let mut local = from_json(&failed.records).unwrap();
+    let mut other = failed.engine.clone();
+    let mut remote = local.clone();
+    remote.settings.theme = werdy_store::Theme::Dark;
+    local.settings.language = "en".into();
+    store.save(&local).unwrap();
+    failed = store.account.borrow().checkpoint.clone().unwrap();
+    run(other.sync(&mut backend, &mut remote, || 1000)).unwrap();
+    let Err(werdy_sync::SyncError::Collision(collision)) =
+        run(failed.engine.sync(&mut backend, &mut local, || 1000))
+    else {
+        panic!("expected an operation collision");
+    };
+    let mut edited = store.load().unwrap().unwrap();
+    edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    store.save(&edited).unwrap();
+    assert!(store.recover_collision(&collision, 0).unwrap().is_none());
+    assert_eq!(
+        store
+            .account
+            .borrow()
+            .checkpoint
+            .as_ref()
+            .unwrap()
+            .install_id,
+        failed.install_id
+    );
+    let merged = store.recover_collision(&collision, 1).unwrap().unwrap();
+    assert_eq!(merged.settings.theme, remote.settings.theme);
+    assert_eq!(merged.settings.language, "en");
+    assert_eq!(merged.marks, edited.marks);
+    let reopened = AccountStore::open(store.inner.clone(), store.vault.clone(), true);
+    let saved = reopened.account.borrow().checkpoint.clone().unwrap();
+    assert_ne!(saved.install_id, failed.install_id);
+    assert_eq!(saved.last_sync, None);
+    assert_eq!(saved.engine.outbox().len(), 2);
+    assert!(
+        saved
+            .engine
+            .outbox()
+            .iter()
+            .all(|p| p.install == saved.install_id)
+    );
+    assert_eq!(saved.records, to_json(&merged).unwrap());
+    let completed = flight(&reopened, &mut backend);
+    assert!(completed.engine.outbox().is_empty());
+}

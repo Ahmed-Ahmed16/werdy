@@ -195,16 +195,44 @@ impl AccountStore {
         generation: u64,
         now: u64,
     ) -> Result<Option<OwnerData>, StoreError> {
+        self.finish_attempt(generation, |current, records| {
+            current
+                .engine
+                .finish_from(&completed.engine, records)
+                .map_err(|_| storage_error())?;
+            current.last_sync = Some(now);
+            Ok(())
+        })
+    }
+
+    fn recover_collision(
+        &self,
+        collision: &werdy_sync::Collision,
+        generation: u64,
+    ) -> Result<Option<OwnerData>, StoreError> {
+        self.finish_attempt(generation, |current, records| {
+            let install = signin::random_hex::<16>().map_err(|_| storage_error())?;
+            current
+                .engine
+                .recover_collision(collision, &install, records)
+                .map_err(|_| storage_error())?;
+            current.install_id = install;
+            Ok(())
+        })
+    }
+
+    fn finish_attempt(
+        &self,
+        generation: u64,
+        merge: impl FnOnce(&mut Checkpoint, &mut OwnerData) -> Result<(), StoreError>,
+    ) -> Result<Option<OwnerData>, StoreError> {
         let mut account = self.account.borrow_mut();
         if account.generation != generation || account.session.is_none() {
             return Ok(None);
         }
         let mut current = account.checkpoint.clone().ok_or_else(storage_error)?;
         let mut records = from_json(&current.records)?;
-        current
-            .engine
-            .finish_from(&completed.engine, &mut records)
-            .map_err(|_| storage_error())?;
+        merge(&mut current, &mut records)?;
         // The first sync after sign in can bring the account's copy of each
         // starter deed next to this device's copy. Merge them and queue the
         // repair, so every device and the account end with one copy.
@@ -219,7 +247,6 @@ impl AccountStore {
             account.schedule.saved(runtime::elapsed_ms());
         }
         current.records = to_json(&records)?;
-        current.last_sync = Some(now);
         self.write_checkpoint(&current)?;
         account.checkpoint = Some(current);
         if self.inner.save(&records).is_err() {

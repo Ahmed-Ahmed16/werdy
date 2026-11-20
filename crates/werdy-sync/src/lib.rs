@@ -37,18 +37,21 @@ pub use supabase::sharing::{
 };
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use werdy_core::{DeedId, WerdyDay};
 use werdy_store::OwnerData;
 
 /// Failures leave local records and queued operations available for retry.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SyncError {
     Http(u16),
     Backend(String),
     Invalid(String),
     Exhausted,
     WatchRequestLimit,
+    OperationReused,
+    Collision(Box<Collision>),
 }
 
 impl std::fmt::Display for SyncError {
@@ -57,6 +60,9 @@ impl std::fmt::Display for SyncError {
             Self::Http(status) => write!(formatter, "Supabase returned HTTP {status}"),
             Self::Backend(reason) => write!(formatter, "sync backend failed: {reason}"),
             Self::Invalid(reason) => write!(formatter, "invalid sync data: {reason}"),
+            Self::OperationReused | Self::Collision(_) => {
+                formatter.write_str("operation id reused for different change")
+            }
             Self::Exhausted => formatter.write_str("sync counter exhausted"),
             Self::WatchRequestLimit => formatter.write_str("watch request limit reached"),
         }
@@ -98,6 +104,14 @@ pub struct Accepted {
 pub struct Batch {
     pub changes: Vec<Accepted>,
     pub cursor: u64,
+}
+
+/// A checked pull from an attempt whose push hit an operation collision.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Collision {
+    install: String,
+    from_cursor: u64,
+    pulled: Batch,
 }
 
 /// Werdy operations, scoped by the adapter to one authenticated owner.
@@ -176,6 +190,129 @@ impl Sync {
             accepted: Vec::new(),
             cursor: 0,
         })
+    }
+
+    /// Moves queued operations to a fresh id supplied by the caller.
+    /// Deed keys already bound to local deeds keep their original install.
+    pub fn move_install(&mut self, new_install: &str) -> Result<(), SyncError> {
+        rows::validate_install(new_install)?;
+        if new_install == self.install {
+            return Err(invalid("new install matches current install"));
+        }
+        let next = u64::try_from(self.outbox.len())
+            .ok()
+            .and_then(|count| count.checked_add(1))
+            .ok_or(SyncError::Exhausted)?;
+        self.install = new_install.to_owned();
+        for (operation, row) in (1..next).zip(&mut self.outbox) {
+            row.install.clone_from(&self.install);
+            row.operation = operation;
+        }
+        self.next_operation = next;
+        Ok(())
+    }
+
+    /// Applies the checked pull to the current queue, including edits made during the push.
+    /// The caller supplies a fresh install and saves the engine and records together.
+    pub fn recover_collision(
+        &mut self,
+        collision: &Collision,
+        new_install: &str,
+        records: &mut OwnerData,
+    ) -> Result<(), SyncError> {
+        if self.install != collision.install || self.cursor != collision.from_cursor {
+            return Err(invalid("collision belongs to another state"));
+        }
+        let mut staged = self.clone();
+        let mut merged = records.clone();
+        let pulled = &collision.pulled;
+        staged.rebind_new_deeds(pulled, new_install);
+        staged.drop_superseded(pulled);
+        staged.move_install(new_install)?;
+        for row in &pulled.changes {
+            staged.accept(row.clone())?;
+        }
+        rows::project_with_outbox(&mut staged, &mut merged)?;
+        staged.remember_deed_keys(&mut merged);
+        staged.observed = rows::snapshot(&mut staged, &merged)?;
+        staged.cursor = pulled.cursor;
+        *self = staged;
+        *records = merged;
+        Ok(())
+    }
+
+    fn rebind_new_deeds(&mut self, pulled: &Batch, new_install: &str) {
+        // Compare the first headers. Later renames of a shared deed keep its key.
+        let mut first_headers = BTreeMap::new();
+        for accepted in &pulled.changes {
+            if let Change::Deed { id, row } = &accepted.pending.change {
+                first_headers.entry(id).or_insert(row);
+            }
+        }
+        for accepted in &self.accepted {
+            if let Change::Deed { id, .. } = &accepted.pending.change {
+                first_headers.remove(id);
+            }
+        }
+        let mut conflicts = BTreeSet::new();
+        for change in self
+            .outbox
+            .iter()
+            .map(|row| &row.change)
+            .chain(&self.local_only)
+        {
+            if let Change::Deed { id, row } = change
+                && id.install == self.install
+                && first_headers.remove(id).is_some_and(|server| server != row)
+            {
+                conflicts.insert(id.clone());
+            }
+        }
+        for binding in &mut self.bindings {
+            if conflicts.contains(&binding.remote) {
+                binding.remote.install = new_install.to_owned();
+            }
+        }
+        for change in self
+            .outbox
+            .iter_mut()
+            .map(|row| &mut row.change)
+            .chain(&mut self.observed)
+            .chain(&mut self.local_only)
+        {
+            if let Change::Deed { id, .. } | Change::Rule { id, .. } | Change::Mark { id, .. } =
+                change
+                && conflicts.contains(id)
+            {
+                id.install = new_install.to_owned();
+            }
+        }
+    }
+
+    fn drop_superseded(&mut self, pulled: &Batch) {
+        let receipts: BTreeMap<_, _> = pulled
+            .changes
+            .iter()
+            .map(|row| {
+                (
+                    (row.pending.install.as_str(), row.pending.operation),
+                    &row.pending,
+                )
+            })
+            .collect();
+        let mut matched = BTreeSet::new();
+        // Walk newest first. A matching clear also settles older values of that row.
+        self.outbox.reverse();
+        self.outbox.retain(|pending| {
+            let key = pending.change.key();
+            if receipts.get(&(pending.install.as_str(), pending.operation)) == Some(&pending) {
+                matched.insert(key);
+                false
+            } else {
+                !matched.contains(&key)
+            }
+        });
+        self.outbox.reverse();
     }
 
     pub fn outbox(&self) -> &[Pending] {
@@ -370,10 +507,10 @@ impl Sync {
 
     /// Captures edits, measures the clock, pushes then pulls from the last read
     /// cursor. The push cursor must not skip changes made by another phone.
-    /// Failed pushes, pulls, validation and cancelled futures keep valid outbox rows.
+    /// On collision, return a checked pull for `recover_collision` and keep the queue.
     /// Oversized rows are retained separately as local only data.
     /// Backend retries keep original server stamps, even if a reply was lost.
-    /// Only a fully validated exchange replaces records and clears the queue.
+    /// A failed pull or validation keeps the queue available for retry.
     pub async fn sync<B: Backend>(
         &mut self,
         backend: &mut B,
@@ -392,9 +529,16 @@ impl Sync {
             changes: Vec::new(),
             cursor: self.cursor,
         };
+        let mut collision = false;
         // Keep each deed header and its pending rules in one atomic request.
         for batch in self.push_batches() {
-            let receipt = backend.push(&batch).await?;
+            let receipt = match backend.push(&batch).await {
+                Err(SyncError::OperationReused) => {
+                    collision = true;
+                    break;
+                }
+                result => result?,
+            };
             if receipt.changes.len() != batch.len()
                 || receipt
                     .changes
@@ -411,7 +555,9 @@ impl Sync {
         if self.outbox.is_empty() {
             pushed = backend.push(&[]).await?;
         }
-        self.validate_push(&pushed)?;
+        if !collision {
+            self.validate_push(&pushed)?;
+        }
         let pulled = backend.pull(self.cursor).await?;
         self.validate_pull(&pulled, pushed.cursor)?;
         for receipt in &pushed.changes {
@@ -419,14 +565,21 @@ impl Sync {
                 return Err(invalid("push receipt differs from pull stream"));
             }
         }
+        if collision {
+            return Err(SyncError::Collision(Box::new(Collision {
+                install: self.install.clone(),
+                from_cursor: self.cursor,
+                pulled,
+            })));
+        }
         let mut staged = self.clone();
-        for accepted in pushed.changes.into_iter().chain(pulled.changes) {
+        staged.outbox.clear();
+        for accepted in pulled.changes {
             staged.accept(accepted)?;
         }
         let mut merged = records.clone();
-        rows::project(&mut staged, &mut merged)?;
+        rows::project_with_outbox(&mut staged, &mut merged)?;
         staged.cursor = pulled.cursor;
-        staged.outbox.clear();
         staged.observed = rows::snapshot(&mut staged, &merged)?;
         *records = merged;
         *self = staged;

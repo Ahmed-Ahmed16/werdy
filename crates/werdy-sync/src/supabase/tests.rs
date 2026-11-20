@@ -291,3 +291,35 @@ fn only_send_limit_errors_get_a_specific_error() {
     }
     assert!(check_rpc_status("werdy_request_send", StatusCode::OK, limit).is_ok());
 }
+
+#[test]
+fn only_the_exact_push_collision_requests_a_new_install() {
+    let collision = br#"{"code":"22023","message":"operation id reused for different change"}"#;
+    assert_eq!(
+        check_rpc_status("werdy_sync_push", StatusCode::BAD_REQUEST, collision),
+        Err(SyncError::OperationReused)
+    );
+    for (function, status, body) in [
+        (
+            "werdy_sync_pull",
+            StatusCode::BAD_REQUEST,
+            collision.as_slice(),
+        ),
+        ("werdy_sync_push", StatusCode::FORBIDDEN, collision),
+        (
+            "werdy_sync_push",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"22023","message":"invalid batch"}"#,
+        ),
+        (
+            "werdy_sync_push",
+            StatusCode::BAD_REQUEST,
+            br#"{"code":"P0001","message":"operation id reused for different change"}"#,
+        ),
+    ] {
+        assert_eq!(
+            check_rpc_status(function, status, body),
+            Err(SyncError::Http(status.as_u16()))
+        );
+    }
+}
