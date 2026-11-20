@@ -114,7 +114,7 @@ fn sheet_rows_flag_marks_more_than_two_days_late() -> Result<(), Error> {
         &slot_order(),
         CalendarSettings::default(),
     );
-    assert!(sheet.slots[0].folded);
+    assert!(sheet.slots[0].complete);
     assert_eq!(
         sheet.slots[0]
             .rows
@@ -140,12 +140,16 @@ fn deeds_not_due_that_day_are_left_out() -> Result<(), Error> {
 }
 
 #[test]
-fn a_slot_folds_only_when_every_deed_in_it_is_done() -> Result<(), Error> {
+fn slots_track_entry_and_completion_separately() -> Result<(), Error> {
     let today = day()?;
     let deeds = vec![
         deed(1, "fajr", today),
         deed(2, "fajr", today),
         deed(3, "asr", today),
+        deed(4, "asr", today),
+        deed(5, "asr", today),
+        deed(6, "isha", today),
+        deed(7, "isha", today),
     ];
     let marks = Marks::from([
         ((DeedId(1), today), MarkEntry::new(Mark::Done, today)),
@@ -154,25 +158,36 @@ fn a_slot_folds_only_when_every_deed_in_it_is_done() -> Result<(), Error> {
             (DeedId(3), today),
             MarkEntry::new(Mark::partial_without_target(), today),
         ),
+        ((DeedId(4), today), MarkEntry::new(Mark::Missed, today)),
+        ((DeedId(5), today), MarkEntry::new(Mark::Done, today)),
+        ((DeedId(6), today), MarkEntry::new(Mark::Done, today)),
     ]);
 
-    let folded: Vec<_> = daily_sheet(
+    let sheet = daily_sheet(
         &deeds,
         &marks,
         today,
         &slot_order(),
         CalendarSettings::default(),
-    )
-    .slots
-    .iter()
-    .map(|slot| slot.folded)
-    .collect();
-    assert_eq!(folded, [true, false]);
+    );
+    let states: Vec<_> = sheet
+        .slots
+        .iter()
+        .map(|slot| (slot.slot.0.as_str(), slot.all_entered, slot.complete))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("fajr", true, true),
+            ("asr", true, false),
+            ("isha", false, false)
+        ]
+    );
     Ok(())
 }
 
 #[test]
-fn a_count_at_its_target_counts_as_done_for_folding() -> Result<(), Error> {
+fn a_count_at_its_target_completes_the_slot() -> Result<(), Error> {
     let today = day()?;
     let pages = Target::new(5, "page")?;
     let deeds = vec![Deed::new(
@@ -190,7 +205,7 @@ fn a_count_at_its_target_counts_as_done_for_folding() -> Result<(), Error> {
         CalendarSettings::default(),
     );
 
-    assert!(sheet.slots[0].folded);
+    assert!(sheet.slots[0].complete);
     assert_eq!(sheet.slots[0].rows[0].target, Some(pages));
     Ok(())
 }
@@ -290,7 +305,7 @@ fn unmarked_only_keeps_rows_without_a_mark_and_drops_emptied_slots() -> Result<(
         .iter()
         .map(|slot| {
             let ids: Vec<_> = slot.rows.iter().map(|row| row.deed_id).collect();
-            (slot.slot.0.as_str(), ids, slot.folded)
+            (slot.slot.0.as_str(), ids, slot.all_entered)
         })
         .collect();
     assert_eq!(

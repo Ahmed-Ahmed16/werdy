@@ -51,7 +51,7 @@ Manual check: follow the level, empty and watch only paths in Arabic and English
 * Deeds are grouped by **time slot** in this order: Fajr, Morning, Dhuhr, Asr, Maghrib, Isha, Night, Any time. Empty slots are hidden.
 * Each deed without a target has three buttons: Done (check), Partial (half circle), Missed (cross). Tapping a button sets that mark; tapping the same button again clears it; tapping another button switches the mark.
 * A deed with a target (for example "100 times") shows "0 of 100" with "Add one" and "Take one away" buttons and a Missed button. A count at or above the target counts as Done; a count of 0 counts as Missed.
-* When every deed in a slot is Done, the slot folds into one line ("Fajr: all done") with a "Show" button.
+* A slot folds once every due deed has an entry, including partial and missed marks. Tap to open it again. A hand choice wins for that day. The done check appears only when every due deed earned full credit (#174).
 * On load, the sheet scrolls to the current time slot, unless a notice (welcome back or milestone) is showing.
 * The owner can step back to any past day and mark it. A mark entered more than 2 days after its day shows an "Added later" sign.
 * On a past day, a due deed with no mark shows as Missed.
