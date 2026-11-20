@@ -2,6 +2,19 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0046 (2026-11-20): A shorter daily sheet that still shows the whole day
+The daily sheet always shows the whole day; it never hides sections on its own. To make it shorter:
+* **One surface.** The sheet is one surface instead of a card per section. Section headings (time slots, groups from 0045, and "any time") are thin and sticky, with a count such as "1 of 3". The today card becomes one line with a thin progress bar.
+* **Folding.** Tapping a heading folds or opens its section. A section folds by itself once every deed in it has a mark (#174 builds this part). One button folds or opens all. Each werdy day starts with every section open except those that fold by themselves; folds made by hand do not carry over.
+* **Chip strip.** A strip of section chips with counts stays at the top while scrolling. It shows a chip only for sections with deeds that day, scrolls sideways, and has the current prayer's chip outlined and scrolled into view. Tapping a chip jumps to its section and opens it if folded.
+* **Smaller buttons, firm floor.** Mark buttons are drawn at about 32px, each with at least a 44px touch area and no overlap; rows stay at least 44px tall. Done sits on the right and missed on the left, with partial or the typed count (0040) between, so a slip cannot land on the opposite mark. A mark is changed by tapping again; there is no undo toast.
+* **Text that fits.** Fonts and labels scale with the phone's text size and wrap instead of overlapping.
+* **Less on every screen.** The language switch moves from the header to settings. A screen reader reads each row as one deed with its mark buttons inside it.
+
+Measured in the prototype for 23 deeds with nothing folded: today 4.0 phone screens with 3 deeds visible before scrolling; this design about 2.3 screens with 7 to 8 visible, shorter as sections fold.
+
+Why: the levels bring 44 to 113 deeds, which at today's row size is 6 to 16 screens, and friends found the app cluttered (#103). Some people mark at each prayer and some only at night, so nothing may hide part of the day. Rejected: showing only the current slot by default (fails people who mark at night), a single check box with partial and missed behind a menu (hides partial, which the statistics need), and a bigger done button with smaller partial and missed (not taken for now). Brainstormed with the owner on 2026-11-04 with a prototype and settled in chat on 2026-11-20 (issues #73 and #103, map #104). Revisit: if the sheet still feels long at the advanced level once groups and folding are built.
+
 ## 0045 (2026-11-20): Groups split "any time" on the daily sheet
 A deed sits in one place on the sheet: a time slot or a group. A group holds deeds tied to a kind of deed rather than a time. There are six, a fixed list kept as data like slots and categories: situational adhkar (الأذكار المقيدة), Quran (القرآن), dua (الدعاء), heart and character (القلب والأخلاق), knowledge (العلم) and self review (المحاسبة). The sheet shows the time slots in day order, then the six groups in this order, then "any time" last for deeds that fit neither. Empty groups are hidden, as empty slots are (0007). Categories stay for reports only. A custom deed can pick a group the same way it picks a slot. A group's reminder works like the "any time" reminder: a clock time the owner picks (0038). The Arabic UI word for group is مجموعة.
 
