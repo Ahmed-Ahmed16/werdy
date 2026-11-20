@@ -2,6 +2,63 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0048 (2026-11-20): Prayer on time and in congregation stay two deeds in v2
+Praying on time and praying in congregation stay separate deeds, with no graded single prayer deed. The reports block from 0041 is renamed "The five prayers". For each prayer it shows the owner's on time deed from the five prayers set, or, when there is none, the congregation deed from a level or the mosque prayer set. Owners who already have both deeds keep them and their history as they are; they can archive one in the editor.
+
+Why: a graded deed (congregation is Done, on time alone is half) would score people who rightly pray at home, such as women or people with no mosque near, at half forever. The owner chose not to change the deed shape for v2. Two ways to drop the duplicate rows are parked under the "future feat" label: asking at first run where a person usually prays (#183), and using gender to shape the prayer deeds (#184). Decided by the owner in chat on 2026-11-20 (issue #169, map #104). This revises the block's source in 0041. Revisit: when #183 or #184 is picked up.
+
+## 0047 (2026-11-20): Two new schedules: once a week, and when it comes up
+This extends 0009 with two schedules. Every due deed is still due on a day, so scoring stays "mark fractions over due deeds, per day".
+
+**Once a week.** The deed is due on one day of each week, any day the owner picks by marking it. The week runs Saturday to Friday, with no setting for now. Until it has a mark that week, it shows on the sheet every day with a "this week" tag and is open, never Missed. The first day it gets a mark (Done, Partial or Missed), it is due on that day and leaves the sheet for the rest of the week. If Friday ends with no mark that week, it is due on that Friday and counts as Missed. Archiving, deeds made in the middle of a week, late marks and excuse credit follow their usual rules on that one due day.
+
+**When it comes up** (عند الحاجة). The deed shows every day in its section with a quiet tag, but it is due only on a day it has a mark. Done and Partial count as usual, and Missed counts as Missed ("I needed istikhara and did not pray it"). Left unmarked when the day ends, it is not due: it is not Missed, it is not in the section's count, and it does not stop a section from folding by itself (0046).
+
+Level deeds that get these schedules:
+* Once a week: visiting graves, and the advanced level's sunan al fitra. Levels 1 to 3 keep sunan al fitra on Fridays.
+* When it comes up: istikhara, hajah, the five makeups of missed prayers, and the advanced level's fasting, which names no days.
+* Everything else stays as it is, including all situational adhkar (riding too), since they happen almost every day.
+
+Scoring cases the tests must cover:
+1. A weekly deed marked Done on Tuesday is due only on Tuesday that week.
+2. A weekly deed with no mark all week is due on Friday and Missed.
+3. A weekly deed with no mark is open on every day before Friday ends, and today's line counts it as open.
+4. A weekly deed marked Missed on Monday is due on Monday and Missed, and is not due again that week.
+5. A when it comes up deed with no mark is due on no day, and a day with only such deeds unmarked scores as if they were absent.
+6. A when it comes up deed marked Partial or Missed counts that fraction on that day.
+7. An excuse credit lifts a weekly deed only on its one due day.
+
+Why: the advanced sheet has deeds due once a week on a day the person picks, and deeds that only apply when a need comes up. Counting those as due every day shows them as missed on days they never applied. Pinning each to one due day keeps the day based model and every existing rule. Rejected: a fourth mark "did not apply" on every deed (changes the mark model for all deeds), and "N times a week" goals (still rejected, as in 0009). Decided by the owner in chat on 2026-11-20 (issue #108, map #104). Revisit: if owners want the week to start on another day, or want a weekly deed more than once a week.
+
+## 0046 (2026-11-20): A shorter daily sheet that still shows the whole day
+The daily sheet always shows the whole day; it never hides sections on its own. To make it shorter:
+* **One surface.** The sheet is one surface instead of a card per section. Section headings (time slots, groups from 0045, and "any time") are thin and sticky, with a count such as "1 of 3". The today card becomes one line with a thin progress bar.
+* **Folding.** Tapping a heading folds or opens its section. A section folds by itself once every deed in it has a mark (#174 builds this part). One button folds or opens all. Each werdy day starts with every section open except those that fold by themselves; folds made by hand do not carry over.
+* **Chip strip.** A strip of section chips with counts stays at the top while scrolling. It shows a chip only for sections with deeds that day, scrolls sideways, and has the current prayer's chip outlined and scrolled into view. Tapping a chip jumps to its section and opens it if folded.
+* **Smaller buttons, firm floor.** Mark buttons are drawn at about 32px, each with at least a 44px touch area and no overlap; rows stay at least 44px tall. Done sits on the right and missed on the left, with partial or the typed count (0040) between, so a slip cannot land on the opposite mark. A mark is changed by tapping again; there is no undo toast.
+* **Text that fits.** Fonts and labels scale with the phone's text size and wrap instead of overlapping.
+* **Less on every screen.** The language switch moves from the header to settings. A screen reader reads each row as one deed with its mark buttons inside it.
+
+Measured in the prototype for 23 deeds with nothing folded: today 4.0 phone screens with 3 deeds visible before scrolling; this design about 2.3 screens with 7 to 8 visible, shorter as sections fold.
+
+Why: the levels bring 44 to 113 deeds, which at today's row size is 6 to 16 screens, and friends found the app cluttered (#103). Some people mark at each prayer and some only at night, so nothing may hide part of the day. Rejected: showing only the current slot by default (fails people who mark at night), a single check box with partial and missed behind a menu (hides partial, which the statistics need), and a bigger done button with smaller partial and missed (not taken for now). Brainstormed with the owner on 2026-11-04 with a prototype and settled in chat on 2026-11-20 (issues #73 and #103, map #104). Revisit: if the sheet still feels long at the advanced level once groups and folding are built.
+
+## 0045 (2026-11-20): Groups split "any time" on the daily sheet
+A deed sits in one place on the sheet: a time slot or a group. A group holds deeds tied to a kind of deed rather than a time. There are six, a fixed list kept as data like slots and categories: situational adhkar (الأذكار المقيدة), Quran (القرآن), dua (الدعاء), heart and character (القلب والأخلاق), knowledge (العلم) and self review (المحاسبة). The sheet shows the time slots in day order, then the six groups in this order, then "any time" last for deeds that fit neither. Empty groups are hidden, as empty slots are (0007). Categories stay for reports only. A custom deed can pick a group the same way it picks a slot. A group's reminder works like the "any time" reminder: a clock time the owner picks (0038). The Arabic UI word for group is مجموعة.
+
+The level deeds go in groups like this:
+* Situational adhkar: the adhkar for waking, the toilet, clothes, wudu, home, the mosque, walking to the mosque, eating, riding and sleep, plus istighfar 100, istighfar in gatherings and kaffarat al majlis.
+* Quran: memorising, reading, recitation and reflection, revision and memorisation. The night ward stays in the night slot, where the sheet puts it.
+* Dua: for yourself, the teachers, the brothers and all Muslims.
+* Heart and character: avoiding the faults of the tongue, lowering the gaze, treating the heart, kindness to parents, family ties, giving people their rights, and dawah.
+* Knowledge: attending lessons, reviewing lessons, worldly knowledge.
+* Self review: self review and repentance.
+* Any time keeps fasting, charity, istikhara, hajah, staying in wudu, wudu before sleep, general istighfar, salawat, study or work, and the Friday Kahf and salawat 100.
+
+The sheets name only some of these headings; heart and character and self review are unnamed blocks on the advanced sheet, and the owner placed those deeds. When the update arrives, werdy moves each level deed that still sits in "any time" to its group, once, from today on. Past days keep their place (0020), and a deed the owner already moved by hand is left alone; the saved starter key (0041) says which deed is which.
+
+Why: the advanced level puts about 51 of its 113 deeds in "any time", one long pile; the level sheets already sort them by kind, and people know those headings. A separate group field beside slot and category was rejected (three axes on every deed), and so was sorting "any time" by category (it would turn the reports list into a sheet tool and grow it). Decided by the owner in chat on 2026-11-20 (issue #107, map #104). Revisit: if owners ask for their own groups, or want a deed in a slot and a group at once.
+
 ## 0044 (2026-11-14): Supabase changes deploy from CI on merge
 Migrations and Edge Functions deploy to the live project from `.github/workflows/supabase-deploy.yml` after a merge to `main`. CI previews migrations before applying them, then deploys functions through the API. Only trusted main code receives deployment secrets. Deploy runs share a lock and never cancel a running deploy. A missing access token skips functions with a notice; a missing database URL fails migrations. Never edit a migration already on main. Add a new migration that is safe to rerun.
 
@@ -38,6 +95,8 @@ Why: the owner does not want locations on the server, and nothing on the web can
 
 ## 0041 (2026-11-04): The five fard prayers come from the five prayers starter set
 The reports page has a "prayers on time" block (#112). It shows the deeds whose starter key is in the `five_prayers` set in `data/starter-sets.toml`, in that set's order. A deed gets a starter key when it is added from a starter set, and the key is kept in the saved data. If the owner has none of the five, the block is hidden. Why: category Prayer is too wide (sunnah, congregation and first row deeds share it), and this needs no new field and no change to saved data or sync. Cost: a prayer deed the owner typed by hand, or a starter prayer deleted and remade by hand, is not in the block. Approved by the owner in chat on 2026-11-04. Rejected for now: a `fard_prayer` field on catalog deeds (would let congregation deeds count, but needs a rule for two deeds on one prayer), and a switch in the deed editor (a new stored field and sync change). Revisit: if owners want congregation deeds or their own typed prayers in the block.
+
+Revised by 0048 (2026-11-20): the block is named "The five prayers" and, for a prayer with no on time deed, shows the congregation deed instead.
 
 ## 0040 (2026-11-04): Counted deeds use done, a typed count, and missed
 A deed with a target shows three controls: done, a number button and missed. Done stores the target as the count. The number button opens a field to type the count. Missed stores Missed, and a typed 0 is also Missed. A count at or above the target shows and scores as Done, capped at 1, and the real number is kept (120 of 100 stays 120) for later use. A count below the target is partial, worth count over target. The plus and minus buttons from 0011 are removed. Why: friends found the sheet crowded, and one row of three controls matches the other deeds and the 44px touch floor. Typing is faster than many plus taps for counts like 100 tasbeeh. Approved by the owner in chat on 2026-11-04 (issue #73). Revisit: if people miss quick plus one taps for small targets.
