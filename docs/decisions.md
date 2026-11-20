@@ -2,6 +2,11 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0048 (2026-11-20): Prayer on time and in congregation stay two deeds in v2
+Praying on time and praying in congregation stay separate deeds, with no graded single prayer deed. The reports block from 0041 is renamed "The five prayers". For each prayer it shows the owner's on time deed from the five prayers set, or, when there is none, the congregation deed from a level or the mosque prayer set. Owners who already have both deeds keep them and their history as they are; they can archive one in the editor.
+
+Why: a graded deed (congregation is Done, on time alone is half) would score people who rightly pray at home, such as women or people with no mosque near, at half forever. The owner chose not to change the deed shape for v2. Two ways to drop the duplicate rows are parked under the "future feat" label: asking at first run where a person usually prays (#183), and using gender to shape the prayer deeds (#184). Decided by the owner in chat on 2026-11-20 (issue #169, map #104). This revises the block's source in 0041. Revisit: when #183 or #184 is picked up.
+
 ## 0047 (2026-11-20): Two new schedules: once a week, and when it comes up
 This extends 0009 with two schedules. Every due deed is still due on a day, so scoring stays "mark fractions over due deeds, per day".
 
