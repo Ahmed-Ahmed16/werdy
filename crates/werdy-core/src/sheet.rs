@@ -24,8 +24,10 @@ pub struct SheetSlot {
     pub slot: SlotKey,
     /// Rows in the order the deeds were given.
     pub rows: Vec<SheetRow>,
-    /// True when every deed in this slot is worth one, so the slot can fold.
-    pub folded: bool,
+    /// True when every deed in this slot earned full credit.
+    pub complete: bool,
+    /// True when every deed in this slot has a mark for the day.
+    pub all_entered: bool,
 }
 
 /// Due deeds for one werdy day, grouped by time slot. Empty slots are left out.
@@ -85,7 +87,12 @@ pub fn daily_sheet(
         day,
         slots: groups
             .into_iter()
-            .map(|((_, slot), (rows, folded))| SheetSlot { slot, rows, folded })
+            .map(|((_, slot), (rows, complete))| SheetSlot {
+                slot,
+                all_entered: rows.iter().all(|row| row.mark.is_some()),
+                rows,
+                complete,
+            })
             .collect(),
     }
 }

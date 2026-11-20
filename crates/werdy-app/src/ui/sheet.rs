@@ -73,7 +73,7 @@ pub fn Sheet() -> Element {
                 .read()
                 .get(&(viewed_day, slot.slot.clone()))
                 .copied();
-            slot_open(slot.folded, choice)
+            slot_open(slot.all_entered, choice)
         })
         .collect();
     let open_all = fold_all_opens(&opens);
@@ -239,13 +239,9 @@ fn slot_progress(rows: &[SheetRow]) -> (usize, usize) {
     (marked, rows.len())
 }
 
-/// Whether a slot shows its deeds. A complete slot folds by itself; a hand
-/// choice on the same day wins either way.
-fn slot_open(complete: bool, choice: Option<bool>) -> bool {
-    match choice {
-        Some(open) => open,
-        None => !complete,
-    }
+/// A slot folds once every deed has a mark. A hand choice for that day wins.
+fn slot_open(all_entered: bool, choice: Option<bool>) -> bool {
+    choice.unwrap_or(!all_entered)
 }
 
 /// True when the one fold button should open every slot, which is only when
@@ -289,11 +285,11 @@ fn SlotChip(slot: SheetSlot, current: bool, on_jump: EventHandler<SlotKey>) -> E
         button {
             class: "slot-chip",
             "data-current": if current { "true" } else { "false" },
-            "data-complete": if slot.folded { "true" } else { "false" },
+            "data-complete": if slot.complete { "true" } else { "false" },
             aria_current: if current { "time" } else { "false" },
             aria_label: i18n.t_with("slot-chip-label", &args),
             onclick: move |_| on_jump.call(key.clone()),
-            if slot.folded { span { class: "chip-done", CheckIcon {} } }
+            if slot.complete { span { class: "chip-done", CheckIcon {} } }
             span { {i18n.t_with("slot-chip", &args)} }
         }
     }
@@ -333,7 +329,7 @@ fn SlotGroup(slot: SheetSlot, open: bool, on_toggle: EventHandler<SlotKey>) -> E
                         span { class: "late-sign", {i18n.t("mark-added-later")} }
                     }
                     span { class: "slot-count",
-                        if slot.folded { span { class: "chip-done", CheckIcon {} } }
+                        if slot.complete { span { class: "chip-done", CheckIcon {} } }
                         "{count}"
                     }
                 }
@@ -446,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn a_complete_slot_folds_until_opened_and_a_hand_choice_wins() {
+    fn a_slot_folds_when_all_marks_are_entered_and_a_hand_choice_wins() {
         assert!(slot_open(false, None));
         assert!(!slot_open(true, None));
         assert!(slot_open(true, Some(true)));
