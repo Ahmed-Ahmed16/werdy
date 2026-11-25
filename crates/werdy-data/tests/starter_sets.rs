@@ -545,7 +545,10 @@ fn every_unit_has_a_picker_label_and_hours_is_offered() {
     ] {
         for key in &keys {
             let label = format!("\neditor-unit-{key} = ");
-            assert!(source.contains(&label), "{locale}: missing editor-unit-{key}");
+            assert!(
+                source.contains(&label),
+                "{locale}: missing editor-unit-{key}"
+            );
         }
     }
 }
