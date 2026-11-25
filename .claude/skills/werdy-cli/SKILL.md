@@ -26,11 +26,11 @@ Use these commands for the jobs below. Do not write a `.ps1`, `.sh` or Python sc
 
 ## What the output means
 
-* **gates**: prints `[k/total] command` before each step, then `All N steps passed.` The steps are the ones in `.github/workflows/ci.yml`; a unit test keeps the two the same. The headless Chrome tests are not included.
-* **apk inspect**: prints package, version, SDK levels, CPU types, signer and certificate SHA-256, then one `PROBLEM:` line for each of: no `arm64-v8a` code (phones refuse it, #84), a signature that does not verify, or the debug key. Needs `ANDROID_HOME`; uses the newest build tools there.
+* **gates**: prints `[k/total] command` before each step, then `All N steps passed.` The steps are the ones in `.github/workflows/ci.yml`; a unit test keeps the two the same. The headless Chrome tests are not included. On Windows, a step that fails with os error 5 ("Access is denied") or 32 ("used by another process") was blocked by the virus scanner on a new file; gates says so and runs that step once more. If it fails twice for that reason, say so to the owner instead of looping. The Windows toolchain and target folder are not set by gates: they belong in the owner's shell (`RUSTUP_TOOLCHAIN`, `CARGO_TARGET_DIR`), and they must be set before `cargo xtask` starts.
+* **apk inspect**: prints package, version, SDK levels, CPU types, signer and certificate SHA-256, then one `PROBLEM:` line for each of: no `arm64-v8a` code (phones refuse it, #84), a signature that does not verify, the debug key, or any other key than the release key (its SHA-256 is a constant in `crates/xtask/src/apk.rs`). Needs `ANDROID_HOME`; uses the newest build tools there.
 * **pr comments**: one block per thread, `path:line`, marked `[resolved]` or `[outdated]`, with each comment's author, a three line summary and its link. The summary drops HTML and CodeRabbit's `<details>` logs; use `--full` before replying to a comment.
 * **release check-tag**: prints the version when the tag is `v` + the version in `crates/werdy-app/Cargo.toml`. The release workflow runs it first. To release, raise the version, merge, then push the tag (ask the owner first).
-* **pr wait-review**: checks CodeRabbit's check run every 30 seconds and prints a line when its state changes. "Skipped" means CodeRabbit did not review this commit. On this repo reviews are often asked for by hand; asking is the owner's call, so ask him before posting `@coderabbitai review`.
+* **pr wait-review**: checks CodeRabbit's check run every 30 seconds and prints a line when its state changes. It watches CodeRabbit only. The debate review is run by hand and has no check run to wait for; read it with `pr comments`. "Skipped" means CodeRabbit did not review this commit. On this repo reviews are often asked for by hand; asking is the owner's call, so ask him before posting `@coderabbitai review`.
 
 ## Releases
 

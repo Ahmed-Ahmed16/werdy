@@ -10,6 +10,9 @@ use crate::process::{capture, capture_ok};
 /// The phone CPU. Without it phones refuse the APK as "app not supported" (#84).
 const PHONE_ABI: &str = "arm64-v8a";
 const DEBUG_SIGNER: &str = "CN=Android Debug";
+/// SHA-256 of the release signing certificate, from the v0.1.2 release APK
+/// (#96). A build signed with any other key cannot update installed copies.
+const RELEASE_SHA256: &str = "9adfbd52f3d05b6f0561eb1e10a7f53865a2520ae6951e3b1329c6894d2980b3";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Badging {
@@ -85,8 +88,23 @@ pub fn problems(badging: &Badging, signing: &Signing) -> Vec<String> {
         .is_some_and(|signer| signer.contains(DEBUG_SIGNER))
     {
         problems.push("signed with the debug key, not the release key".to_string());
+    } else if signing.verified {
+        match signing.sha256.as_deref() {
+            None => problems.push("the signer's SHA-256 could not be read".to_string()),
+            Some(digest) if !same_digest(digest, RELEASE_SHA256) => problems.push(format!(
+                "signed with a key that is not the release key (SHA-256 {digest}, \
+                 expected {RELEASE_SHA256})"
+            )),
+            Some(_) => {}
+        }
     }
     problems
+}
+
+/// Digests match when their hex digits do, whatever the case or colons.
+fn same_digest(a: &str, b: &str) -> bool {
+    let clean = |text: &str| text.replace(':', "").to_ascii_lowercase();
+    clean(a) == clean(b)
 }
 
 /// Picks the newest build tools folder name, such as `36.0.0`. Names that are
@@ -214,7 +232,7 @@ targetSdkVersion:'35'
 native-code: 'arm64-v8a'
 ";
 
-    // Real layout; the signer and digest are made up.
+    // Real layout; the signer name is made up, the digest is the release key.
     const SIGNED_RELEASE: &str = "\
 Verifies
 Verified using v1 scheme (JAR signing): false
@@ -222,7 +240,7 @@ Verified using v2 scheme (APK Signature Scheme v2): true
 Verified using v3 scheme (APK Signature Scheme v3): false
 Number of signers: 1
 Signer #1 certificate DN: CN=Test Owner, O=WERDY, C=EG
-Signer #1 certificate SHA-256 digest: 00aa11bb
+Signer #1 certificate SHA-256 digest: 9adfbd52f3d05b6f0561eb1e10a7f53865a2520ae6951e3b1329c6894d2980b3
 Signer #1 key algorithm: RSA
 ";
 
@@ -266,7 +284,7 @@ ERROR: Missing META-INF/MANIFEST.MF
                 verified: true,
                 schemes: vec!["v2".to_string()],
                 signer: Some("CN=Test Owner, O=WERDY, C=EG".to_string()),
-                sha256: Some("00aa11bb".to_string()),
+                sha256: Some(RELEASE_SHA256.to_string()),
             }
         );
     }
@@ -297,6 +315,30 @@ ERROR: Missing META-INF/MANIFEST.MF
         assert_eq!(unsigned, ["the signature does not verify"]);
         let debug = problems(&phone, &parse_signing(SIGNED_DEBUG));
         assert_eq!(debug, ["signed with the debug key, not the release key"]);
+    }
+
+    #[test]
+    fn a_verified_apk_signed_with_another_key_is_a_problem() {
+        let other = SIGNED_RELEASE.replace("9adfbd52", "11111111");
+        let problems = problems(&parse_badging(BADGING_PHONE), &parse_signing(&other));
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("not the release key"));
+        assert!(problems[0].contains("11111111"));
+    }
+
+    #[test]
+    fn digest_case_and_colons_do_not_matter() {
+        let shouted = SIGNED_RELEASE.replace(RELEASE_SHA256, &RELEASE_SHA256.to_uppercase());
+        let problems = problems(&parse_badging(BADGING_PHONE), &parse_signing(&shouted));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(same_digest("9A:DF:bd", "9adfBD"));
+    }
+
+    #[test]
+    fn a_verified_apk_with_no_readable_digest_is_a_problem() {
+        let no_digest = "Verifies\nSigner #1 certificate DN: CN=Test Owner\n";
+        let problems = problems(&parse_badging(BADGING_PHONE), &parse_signing(no_digest));
+        assert_eq!(problems, ["the signer's SHA-256 could not be read"]);
     }
 
     #[test]
