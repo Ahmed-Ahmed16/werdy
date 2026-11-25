@@ -315,7 +315,12 @@ fn hours_score_like_any_other_unit_and_saved_units_stay() -> Result<(), Error> {
     let pages_marks = BTreeMap::from([((pages.id, marked_day), entry)]);
     let hours_marks = BTreeMap::from([((hours.id, marked_day), entry)]);
 
-    let pages_score = score(&[pages.clone()], &pages_marks, &[marked_day], day(24)?);
+    let pages_score = score(
+        std::slice::from_ref(&pages),
+        &pages_marks,
+        &[marked_day],
+        day(24)?,
+    );
     let hours_score = score(&[hours], &hours_marks, &[marked_day], day(24)?);
 
     assert_eq!(pages_score, hours_score);
