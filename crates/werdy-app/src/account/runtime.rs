@@ -48,26 +48,20 @@ pub fn use_background(mut state: Signal<AppState>) {
         let store = handle.0.clone();
         async move {
             loop {
-                let flight =
-                    {
-                        let mut account = store.account.borrow_mut();
-                        if account.session.is_some()
-                            && !account.sharing_busy
-                            && account.schedule.start(elapsed_ms())
-                        {
-                            account.session.clone().zip(account.checkpoint.clone()).map(
-                                |(session, checkpoint)| (session, checkpoint, account.generation),
-                            )
-                        } else {
-                            None
-                        }
-                    };
+                let ready = {
+                    let mut account = store.account.borrow_mut();
+                    account.session.is_some()
+                        && !account.sharing_busy
+                        && account.schedule.start(elapsed_ms())
+                };
+                let flight = if ready { claim(&store) } else { None };
                 if let Some((session, checkpoint, generation)) = flight {
                     let store = store.clone();
                     let active = store.clone();
                     let task = spawn(async move {
                         let outcome = attempt(&store, session, checkpoint, generation).await;
                         if store.account.borrow().generation != generation {
+                            store.release_flight();
                             return;
                         }
                         let success = match outcome {
@@ -119,6 +113,8 @@ pub fn use_background(mut state: Signal<AppState>) {
                             account.error = None;
                         }
                         account.schedule.finish(elapsed_ms(), success);
+                        drop(account);
+                        store.release_flight();
                     });
                     *active.active_task.borrow_mut() = Some(task);
                 }
@@ -130,6 +126,20 @@ pub fn use_background(mut state: Signal<AppState>) {
             }
         }
     });
+}
+
+/// Another copy of the app on this device may be syncing; this copy then
+/// tries again later instead of pushing the same queue at the same time.
+fn claim(store: &AccountStore) -> Option<super::Flight> {
+    let claimed = store.claim_flight(crate::platform::change_time());
+    let mut account = store.account.borrow_mut();
+    match claimed {
+        Ok(Some(flight)) => return Some(flight),
+        Ok(None) => {}
+        Err(_) => account.error = Some("account-storage-error"),
+    }
+    account.schedule.finish(elapsed_ms(), false);
+    None
 }
 
 enum Attempt {

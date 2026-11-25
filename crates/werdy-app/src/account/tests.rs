@@ -545,3 +545,103 @@ fn collision_recovery_saves_new_install_and_edits_made_during_push() {
     let completed = flight(&reopened, &mut backend);
     assert!(completed.engine.outbox().is_empty());
 }
+
+/// Two copies of the web app on one device: a browser tab and the home
+/// screen app share one storage.
+fn two_tabs() -> (AccountStore, AccountStore) {
+    let inner: Rc<dyn Store> = Rc::new(werdy_store::MemoryStore::default());
+    let vault: Rc<dyn Vault> = Rc::new(storage::MemoryVault::default());
+    let first = AccountStore::open(inner.clone(), vault.clone(), true);
+    first.sign_in(session(), &records()).unwrap();
+    let second = AccountStore::open(inner, vault, true);
+    (first, second)
+}
+
+fn sync_tab(tab: &AccountStore, backend: &mut FakeBackend, now: u64) -> OwnerData {
+    let (_, mut checkpoint, generation) = tab.claim_flight(now).unwrap().unwrap();
+    let mut records = from_json(&checkpoint.records).unwrap();
+    run(checkpoint.engine.sync(backend, &mut records, || 1000)).unwrap();
+    checkpoint.records = to_json(&records).unwrap();
+    let merged = tab.complete(&checkpoint, generation, now).unwrap().unwrap();
+    tab.release_flight();
+    merged
+}
+
+#[test]
+fn two_tabs_sharing_storage_never_reuse_an_operation_id() {
+    let (first, second) = two_tabs();
+    let mut edited = first.load().unwrap().unwrap();
+    edited.settings.theme = werdy_store::Theme::Dark;
+    first.save(&edited).unwrap();
+    let mut other = second.load().unwrap().unwrap();
+    assert_eq!(other.settings.theme, werdy_store::Theme::Dark);
+    other.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&other).unwrap();
+    let mut later = first.load().unwrap().unwrap();
+    assert_eq!(later.marks, other.marks);
+    later.settings.language = "en".into();
+    first.save(&later).unwrap();
+
+    let saved = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+    let outbox = saved.account.borrow().checkpoint.clone().unwrap();
+    let operations: std::collections::BTreeSet<u64> =
+        outbox.engine.outbox().iter().map(|p| p.operation).collect();
+    assert_eq!(operations.len(), outbox.engine.outbox().len());
+
+    let mut backend = FakeBackend::new(1000);
+    sync_tab(&second, &mut backend, 10_000);
+    let mut again = first.load().unwrap().unwrap();
+    again.settings.language = "ar".into();
+    first.save(&again).unwrap();
+    sync_tab(&first, &mut backend, 20_000);
+
+    let fresh = store();
+    fresh.sign_in(session(), &OwnerData::default()).unwrap();
+    let pulled = sync_tab(&fresh, &mut backend, 30_000);
+    assert_eq!(pulled.settings.theme, werdy_store::Theme::Dark);
+    assert_eq!(pulled.settings.language, "ar");
+    assert_eq!(pulled.marks, other.marks);
+}
+
+#[test]
+fn only_one_tab_runs_sync_until_it_releases_or_its_lease_runs_out() {
+    let (first, second) = two_tabs();
+    assert!(first.claim_flight(1_000).unwrap().is_some());
+    assert!(second.claim_flight(2_000).unwrap().is_none());
+    first.release_flight();
+    assert!(second.claim_flight(3_000).unwrap().is_some());
+    assert!(first.claim_flight(4_000).unwrap().is_none());
+    // A tab closed mid sync never releases; its lease runs out.
+    assert!(first.claim_flight(3_000 + LEASE_MS).unwrap().is_some());
+    // A clock moved backwards cannot keep a lease alive for years.
+    assert!(second.claim_flight(1_000).unwrap().is_some());
+}
+
+#[test]
+fn a_flight_uses_the_session_another_tab_refreshed() {
+    let (first, second) = two_tabs();
+    let mut rotated = session();
+    rotated.refresh_token = "rotated".into();
+    first.write_session(&rotated).unwrap();
+    let (session, _, _) = second.claim_flight(1_000).unwrap().unwrap();
+    assert_eq!(session.refresh_token, "rotated");
+}
+
+#[test]
+fn a_late_sync_in_one_tab_keeps_an_edit_saved_in_the_other() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let (_, mut checkpoint, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let mut edited = second.load().unwrap().unwrap();
+    edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&edited).unwrap();
+    let mut records = from_json(&checkpoint.records).unwrap();
+    run(checkpoint.engine.sync(&mut backend, &mut records, || 1000)).unwrap();
+    checkpoint.records = to_json(&records).unwrap();
+    let merged = first
+        .complete(&checkpoint, generation, 2_000)
+        .unwrap()
+        .unwrap();
+    assert_eq!(merged.marks, edited.marks);
+    assert_eq!(second.load().unwrap().unwrap().marks, edited.marks);
+}
