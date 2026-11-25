@@ -892,7 +892,8 @@ impl AppState {
 
     pub fn finish_first_run(&mut self, screen: Screen) {
         if !self.data.first_run_complete {
-            self.redate_setup_deeds();
+            // A late sign up may still mark the week before today (#170).
+            self.redate_setup_deeds(werdy_core::first_markable_day(self.today));
         }
         self.data.first_run_complete = true;
         self.data.first_run = Default::default();
@@ -1572,7 +1573,7 @@ impl AppState {
             self.invalidate_kept_days();
         }
         if moved && !self.data.first_run_complete {
-            self.redate_setup_deeds();
+            self.redate_setup_deeds(today);
         }
     }
 
@@ -1598,7 +1599,8 @@ impl AppState {
         self.first_run_dirty = true;
     }
 
-    fn redate_setup_deeds(&mut self) {
+    /// Restarts setup deeds that have no marks on `first_day`.
+    fn redate_setup_deeds(&mut self, first_day: WerdyDay) {
         self.backfill_setup_deed_ids();
         let ids: Vec<_> = self
             .data
@@ -1613,7 +1615,7 @@ impl AppState {
             if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == id)
                 && let Some(rule) = deed.rule_on(deed.created_on()).cloned()
             {
-                *deed = Deed::new(id, self.today, rule);
+                *deed = Deed::new(id, first_day, rule);
                 self.record_upsert(id);
             }
         }
@@ -3126,7 +3128,7 @@ mod tests {
                 let expected = if [outside, marked].contains(&id) {
                     start
                 } else {
-                    next
+                    werdy_core::first_markable_day(next)
                 };
                 assert_eq!(deed.created_on(), expected, "{source}: deed {id:?}");
             }
@@ -3177,7 +3179,7 @@ mod tests {
                 .data
                 .deeds
                 .iter()
-                .all(|deed| deed.created_on() == state.today)
+                .all(|deed| deed.created_on() == werdy_core::first_markable_day(state.today))
         );
         Ok(())
     }
@@ -3187,8 +3189,9 @@ mod tests {
         let store = MemoryStore::default();
         let start = today()?;
         let finish = start.next()?;
-        let created = WerdyDay::new(2026, 10, 20)?;
-        let changed = WerdyDay::new(2026, 10, 23)?;
+        // Before the late sign up week, so only the imported deed is due.
+        let created = WerdyDay::from_unix_days(start.days_since_unix_epoch() - 12)?;
+        let changed = WerdyDay::from_unix_days(created.days_since_unix_epoch() + 3)?;
         let past_due = created.next()?;
         let mut state = AppState::start(&store, start, slot_order());
         state.select_first_run_level("level_1")?;
@@ -3249,7 +3252,7 @@ mod tests {
                 .deeds
                 .iter()
                 .find(|deed| deed.id == *id)
-                .is_some_and(|deed| deed.created_on() == finish)
+                .is_some_and(|deed| deed.created_on() == werdy_core::first_markable_day(finish))
         }));
         resumed.viewing = past_due;
         assert_eq!(resumed.summary().missed, 1);
@@ -3955,7 +3958,7 @@ mod tests {
     }
 
     #[test]
-    fn finishing_setup_dates_added_deeds_on_finish_day() -> TestResult {
+    fn finishing_setup_lets_the_week_before_the_finish_day_be_marked() -> TestResult {
         let start = today()?;
         let mut state = AppState::start(&MemoryStore::default(), start, slot_order());
         state.toggle_set("five_prayers")?;
@@ -3963,13 +3966,25 @@ mod tests {
         state.update_today(finish);
         state.finish_first_run(Screen::Sheet);
         assert_eq!(state.summary().open, 5);
+        let first = werdy_core::first_markable_day(finish);
         assert!(
             state
                 .data
                 .deeds
                 .iter()
-                .all(|deed| deed.created_on() == finish)
+                .all(|deed| deed.created_on() == first)
         );
+        let calendar = &state.data.settings.calendar;
+        let due_on = |day| {
+            state
+                .data
+                .deeds
+                .iter()
+                .filter(|deed| deed.is_due_on(day, calendar))
+                .count()
+        };
+        assert_eq!(due_on(first), 5);
+        assert_eq!(due_on(first.previous()?), 0);
         Ok(())
     }
 
