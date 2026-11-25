@@ -104,6 +104,18 @@ impl WerdyDay {
         i32::try_from(count).ok().map(Self)
     }
 
+    pub(crate) fn checked_add_days(self, days: i64) -> Option<Self> {
+        let count = i64::from(self.0).checked_add(days)?;
+        i32::try_from(count).ok().map(Self)
+    }
+
+    /// Days since the Saturday that starts this day's week, from 0 to 6.
+    /// The werdy week runs Saturday to Friday (decision 0047).
+    pub(crate) fn days_since_saturday(self) -> i64 {
+        // Day 0 (1970-01-01) was a Thursday, five days after a Saturday.
+        (i64::from(self.0) + 5).rem_euclid(7)
+    }
+
     pub(crate) fn days_since(self, earlier: Self) -> i64 {
         i64::from(self.0) - i64::from(earlier.0)
     }

@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::{CalendarSettings, Deed, DeedId, Fraction, Mark, MarkEntry, SlotKey, Target, WerdyDay};
+use crate::{
+    CalendarSettings, Deed, DeedId, Fraction, Mark, MarkEntry, Schedule, SlotKey, Target, WerdyDay,
+};
 
 /// One due deed on the sheet with its mark for that day.
 #[derive(Clone, Debug, PartialEq)]
@@ -15,6 +17,15 @@ pub struct SheetRow {
     pub added_later: bool,
     /// Target in force that day, if the deed uses counts.
     pub target: Option<Target>,
+    /// Quiet tag that explains the deed's schedule on this row, if any.
+    pub tag: Option<RowTag>,
+}
+
+/// Quiet tag drawn on a sheet row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RowTag {
+    /// A once a week deed with no mark yet this week (decision 0047).
+    ThisWeek,
 }
 
 /// Due deeds in one time slot.
@@ -62,7 +73,7 @@ pub fn daily_sheet(
 ) -> DailySheet {
     let mut groups: BTreeMap<(usize, SlotKey), (Vec<SheetRow>, bool)> = BTreeMap::new();
     for deed in deeds {
-        let Some(rule) = deed.due_rule_on(day, &calendar) else {
+        let Some((rule, _)) = deed.sheet_rule_on(day, &calendar, marks) else {
             continue;
         };
         let entry = marks.get(&(deed.id, day));
@@ -80,6 +91,8 @@ pub fn daily_sheet(
             mark,
             added_later: entry.is_some_and(|entry| entry.is_late_for(day)),
             target: rule.target.clone(),
+            tag: (rule.schedule == Schedule::OnceAWeek && mark.is_none())
+                .then_some(RowTag::ThisWeek),
         });
         group.1 &= done;
     }

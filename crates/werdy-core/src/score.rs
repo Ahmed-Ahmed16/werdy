@@ -2,7 +2,9 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use crate::mark::{compare_rationals, gcd};
-use crate::{CalendarSettings, DayNote, Deed, DeedId, Error, Fraction, MarkEntry, WerdyDay};
+use crate::{
+    CalendarSettings, DayNote, DayStatus, Deed, DeedId, Error, Fraction, MarkEntry, Marks, WerdyDay,
+};
 
 /// Owner's deeds, marks, and day notes used by a score.
 pub struct OwnerRecords<'a> {
@@ -202,7 +204,7 @@ pub fn score(
             continue;
         }
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
+            if let Some(rule) = deed.due_rule_on(*day, &records.calendar, records.marks) {
                 due = due.checked_add(1).ok_or(Error::ScoreOverflow)?;
                 earned.add_fraction(due_value(records, deed, *day, rule))?;
             }
@@ -249,12 +251,39 @@ pub struct TodaySummary {
     pub missed: usize,
 }
 
-/// Counts marks and open deeds due today.
+/// Counts marks and open deeds on today's sheet. A once a week deed with no
+/// mark yet this week counts as open.
 pub fn today_summary(
     deeds: &[Deed],
-    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
+    marks: &Marks,
     today: WerdyDay,
     calendar: &CalendarSettings,
+) -> TodaySummary {
+    summarise(deeds, marks, today, calendar, DayStatus::is_on_sheet)
+}
+
+/// Counts due deeds on a finished day, when unmarked due deeds count as Missed.
+/// A once a week deed still open that week is not due that day, so it is left out.
+pub fn finished_day_summary(
+    deeds: &[Deed],
+    marks: &Marks,
+    day: WerdyDay,
+    calendar: &CalendarSettings,
+) -> TodaySummary {
+    let mut summary = summarise(deeds, marks, day, calendar, |status| {
+        status == DayStatus::Due
+    });
+    summary.missed += summary.open;
+    summary.open = 0;
+    summary
+}
+
+fn summarise(
+    deeds: &[Deed],
+    marks: &Marks,
+    day: WerdyDay,
+    calendar: &CalendarSettings,
+    counted: impl Fn(DayStatus) -> bool,
 ) -> TodaySummary {
     let mut summary = TodaySummary {
         done: 0,
@@ -263,10 +292,13 @@ pub fn today_summary(
         missed: 0,
     };
     for deed in deeds {
-        let Some(rule) = deed.due_rule_on(today, calendar) else {
+        let Some((rule, status)) = deed.sheet_rule_on(day, calendar, marks) else {
             continue;
         };
-        match marks.get(&(deed.id, today)).map(|entry| entry.mark) {
+        if !counted(status) {
+            continue;
+        }
+        match marks.get(&(deed.id, day)).map(|entry| entry.mark) {
             Some(mark) => match mark.exact_value(rule) {
                 Fraction::ZERO => summary.missed += 1,
                 Fraction::ONE => summary.done += 1,
@@ -275,19 +307,6 @@ pub fn today_summary(
             None => summary.open += 1,
         }
     }
-    summary
-}
-
-/// Counts due deeds on a finished day, when unmarked due deeds count as Missed.
-pub fn finished_day_summary(
-    deeds: &[Deed],
-    marks: &BTreeMap<(DeedId, WerdyDay), MarkEntry>,
-    day: WerdyDay,
-    calendar: &CalendarSettings,
-) -> TodaySummary {
-    let mut summary = today_summary(deeds, marks, day, calendar);
-    summary.missed += summary.open;
-    summary.open = 0;
     summary
 }
 
