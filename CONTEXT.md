@@ -9,7 +9,7 @@ The person whose deeds and marks these are. Only the owner adds deeds and marks 
 _Avoid_: user (too vague), student, child
 
 **Watcher**:
-A person the owner allowed to see their sheet and reports, read only. In a family, usually a parent.
+A person the owner allowed to see their sheet and reports, read only. In a family, usually a parent. The app shows this role as **Support** (Arabic **دعم**, #167); code and database names keep `watcher`.
 _Avoid_: parent (a watcher need not be one), follower, supervisor, teacher
 
 **Share code**:
