@@ -531,3 +531,21 @@ fn counted_level_deeds_carry_a_times_target() {
         );
     }
 }
+
+/// The unit picker offers every shipped unit, hours included (#175), and
+/// each one has a picker label in both locales.
+#[test]
+fn every_unit_has_a_picker_label_and_hours_is_offered() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let keys: Vec<_> = catalog.units.iter().map(|unit| unit.key.as_str()).collect();
+    assert_eq!(keys, ["pages", "rakaat", "times", "hours"]);
+    for (locale, source) in [
+        ("ar", include_str!("../../../locales/ar/deeds.ftl")),
+        ("en", include_str!("../../../locales/en/deeds.ftl")),
+    ] {
+        for key in &keys {
+            let label = format!("\neditor-unit-{key} = ");
+            assert!(source.contains(&label), "{locale}: missing editor-unit-{key}");
+        }
+    }
+}

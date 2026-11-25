@@ -71,3 +71,4 @@ range-ayyam-al-bid = Ayyam al Bid
 editor-unit-pages = pages
 editor-unit-rakaat = rakaat
 editor-unit-times = times
+editor-unit-hours = hours

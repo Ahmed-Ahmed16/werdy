@@ -30,6 +30,15 @@ unit-times =
         [many] مرةً
        *[other] مرة
     }
+unit-hours =
+    { $count ->
+        [zero] ساعة
+        [one] ساعة
+        [two] ساعتان
+        [few] ساعات
+        [many] ساعةً
+       *[other] ساعة
+    }
 
 ## Sets.
 
