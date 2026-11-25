@@ -100,5 +100,5 @@ reports-ranked = الأقوى والأضعف
 reports-weakest = يحتاج اهتمامًا
 reports-strongest = الأقوى
 reports-none-weak = أتممت كل عمل مستحق كاملًا.
-reports-prayers = الصلوات في وقتها
+reports-prayers = الصلوات الخمس
 reports-history-not-due = غير مستحق

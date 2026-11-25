@@ -80,5 +80,5 @@ reports-ranked = Strongest and weakest
 reports-weakest = Needs attention
 reports-strongest = Strongest
 reports-none-weak = Every due deed was done in full.
-reports-prayers = Prayers on time
+reports-prayers = The five prayers
 reports-history-not-due = Not due

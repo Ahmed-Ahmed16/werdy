@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    CategoryKey, DeedId, Error, Fraction, OwnerRecords, Score, ScoreValue, WerdyDay, score,
+    CategoryKey, DeedId, Error, Fraction, OwnerRecords, Score, ScoreValue, SlotKey, WerdyDay, score,
 };
 
 const THREE_DAYS: i64 = 3;
@@ -483,11 +483,31 @@ impl DayDot {
     }
 }
 
+/// Where the owner marks one of the five prayers (decision 0049).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PrayerSource {
+    /// The prayer, named by its time slot, such as `fajr`.
+    pub prayer: SlotKey,
+    /// Congregation deeds, in the order they are tried. The first one due
+    /// that day wins.
+    pub congregation: Vec<DeedId>,
+    /// The on time deed, used on a day no congregation deed is due.
+    pub on_time: Option<DeedId>,
+}
+
+impl PrayerSource {
+    fn deeds(&self) -> impl Iterator<Item = &DeedId> {
+        self.congregation.iter().chain(&self.on_time)
+    }
+}
+
 /// One day in a prayer row.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PrayerDay {
     /// Finished werdy day.
     pub day: WerdyDay,
+    /// The deed this day's dot comes from, or none when no deed was due.
+    pub deed_id: Option<DeedId>,
     /// How the prayer went that day.
     pub dot: DayDot,
     /// A mark or day note for this day was added more than two days late.
@@ -499,41 +519,64 @@ pub struct PrayerDay {
 /// One prayer's days in the prayer grid.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrayerRow {
-    /// Stable deed identity.
-    pub deed_id: DeedId,
+    /// The prayer, as given by the caller.
+    pub prayer: SlotKey,
     /// One entry per requested day, in the order given.
     pub days: Vec<PrayerDay>,
+    /// Score over the shown days only.
+    pub score: Score,
 }
 
-/// Builds a row of dots for each listed deed over the given days.
-/// Rows keep the caller's order. Deeds not in this report are skipped.
-pub fn prayer_grid(report: &Report, prayers: &[DeedId], days: &[WerdyDay]) -> Vec<PrayerRow> {
-    prayers
-        .iter()
-        .filter_map(|deed_id| {
-            let history = report.per_deed_days.get(deed_id);
-            if history.is_none() && !report.not_due.contains(deed_id) {
-                return None;
+/// Builds a row of dots for each prayer over the given days.
+///
+/// Each day uses the first congregation deed due that day, else the on time
+/// deed when it is due (decision 0049). A congregation mark tells the whole
+/// story: done is the first congregation, partial a later one, missed alone. Rows keep the
+/// caller's order. A prayer none of whose deeds is in this report is
+/// skipped. Returns `ScoreOverflow` if a row total cannot fit.
+pub fn prayer_grid(
+    report: &Report,
+    prayers: &[PrayerSource],
+    days: &[WerdyDay],
+) -> Result<Vec<PrayerRow>, Error> {
+    let mut rows = Vec::new();
+    for source in prayers {
+        let known = source.deeds().any(|deed_id| {
+            report.per_deed_days.contains_key(deed_id) || report.not_due.contains(deed_id)
+        });
+        if !known {
+            continue;
+        }
+        let mut earned = ScoreValue::ZERO;
+        let mut due = 0usize;
+        let mut cells = Vec::with_capacity(days.len());
+        for day in days {
+            let found = source.deeds().find_map(|deed_id| {
+                report
+                    .per_deed_days
+                    .get(deed_id)
+                    .and_then(|entries| entries.iter().find(|entry| entry.day == *day))
+                    .map(|entry| (*deed_id, entry))
+            });
+            if let Some((_, entry)) = found {
+                earned.add_fraction(entry.value)?;
+                due = due.checked_add(1).ok_or(Error::ScoreOverflow)?;
             }
-            let row = days
-                .iter()
-                .map(|day| {
-                    let entry =
-                        history.and_then(|entries| entries.iter().find(|entry| entry.day == *day));
-                    PrayerDay {
-                        day: *day,
-                        dot: entry.map_or(DayDot::NotDue, |entry| DayDot::from_value(entry.value)),
-                        added_later: entry.is_some_and(|entry| entry.added_later),
-                        noted: report.noted_days.contains(day),
-                    }
-                })
-                .collect();
-            Some(PrayerRow {
-                deed_id: *deed_id,
-                days: row,
-            })
-        })
-        .collect()
+            cells.push(PrayerDay {
+                day: *day,
+                deed_id: found.map(|(deed_id, _)| deed_id),
+                dot: found.map_or(DayDot::NotDue, |(_, entry)| DayDot::from_value(entry.value)),
+                added_later: found.is_some_and(|(_, entry)| entry.added_later),
+                noted: report.noted_days.contains(day),
+            });
+        }
+        rows.push(PrayerRow {
+            prayer: source.prayer.clone(),
+            days: cells,
+            score: crate::score::score_from_totals(earned, due),
+        });
+    }
+    Ok(rows)
 }
 
 /// Change in percent points from the previous period, or none when either
