@@ -112,6 +112,11 @@ jobs:
       - name: Prepare Pages files
         shell: pwsh
         run: ./scripts/prepare-pages.ps1 -PublicDir target/dx/werdy-app/release/web/public
+      # Never deploy a build that cannot open, or save a mark, offline (#180).
+      - name: Offline smoke test in Chrome
+        env:
+          CHROME: /usr/bin/google-chrome
+        run: node scripts/tests/offline-smoke.mjs target/dx/werdy-app/release/web/public
       - uses: actions/upload-pages-artifact@v4
         with:
           path: target/dx/werdy-app/release/web/public
