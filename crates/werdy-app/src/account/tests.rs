@@ -84,10 +84,10 @@ fn legacy_level_sheet() -> OwnerData {
     }
 }
 
-fn apply_flight(store: &AccountStore, backend: &mut FakeBackend, state: &mut AppState) {
+fn apply_flight(store: &AccountStore, backend: &mut impl Backend, state: &mut AppState) {
     let completed = flight(store, backend);
     let records = store.complete(&completed, 1, 2000).unwrap().unwrap();
-    state.accept_successful_sync(records, store);
+    runtime::apply_successful_sync(state, records, store);
 }
 
 #[test]
@@ -319,6 +319,39 @@ impl Backend for HeldRuleBackend {
     async fn server_time(&mut self) -> Result<u64, SyncError> {
         self.inner.server_time().await
     }
+}
+
+#[test]
+fn first_sync_leaves_a_level_deed_with_a_held_rule_untouched() {
+    let edit_day = day().next().unwrap();
+    let today = edit_day.next().unwrap();
+    let mut backend = HeldRuleBackend {
+        inner: FakeBackend::new(1000),
+        edit_day,
+    };
+    let original = legacy_level_sheet();
+    let mut other_phone = original.clone();
+    let mut edit = other_phone.deeds[0].rule_on(day()).unwrap().clone();
+    edit.schedule = DeedSchedule::WhenItComesUp;
+    other_phone.deeds[0].change_rule(edit_day, edit).unwrap();
+    run(Sync::new("other_phone")
+        .unwrap()
+        .sync(&mut backend.inner, &mut other_phone, || 1000))
+    .unwrap();
+
+    let store = store();
+    store.sign_in(session(), &OwnerData::default()).unwrap();
+    let mut phone = AppState::start(&store, today, crate::starter::slot_order());
+    apply_flight(&store, &mut backend, &mut phone);
+
+    let account = store.account.borrow();
+    let engine = &account.checkpoint.as_ref().unwrap().engine;
+    let deed = &phone.data.deeds[0];
+    assert_eq!(engine.held_deed_ids(), [deed.id].into());
+    assert_eq!(deed.rule_on(today), original.deeds[0].rule_on(day()));
+    assert_eq!(deed.rule_versions().count(), 1);
+    assert!(engine.outbox().is_empty());
+    assert!(phone.data.level_group_move_handled.is_empty());
 }
 
 #[test]
