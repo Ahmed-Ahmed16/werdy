@@ -7,7 +7,8 @@ use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
 use werdy_core::{
     Band, DayDot, DeedId, DeedRank, Period, PrayerDay, Report, ReportLead, SeriesEntry, WerdyDay,
-    categories_weakest_first, percent_change, prayer_grid, ranked_deeds, report_lead,
+    categories_weakest_first, missed_prayers, percent_change, prayer_grid, ranked_deeds,
+    report_lead,
 };
 use werdy_store::DeedName;
 
@@ -602,8 +603,11 @@ fn RankedBlock(report: Rc<Report>) -> Element {
 
 /// The five prayers (decision 0049): a dot per day for the last days of the
 /// period, and the percent over those shown days only. Each day shows the
-/// first congregation deed due that day, else the on time deed. Hidden when
-/// the owner has no prayer deed of either kind.
+/// first congregation deed due that day, else the on time deed. Unmarked
+/// prayers and recorded X marks draw differently (#192). Missed counts
+/// include unmarked days and X marks on the on time deed; an X on a
+/// congregation day means prayed alone and is not counted as missed.
+/// Hidden when the owner has no prayer deed of either kind.
 #[component]
 fn PrayersBlock(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
@@ -617,6 +621,11 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
     if grid.is_empty() {
         return rsx! {};
     }
+    let missed = missed_prayers(&grid);
+    let congregation = grid
+        .iter()
+        .flat_map(|row| &row.days)
+        .any(|cell| cell.congregation);
     let range = days
         .first()
         .zip(days.last())
@@ -624,11 +633,26 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
     rsx! {
         section { class: "report-block",
             h2 { class: "report-block-title", {i18n.t("reports-prayers")} }
+            if missed > 0 {
+                p { class: "report-prayer-total",
+                    {i18n.t_with("reports-prayers-missed-total", &[("count", FluentValue::from(missed))])}
+                }
+            }
             if let Some(range) = range { p { class: "report-muted", "{range}" } }
+            PrayerLegend { congregation }
             for row in grid {
+                {let tally = row.tally();
+                rsx! {
                 div { class: "report-prayer-row", key: "{row.prayer.0}",
                     div { class: "report-row-head",
                         span { class: "report-row-name", {i18n.t(&format!("slot-{}", row.prayer.0))} }
+                        if tally.missed > 0 {
+                            span { class: "report-prayer-missed",
+                                {i18n.t_with("reports-prayer-missed", &[("count", FluentValue::from(tally.missed))])}
+                            }
+                        } else if tally.due > 0 {
+                            span { class: "report-muted", {i18n.t("reports-prayer-none-missed")} }
+                        }
                         if let Some(percent) = row.score.percent {
                             strong { {percent_text(&i18n, percent)} }
                         }
@@ -639,6 +663,64 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
                         }
                     }
                 }
+                }}
+            }
+        }
+    }
+}
+
+fn prayer_dot_style(
+    dot: DayDot,
+    unmarked: bool,
+    congregation: bool,
+) -> (&'static str, &'static str) {
+    match dot {
+        DayDot::Done if congregation => ("done", "reports-prayer-first"),
+        DayDot::Done => ("done", "reports-history-done"),
+        DayDot::Partial if congregation => ("partial", "reports-prayer-later"),
+        DayDot::Partial => ("partial", "reports-history-partial"),
+        DayDot::Missed if unmarked => ("unmarked", "reports-history-unmarked"),
+        DayDot::Missed if congregation => ("missed", "reports-prayer-alone"),
+        DayDot::Missed => ("missed", "reports-history-missed"),
+        DayDot::NotDue => ("none", "reports-history-not-due"),
+    }
+}
+
+fn prayer_dot_glyph(dot: DayDot, unmarked: bool) -> Element {
+    match dot {
+        DayDot::Done => rsx! { CheckIcon {} },
+        DayDot::Partial => rsx! { HalfIcon {} },
+        DayDot::Missed if !unmarked => rsx! { CrossIcon {} },
+        DayDot::Missed | DayDot::NotDue => rsx! {},
+    }
+}
+
+#[component]
+fn PrayerLegend(congregation: bool) -> Element {
+    let i18n = use_i18n();
+    let samples = [
+        (DayDot::Done, false),
+        (DayDot::Partial, false),
+        (DayDot::Missed, false),
+        (DayDot::Missed, true),
+        (DayDot::NotDue, false),
+    ];
+    rsx! {
+        ul { class: "report-legend report-prayer-legend",
+            for (dot, unmarked) in samples {
+                {let (kind, key) = prayer_dot_style(dot, unmarked, congregation);
+                rsx! {
+                    li { key: "{kind}",
+                        span { class: "report-dot", "data-kind": kind, aria_hidden: "true",
+                            {prayer_dot_glyph(dot, unmarked)}
+                        }
+                        {i18n.t(key)}
+                    }
+                }}
+            }
+            li {
+                span { class: "report-dot", "data-kind": "none", "data-sign": "true", aria_hidden: "true" }
+                {i18n.t("reports-legend-sign")}
             }
         }
     }
@@ -648,12 +730,7 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
 fn PrayerDot(cell: PrayerDay) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let (kind, key) = match cell.dot {
-        DayDot::Done => ("done", "reports-history-done"),
-        DayDot::Partial => ("partial", "reports-history-partial"),
-        DayDot::Missed => ("missed", "reports-history-missed"),
-        DayDot::NotDue => ("none", "reports-history-not-due"),
-    };
+    let (kind, key) = prayer_dot_style(cell.dot, cell.unmarked, cell.congregation);
     let mut label = i18n.t_with(
         "reports-history-label",
         &[
@@ -674,12 +751,7 @@ fn PrayerDot(cell: PrayerDay) -> Element {
         span { class: "report-dot", role: "listitem", "data-kind": kind,
             "data-sign": cell.noted || cell.added_later,
             aria_label: label.clone(), title: label,
-            match cell.dot {
-                DayDot::Done => rsx! { CheckIcon {} },
-                DayDot::Partial => rsx! { HalfIcon {} },
-                DayDot::Missed => rsx! { CrossIcon {} },
-                DayDot::NotDue => rsx! {},
-            }
+            {prayer_dot_glyph(cell.dot, cell.unmarked)}
         }
     }
 }

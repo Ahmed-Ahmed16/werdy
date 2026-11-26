@@ -55,6 +55,7 @@ reports-detail-label = { $base } · { $detail }
 reports-history-done = Done
 reports-history-partial = Partial
 reports-history-missed = Missed
+reports-history-unmarked = Not marked
 reports-note = Day note
 reports-note-sign = ✎
 reports-late-sign = *
@@ -81,4 +82,15 @@ reports-weakest = Needs attention
 reports-strongest = Strongest
 reports-none-weak = Every due deed was done in full.
 reports-prayers = The five prayers
+reports-prayers-missed-total =
+    { $count ->
+        [one] 1 prayer missed or not marked in these days
+       *[other] { $count } prayers missed or not marked in these days
+    }
+reports-prayer-missed = Missed { $count }
+reports-prayer-none-missed = None missed
+reports-prayer-first = First congregation
+reports-prayer-later = Congregation, not the first
+reports-prayer-alone = Alone
 reports-history-not-due = Not due
+reports-legend-sign = Note or late mark

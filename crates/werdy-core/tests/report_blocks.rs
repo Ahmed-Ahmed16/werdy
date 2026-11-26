@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use werdy_core::{
     CalendarSettings, CategoryKey, DayDot, DayNote, Deed, DeedId, DeedRule, Error, ExcuseCredit,
-    Mark, MarkEntry, OwnerRecords, Period, PrayerRow, PrayerSource, Report, Schedule, Score,
-    ScoreBands, ScoreValue, SlotKey, Weekday, WerdyDay, build_report, categories_weakest_first,
-    percent_change, prayer_grid, ranked_deeds,
+    Mark, MarkEntry, OwnerRecords, Period, PrayerRow, PrayerSource, PrayerTally, Report, Schedule,
+    Score, ScoreBands, ScoreValue, SlotKey, Weekday, WerdyDay, build_report,
+    categories_weakest_first, missed_prayers, percent_change, prayer_grid, ranked_deeds,
 };
 
 fn day(month: u8, number: u8) -> Result<WerdyDay, Error> {
@@ -199,6 +199,49 @@ fn prayer_grid_scores_only_the_days_it_shows() -> Result<(), Error> {
 }
 
 #[test]
+fn prayer_grid_counts_unmarked_days_among_misses() -> Result<(), Error> {
+    let mut week = Week::new(&["prayer"])?;
+    let days = [day(10, 24)?, day(10, 25)?, day(10, 26)?];
+    for marked in &days[..2] {
+        week.mark(1, *marked, Mark::Missed, *marked);
+    }
+
+    let grid = prayer_grid(&week.report()?, &[on_time(1)], &days)?;
+    let row = &grid[0];
+    assert_eq!(
+        row.tally(),
+        PrayerTally {
+            missed: 3,
+            unmarked: 1,
+            due: 3,
+            ..PrayerTally::default()
+        }
+    );
+    let unmarked: Vec<_> = row.days.iter().map(|cell| cell.unmarked).collect();
+    assert_eq!(unmarked, [false, false, true]);
+    Ok(())
+}
+
+#[test]
+fn missed_prayers_sums_misses_across_rows() -> Result<(), Error> {
+    let mut week = Week::new(&["prayer", "prayer"])?;
+    let days = [day(10, 25)?, day(10, 26)?];
+    week.mark(1, days[0], Mark::Done, days[0]);
+    week.mark(2, days[0], Mark::Missed, days[0]);
+    let prayers = [
+        on_time(1),
+        PrayerSource {
+            prayer: SlotKey::new("dhuhr"),
+            ..on_time(2)
+        },
+    ];
+    let grid = prayer_grid(&week.report()?, &prayers, &days)?;
+    assert_eq!(missed_prayers(&grid), 3);
+    assert_eq!(missed_prayers(&[]), 0);
+    Ok(())
+}
+
+#[test]
 fn prayer_grid_keeps_the_caller_order_and_skips_unknown_deeds() -> Result<(), Error> {
     let week = Week::new(&["prayer", "prayer"])?;
     let days = Period::Week.days(day(10, 27)?, 0);
@@ -237,6 +280,34 @@ fn prayer_grid_tries_congregation_deeds_in_order() -> Result<(), Error> {
 }
 
 #[test]
+fn prayer_grid_counts_praying_alone_separately_from_missing_a_prayer() -> Result<(), Error> {
+    let mut week = Week::new(&["prayer"])?;
+    let days = [day(10, 24)?, day(10, 25)?, day(10, 26)?];
+    week.mark(1, days[0], Mark::Missed, days[0]);
+    week.mark(1, days[2], Mark::Done, days[2]);
+    let fajr = PrayerSource {
+        prayer: SlotKey::new("fajr"),
+        on_time: None,
+        congregation: vec![DeedId(1)],
+    };
+
+    let grid = prayer_grid(&week.report()?, &[fajr], &days)?;
+    assert_eq!(missed_prayers(&grid), 1);
+    assert_eq!(
+        grid[0].tally(),
+        PrayerTally {
+            done: 1,
+            partial: 0,
+            alone: 1,
+            missed: 1,
+            unmarked: 1,
+            due: 3,
+        }
+    );
+    Ok(())
+}
+
+#[test]
 fn prayer_grid_prefers_the_congregation_deed_when_both_are_due() -> Result<(), Error> {
     let mut week = Week::new(&["prayer", "prayer"])?;
     week.done_on_first(1, 7)?;
@@ -264,6 +335,8 @@ fn prayer_grid_uses_the_on_time_deed_on_days_the_congregation_deed_is_archived()
     let grid = prayer_grid(&week.report()?, &[fajr], &days)?;
     let expected: Vec<_> = (0..7).map(|at| Some(if at < 3 { 2 } else { 1 })).collect();
     assert_eq!(sources(&grid), expected);
+    let congregation: Vec<_> = grid[0].days.iter().map(|cell| cell.congregation).collect();
+    assert_eq!(congregation, [true, true, true, false, false, false, false]);
     Ok(())
 }
 
@@ -318,6 +391,7 @@ fn prayer_grid_marks_days_a_prayer_was_not_due() -> Result<(), Error> {
     let grid = prayer_grid(&never.report()?, &[on_time(1)], &days)?;
     assert!(grid[0].days.iter().all(|cell| cell.dot == DayDot::NotDue));
     assert_eq!(grid[0].score.percent, None);
+    assert_eq!(grid[0].tally(), PrayerTally::default());
     Ok(())
 }
 
@@ -334,6 +408,27 @@ fn prayer_grid_shows_late_marks_and_noted_days() -> Result<(), Error> {
     assert!(cells[1].noted && !cells[1].added_later);
     assert_eq!(cells[1].dot, DayDot::Done);
     assert!(!cells[2].noted && !cells[2].added_later);
+    Ok(())
+}
+
+#[test]
+fn prayer_grid_counts_an_excused_day_without_a_mark_as_done() -> Result<(), Error> {
+    let mut week = Week::new(&["prayer"])?;
+    let excused = day(10, 26)?;
+    week.notes
+        .insert(excused, DayNote::new("Ill", ExcuseCredit::Full, excused)?);
+
+    let grid = prayer_grid(&week.report()?, &[on_time(1)], &[excused])?;
+    let row = &grid[0];
+    assert!(!row.days[0].unmarked);
+    assert_eq!(
+        row.tally(),
+        PrayerTally {
+            done: 1,
+            due: 1,
+            ..PrayerTally::default()
+        }
+    );
     Ok(())
 }
 
