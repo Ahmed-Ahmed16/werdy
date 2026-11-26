@@ -302,3 +302,35 @@ fn target_stepper_stays_positive_and_does_not_overflow() {
     assert_eq!(werdy_core::increase_target_amount(5), 6);
     assert_eq!(werdy_core::increase_target_amount(u32::MAX), u32::MAX);
 }
+
+/// Hours (#175) are whole numbers like every other unit, and the unit key
+/// never changes a score: a saved pages deed and a new hours deed with the
+/// same counts score the same, and the pages deed keeps its unit.
+#[test]
+fn hours_score_like_any_other_unit_and_saved_units_stay() -> Result<(), Error> {
+    let marked_day = day(23)?;
+    let pages = Deed::new(DeedId(1), marked_day, daily(Some(Target::new(3, "pages")?)));
+    let hours = Deed::new(DeedId(2), marked_day, daily(Some(Target::new(3, "hours")?)));
+    let entry = MarkEntry::new(Mark::Count(2), marked_day);
+    let pages_marks = BTreeMap::from([((pages.id, marked_day), entry)]);
+    let hours_marks = BTreeMap::from([((hours.id, marked_day), entry)]);
+
+    let pages_score = score(
+        std::slice::from_ref(&pages),
+        &pages_marks,
+        &[marked_day],
+        day(24)?,
+    );
+    let hours_score = score(&[hours], &hours_marks, &[marked_day], day(24)?);
+
+    assert_eq!(pages_score, hours_score);
+    assert_eq!(pages_score.earned.as_f64(), 2.0 / 3.0);
+    assert_eq!(
+        pages
+            .rule_on(marked_day)
+            .and_then(|rule| rule.target.as_ref())
+            .map(Target::unit),
+        Some("pages")
+    );
+    Ok(())
+}

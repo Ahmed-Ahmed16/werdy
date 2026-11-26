@@ -624,6 +624,7 @@ fn WatchedContent(view: WatchView, language: String, today: werdy_core::WerdyDay
     use_context_provider(|| state);
     use_context_provider(|| Actions::read_only(state, store));
     use_context_provider(|| ReadOnly(true));
+    super::sheet::provide_fold_choices(today);
     let cursor = view.cursor();
     use_effect(use_reactive(
         (&view, &language, &today),
@@ -892,15 +893,15 @@ mod tests {
         for (language, watch_me, watch_them, until, limit) in [
             (
                 Language::English,
-                "You asked them to watch you",
-                "You asked to watch them",
+                "You asked them to support you",
+                "You asked to support them",
                 "Until DATE",
                 "You have 4 requests waiting. Cancel one to send another.",
             ),
             (
                 Language::Arabic,
-                "طلبت منهم متابعتك",
-                "طلبت متابعتهم",
+                "طلبت منهم دعمك",
+                "طلبت أن تدعمهم",
                 "حتى DATE",
                 "لديك 4 طلبات بانتظار الرد. ألغِ أحدها لإرسال طلب آخر.",
             ),

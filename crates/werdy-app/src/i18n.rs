@@ -62,14 +62,6 @@ impl Language {
             Self::English => "ltr",
         }
     }
-
-    /// Returns the other language, for the language switch.
-    pub fn other(self) -> Self {
-        match self {
-            Self::Arabic => Self::English,
-            Self::English => Self::Arabic,
-        }
-    }
 }
 
 /// Fluent files for one language, one per feature.
@@ -114,6 +106,8 @@ pub fn schedule_sentence(texts: &Texts, language: Language, schedule: &Schedule)
         Schedule::EveryDay => texts.get(language, "schedule-every-day-sentence", &[]),
         Schedule::Weekdays(days) => weekdays_sentence(texts, language, days),
         Schedule::Hijri(range) => hijri_sentence(texts, language, range),
+        Schedule::OnceAWeek => texts.get(language, "schedule-once-a-week-sentence", &[]),
+        Schedule::WhenItComesUp => texts.get(language, "schedule-when-it-comes-up-sentence", &[]),
     }
 }
 
@@ -356,6 +350,36 @@ mod tests {
         }
     }
 
+    /// The sharing role is called Support / دعم (#167). The old words
+    /// "watch" and the Arabic root تابع (as in متابع) must not come back
+    /// in sharing copy. Fluent keys keep their old `watch` names, so only
+    /// the text after `=` is checked.
+    #[test]
+    fn sharing_role_copy_says_support_not_watcher() {
+        for source in ARABIC.iter().chain(ENGLISH) {
+            for line in source.lines() {
+                let Some((key, text)) = line.split_once('=') else {
+                    continue;
+                };
+                let lower = text.to_lowercase();
+                assert!(!lower.contains("watch"), "{key} still says watch: {text}");
+                let sharing_key = key.contains("watch") || key.starts_with("sharing-");
+                if sharing_key {
+                    assert!(!text.contains("تابع"), "{key} still uses تابع: {text}");
+                }
+            }
+        }
+        let texts = Texts::load();
+        assert_eq!(
+            texts.get(Language::English, "sharing-watchers", &[]),
+            "People who support me"
+        );
+        assert_eq!(
+            texts.get(Language::Arabic, "sharing-watchers", &[]),
+            "من يدعمونني"
+        );
+    }
+
     #[test]
     fn variables_are_filled_in() {
         let texts = Texts::load();
@@ -370,6 +394,24 @@ mod tests {
         );
 
         assert_eq!(text.replace(['\u{2068}', '\u{2069}'], ""), "3 of 5");
+    }
+
+    #[test]
+    fn every_slot_and_group_has_a_name_in_both_languages() -> Result<(), String> {
+        let texts = Texts::load();
+        let catalog = werdy_data::builtin().map_err(|error| error.to_string())?;
+        for place in &catalog.sheet_order {
+            let key = crate::starter::place_name_key(place);
+            for language in [Language::Arabic, Language::English] {
+                assert_ne!(texts.get(language, &key, &[]), key, "{language:?}");
+            }
+        }
+        assert_eq!(
+            texts.get(Language::Arabic, "group-heart_and_character", &[]),
+            "القلب والأخلاق"
+        );
+        assert_eq!(texts.get(Language::Arabic, "editor-group", &[]), "مجموعة");
+        Ok(())
     }
 
     #[test]
@@ -562,6 +604,11 @@ mod tests {
             ("unit-times", 3, "الهدف: 3 مرات", "Target: 3 times"),
             ("unit-times", 11, "الهدف: 11 مرةً", "Target: 11 times"),
             ("unit-times", 100, "الهدف: 100 مرة", "Target: 100 times"),
+            ("unit-hours", 1, "الهدف: ساعة", "Target: 1 hour"),
+            ("unit-hours", 2, "الهدف: ساعتان", "Target: 2 hours"),
+            ("unit-hours", 3, "الهدف: 3 ساعات", "Target: 3 hours"),
+            ("unit-hours", 11, "الهدف: 11 ساعةً", "Target: 11 hours"),
+            ("unit-hours", 100, "الهدف: 100 ساعة", "Target: 100 hours"),
         ] {
             for (language, expected) in [(Language::Arabic, arabic), (Language::English, english)] {
                 let unit = texts.get(language, unit_key, &[("count", FluentValue::from(count))]);
@@ -621,6 +668,16 @@ mod tests {
                 Schedule::Hijri(HijriRange::ramadan()),
                 "Due during Ramadan.",
                 "مستحق خلال رمضان.",
+            ),
+            (
+                Schedule::OnceAWeek,
+                "Due once a week, on the day you mark it. The week runs Saturday to Friday. With no mark by the end of Friday, it counts as missed on Friday.",
+                "مستحق مرة في الأسبوع، في اليوم الذي تسجله فيه. الأسبوع من السبت إلى الجمعة. إن لم تسجله حتى نهاية الجمعة يُحسب فائتًا يوم الجمعة.",
+            ),
+            (
+                Schedule::WhenItComesUp,
+                "Counts only on a day you mark it. Left unmarked, it is never missed.",
+                "يحسب فقط في يوم تسجله فيه. إن لم تسجله فلا يعد فائتًا.",
             ),
         ];
         for (schedule, english, arabic) in cases {

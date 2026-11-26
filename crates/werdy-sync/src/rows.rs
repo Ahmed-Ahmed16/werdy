@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use werdy_core::{CalendarSettings, DayNote, Deed, DeedId, DeedRule, MarkEntry, WerdyDay};
 use werdy_store::{DeedName, Digits, OwnerData, Settings, Theme};
 
-use crate::{Pending, Sync, SyncError, invalid};
+use crate::{Pending, Sync, SyncError, incoming::DeedDependency, invalid};
 
 pub const MAX_NOTE_BYTES: usize = 8192;
 pub const MAX_NAME_BYTES: usize = 1024;
@@ -111,10 +111,7 @@ pub(crate) fn validate_install(install: &str) -> Result<(), SyncError> {
 
 pub(crate) fn validate_pending(pending: &Pending) -> Result<(), SyncError> {
     validate_limits(&pending.change)?;
-    validate_install(&pending.install)?;
-    if pending.operation == 0 {
-        return Err(invalid("operation id is zero"));
-    }
+    validate_operation(&pending.install, pending.operation)?;
     match &pending.change {
         Change::Deed { id, .. } | Change::Rule { id, .. } | Change::Mark { id, .. } => {
             validate_install(&id.install)?;
@@ -123,6 +120,14 @@ pub(crate) fn validate_pending(pending: &Pending) -> Result<(), SyncError> {
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_operation(install: &str, operation: u64) -> Result<(), SyncError> {
+    validate_install(install)?;
+    if operation == 0 {
+        return Err(invalid("operation id is zero"));
     }
     Ok(())
 }
@@ -364,15 +369,27 @@ fn project_changes(
 ) -> Result<(), SyncError> {
     let mut ids = BTreeMap::new();
     let mut deferred = BTreeSet::new();
+    let mut held_rules = BTreeSet::new();
+    for held in &engine.held {
+        match &held.dependency {
+            Some(DeedDependency::Deed { id }) => {
+                deferred.insert(id.clone());
+            }
+            Some(DeedDependency::Rule { id, from_day }) => {
+                held_rules.insert((id.clone(), *from_day));
+            }
+            Some(DeedDependency::Mark { .. }) | None => {}
+        }
+    }
     for (change, _) in changes {
         if let Change::Deed { id, row } = change {
-            let has_rule = changes.iter().any(
-                |(change, _)| matches!(change, Change::Rule { id: rule_id, .. } if rule_id == id),
-            );
-            if row.is_some() && !has_rule {
+            if let Some(header) = row
+                && rules_deferred(changes, id, header.created_on, &held_rules)
+            {
                 deferred.insert(id.clone());
                 continue;
             }
+            deferred.remove(id);
             let local = engine.local_id(id, records)?;
             records.deed_keys.insert(local, id.clone());
             ids.insert(id.clone(), (local, row.is_some()));
@@ -384,13 +401,35 @@ fn project_changes(
         }
     }
     for (change, time) in changes {
-        if matches!(change, Change::Mark { id, .. } if deferred.contains(id)) {
+        if matches!(change, Change::Mark { id, .. } | Change::Rule { id, .. } if deferred.contains(id))
+        {
             continue;
         }
         apply_row(records, change, *time, &ids)?;
     }
     records.deeds.sort_by_key(|deed| deed.id);
     validate_records(records)
+}
+
+fn rules_deferred(
+    changes: &[(Change, u64)],
+    id: &DeedKey,
+    created_on: WerdyDay,
+    held_rules: &BTreeSet<(DeedKey, WerdyDay)>,
+) -> bool {
+    let first = changes
+        .iter()
+        .filter_map(|(row, _)| match row {
+            Change::Rule {
+                id: rule_id,
+                from_day,
+                ..
+            } if rule_id == id => Some(*from_day),
+            _ => None,
+        })
+        .min();
+    // A readable rule before creation is invalid, so it is never deferred.
+    first.is_none() || (first > Some(created_on) && held_rules.contains(&(id.clone(), created_on)))
 }
 
 fn replace_deed(records: &mut OwnerData, local: DeedId, replacement: Option<(Deed, &DeedRow)>) {

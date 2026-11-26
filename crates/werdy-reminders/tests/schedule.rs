@@ -336,3 +336,83 @@ fn london_missing_summer_prayer_keeps_clock_reminder() {
         assert!(!plan.prayer_slots_skipped_no_location);
     }
 }
+
+#[test]
+fn a_group_clock_reminder_lists_its_due_deeds_at_the_chosen_time() {
+    let mut owner = owner("quran");
+    owner.settings.location = None;
+    clock(&mut owner, "quran", 20, 30);
+    let plan = schedule(&owner, now(8, 0), 1, |_, _| 180).unwrap();
+    assert_eq!(plan.notifications.len(), 1);
+    assert_eq!(plan.notifications[0].minute, 20 * 60 + 30);
+    assert_eq!(plan.notifications[0].deeds, vec![DeedId(1), DeedId(2)]);
+    assert_eq!(
+        plan.notifications[0].target,
+        werdy_reminders::Target::Slot(SlotKey::new("quran"))
+    );
+}
+
+#[test]
+fn a_prayer_slot_still_rejects_a_clock_reminder() {
+    let mut owner = owner("fajr");
+    clock(&mut owner, "fajr", 5, 0);
+    assert!(matches!(
+        schedule(&owner, now(0, 0), 1, |_, _| 180),
+        Err(werdy_reminders::Error::InvalidSlotRule(_))
+    ));
+}
+
+#[test]
+fn weekly_deed_is_reminded_until_marked_that_week() {
+    // 28 October 2026 is a Wednesday; its week started on Saturday 24 October.
+    let saturday = WerdyDay::new(2026, 10, 24).unwrap();
+    let monday = WerdyDay::new(2026, 10, 26).unwrap();
+    let mut owner = owner("any_time");
+    owner.deeds = vec![Deed::new(
+        DeedId(1),
+        saturday,
+        DeedRule {
+            schedule: Schedule::OnceAWeek,
+            target: None,
+            category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
+        },
+    )];
+    owner
+        .settings
+        .reminders
+        .deeds
+        .insert(DeedId(1), ClockTime::new(12, 0).unwrap());
+    let unmarked = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert_eq!(unmarked.notifications.len(), 1);
+
+    owner.marks.insert(
+        (DeedId(1), monday),
+        MarkEntry::new(Mark::partial_without_target(), monday),
+    );
+    let marked = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert!(marked.notifications.is_empty());
+}
+
+#[test]
+fn when_it_comes_up_deed_gets_no_reminder() {
+    let mut owner = owner("any_time");
+    owner.deeds = vec![Deed::new(
+        DeedId(1),
+        day(),
+        DeedRule {
+            schedule: Schedule::WhenItComesUp,
+            target: None,
+            category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
+        },
+    )];
+    owner
+        .settings
+        .reminders
+        .deeds
+        .insert(DeedId(1), ClockTime::new(12, 0).unwrap());
+    clock(&mut owner, "any_time", 13, 0);
+    let planned = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert!(planned.notifications.is_empty());
+}

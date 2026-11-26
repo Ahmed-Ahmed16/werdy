@@ -8,7 +8,8 @@
 # not even the level sheets' points.
 #
 # How to edit:
-# * Each deed is written once under [[deeds]]. A set lists deed keys.
+# * Each deed is written once under [[deeds]] with either a slot or a group.
+#   A set lists deed keys.
 #   Two sets that share a deed list the same key, so the deed is added once.
 # * "name" is a Fluent key. Add it to locales/ar/starter-sets.ftl and
 #   locales/en/starter-sets.ftl, or the tests fail.
@@ -20,8 +21,38 @@
 #   { hijri = "ramadan" }. Hijri range keys must be in hijri_ranges.
 # * A target is optional: { amount = 20, unit = "pages" }.
 
-# Time slots in sheet order (ADR 0007).
+# Time slots in day order (ADR 0007).
 slots = ["fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night", "any_time"]
+
+# Groups for deeds tied to a kind of deed rather than a time (ADR 0045).
+# A deed sits in one place: it has either a slot or a group.
+groups = [
+    "situational_adhkar",
+    "quran",
+    "dua",
+    "heart_and_character",
+    "knowledge",
+    "self_review",
+]
+
+# The sheet shows the time slots, then the groups, then any time (ADR 0045).
+# List every slot and group here once.
+sheet_order = [
+    "fajr",
+    "morning",
+    "dhuhr",
+    "asr",
+    "maghrib",
+    "isha",
+    "night",
+    "situational_adhkar",
+    "quran",
+    "dua",
+    "heart_and_character",
+    "knowledge",
+    "self_review",
+    "any_time",
+]
 
 # The fixed v1 categories (ADR 0007).
 categories = [
@@ -70,6 +101,11 @@ name = "unit-rakaat"
 [[units]]
 key = "times"
 name = "unit-times"
+
+# Whole hours only, no minutes (#175).
+[[units]]
+key = "hours"
+name = "unit-hours"
 
 # Set 1: the five prayers.
 
@@ -675,8 +711,11 @@ schedule = { hijri = "last_ten_nights" }
 # sheets word it the same (spelling aside), so moving up a level keeps its
 # history. Names add the sheet's group in brackets when the row alone would
 # not say what it is. Groups wait on #107, so group rows use any_time.
-# Left out until weekly schedules exist (#108): the advanced sheet's
-# visiting graves and sunan al fitra, due once a week on any day.
+# The advanced sheet's weekly box (visiting graves and sunan al fitra) is
+# due once a week on any day (0047). Levels 1 to 3 keep sunan al fitra in
+# the Friday box. Deeds that apply only when a need comes up (istikhara,
+# hajah, the five makeups and the advanced level's fasting) are due only on
+# a day they are marked (0047). Situational adhkar stay daily.
 # Added by the owner, not on the sheets: istikhara and salat al hajah in
 # levels 2 and 3, placed after dawah.
 
@@ -750,7 +789,7 @@ key = "lv_fajr_makeup"
 name = "deed-lv-fajr-makeup"
 slot = "fajr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds in the morning.
 
@@ -874,7 +913,7 @@ key = "lv_dhuhr_makeup"
 name = "deed-lv-dhuhr-makeup"
 slot = "dhuhr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at Asr, and the evening adhkar (Asr slot, like set 5).
 
@@ -946,7 +985,7 @@ key = "lv_asr_makeup"
 name = "deed-lv-asr-makeup"
 slot = "asr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_evening_adhkar"
@@ -1046,7 +1085,7 @@ key = "lv_maghrib_makeup"
 name = "deed-lv-maghrib-makeup"
 slot = "maghrib"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at Isha.
 
@@ -1125,7 +1164,7 @@ key = "lv_isha_makeup"
 name = "deed-lv-isha-makeup"
 slot = "isha"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at night.
 
@@ -1183,42 +1222,42 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_memorise_half_page"
 name = "deed-lv-memorise-half-page"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_read_six_quarters"
 name = "deed-lv-read-six-quarters"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_memorise_page"
 name = "deed-lv-memorise-page"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_read_juz"
 name = "deed-lv-read-juz"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_recite_reflect"
 name = "deed-lv-recite-reflect"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_review_memorise"
 name = "deed-lv-review-memorise"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
@@ -1227,28 +1266,28 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_dua_self"
 name = "deed-lv-dua-self"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_teachers"
 name = "deed-lv-dua-teachers"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_brothers"
 name = "deed-lv-dua-brothers"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_muslims"
 name = "deed-lv-dua-muslims"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
@@ -1267,91 +1306,91 @@ key = "lv_fasting"
 name = "deed-lv-fasting"
 slot = "any_time"
 category = "fasting"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds: situational adhkar (الأذكار المقيدة).
 
 [[deeds]]
 key = "lv_waking_adhkar"
 name = "deed-lv-waking-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_toilet_adhkar"
 name = "deed-lv-toilet-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dressing_adhkar"
 name = "deed-lv-dressing-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_wudu_adhkar"
 name = "deed-lv-wudu-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_home_adhkar"
 name = "deed-lv-home-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_mosque_adhkar"
 name = "deed-lv-mosque-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_mosque_enter_leave_adhkar"
 name = "deed-lv-mosque-enter-leave-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_walking_to_mosque_adhkar"
 name = "deed-lv-walking-to-mosque-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_food_adhkar"
 name = "deed-lv-food-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_riding_adhkar"
 name = "deed-lv-riding-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_sleep_adhkar"
 name = "deed-lv-sleep-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_istighfar_100"
 name = "deed-lv-istighfar-100"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 target = { amount = 100, unit = "times" }
@@ -1359,14 +1398,14 @@ target = { amount = 100, unit = "times" }
 [[deeds]]
 key = "lv_gathering_istighfar"
 name = "deed-lv-gathering-istighfar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_gathering_kaffara"
 name = "deed-lv-gathering-kaffara"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
@@ -1389,21 +1428,21 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_attend_lessons"
 name = "deed-lv-attend-lessons"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = { weekdays = ["saturday", "thursday"] }
 
 [[deeds]]
 key = "lv_review_lessons"
 name = "deed-lv-review-lessons"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_parents"
 name = "deed-lv-parents"
-slot = "any_time"
+group = "heart_and_character"
 category = "family"
 schedule = "every_day"
 
@@ -1417,42 +1456,42 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_dawah"
 name = "deed-lv-dawah"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_kinship"
 name = "deed-lv-kinship"
-slot = "any_time"
+group = "heart_and_character"
 category = "family"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_rights"
 name = "deed-lv-rights"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_tongue"
 name = "deed-lv-tongue"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_gaze"
 name = "deed-lv-gaze"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_heart"
 name = "deed-lv-heart"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
@@ -1468,14 +1507,14 @@ key = "lv_istikhara"
 name = "deed-lv-istikhara"
 slot = "any_time"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_hajah"
 name = "deed-lv-hajah"
 slot = "any_time"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_keep_wudu"
@@ -1494,35 +1533,35 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_worldly_knowledge"
 name = "deed-lv-worldly-knowledge"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_attend_sharia"
 name = "deed-lv-attend-sharia"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_review_sharia"
 name = "deed-lv-review-sharia"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_self_review"
 name = "deed-lv-self-review"
-slot = "any_time"
+group = "self_review"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_repentance"
 name = "deed-lv-repentance"
-slot = "any_time"
+group = "self_review"
 category = "other"
 schedule = "every_day"
 
@@ -1619,6 +1658,22 @@ name = "deed-lv-friday-salawat"
 slot = "any_time"
 category = "adhkar"
 schedule = { weekdays = ["friday"] }
+
+# Level deeds in the advanced weekly box (الأعمال الاسبوعية).
+
+[[deeds]]
+key = "lv_visiting_graves"
+name = "deed-lv-visiting-graves"
+slot = "any_time"
+category = "other"
+schedule = "once_a_week"
+
+[[deeds]]
+key = "lv_weekly_fitra"
+name = "deed-lv-weekly-fitra"
+slot = "any_time"
+category = "other"
+schedule = "once_a_week"
 
 # The sets, in the order they are offered. The three levels come first.
 
@@ -1862,7 +1917,37 @@ deeds = [
     "lv_friday_dua_after_asr",
     "lv_friday_kahf",
     "lv_friday_salawat",
+    "lv_visiting_graves",
+    "lv_weekly_fitra",
 ]
+
+# The five fard prayers in day order, for the reports block (ADR 0049).
+# Each day uses the first congregation deed due that day, else the on time
+# deed. Every key must be a deed above.
+[[fard_prayers]]
+slot = "fajr"
+on_time = "fajr_on_time"
+congregation = ["lv_fajr_congregation", "fajr_congregation"]
+
+[[fard_prayers]]
+slot = "dhuhr"
+on_time = "dhuhr_on_time"
+congregation = ["lv_dhuhr_congregation", "dhuhr_congregation"]
+
+[[fard_prayers]]
+slot = "asr"
+on_time = "asr_on_time"
+congregation = ["lv_asr_congregation", "asr_congregation"]
+
+[[fard_prayers]]
+slot = "maghrib"
+on_time = "maghrib_on_time"
+congregation = ["lv_maghrib_congregation", "maghrib_congregation"]
+
+[[fard_prayers]]
+slot = "isha"
+on_time = "isha_on_time"
+congregation = ["lv_isha_congregation", "isha_congregation"]
 
 [[sets]]
 key = "five_prayers"

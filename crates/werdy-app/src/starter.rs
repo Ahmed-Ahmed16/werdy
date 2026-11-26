@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use werdy_core::{CategoryKey, DeedId, DeedRule, Schedule, SlotKey, Target, Weekday};
+use werdy_core::{CategoryKey, DeedId, DeedRule, PrayerSource, Schedule, SlotKey, Target, Weekday};
 use werdy_data::{Catalog, Deed as CatalogDeed, Schedule as CatalogSchedule};
 use werdy_store::{DeedName, OwnerData};
 
@@ -69,31 +69,97 @@ pub fn five_prayers(today: werdy_core::WerdyDay) -> Result<OwnerData, werdy_data
     Ok(data)
 }
 
-/// The owner's five fard prayer deeds, in the five prayers set order.
-/// A prayer deed is one added from that starter set (decision 0041).
-pub fn fard_prayer_ids(data: &OwnerData) -> Vec<DeedId> {
-    let Some(set) = crate::editor_data::catalog()
-        .ok()
-        .and_then(|catalog| catalog.set("five_prayers"))
-    else {
+/// Where the owner marks each fard prayer, in day order (decision 0049). The
+/// congregation deeds come from a level or the mosque prayer set and the on
+/// time deed from the five prayers set. A prayer the owner has no deed for is
+/// left out.
+pub fn fard_prayer_sources(data: &OwnerData) -> Vec<PrayerSource> {
+    let Ok(catalog) = crate::editor_data::catalog() else {
         return Vec::new();
     };
-    set.deeds
+    let id_of = |key: &str| {
+        data.starter_keys
+            .iter()
+            .find(|(_, stored)| *stored == key)
+            .map(|(id, _)| *id)
+    };
+    catalog
+        .fard_prayers
         .iter()
-        .filter_map(|key| {
-            data.starter_keys
+        .map(|prayer| PrayerSource {
+            prayer: SlotKey::new(&prayer.slot),
+            on_time: id_of(&prayer.on_time),
+            congregation: prayer
+                .congregation
                 .iter()
-                .find(|(_, stored)| *stored == key)
-                .map(|(id, _)| *id)
+                .filter_map(|key| id_of(key))
+                .collect(),
         })
+        .filter(|source| source.on_time.is_some() || !source.congregation.is_empty())
         .collect()
 }
 
+/// Places in sheet order: time slots, then groups, then any time (0045).
+/// A deed's place is stored in its rule's slot key.
 pub fn slot_order() -> Vec<SlotKey> {
     crate::editor_data::catalog().map_or_else(
         |_| Vec::new(),
-        |catalog| catalog.slots.iter().map(|key| SlotKey::new(key)).collect(),
+        |catalog| {
+            catalog
+                .sheet_order
+                .iter()
+                .map(|key| SlotKey::new(key))
+                .collect()
+        },
     )
+}
+
+/// Fluent key that names a place: `group-<key>` for a group, else `slot-<key>`.
+pub fn place_name_key(place: &str) -> String {
+    let group = crate::editor_data::catalog()
+        .is_ok_and(|catalog| catalog.groups.iter().any(|key| key == place));
+    if group {
+        format!("group-{place}")
+    } else {
+        format!("slot-{place}")
+    }
+}
+
+/// Moves each level deed that has always sat in any time to its group
+/// (decision 0045). Past days keep any time (0020). Rule history carries
+/// another phone's placement. The local marker also covers same day edits,
+/// which replace that day's rule and can erase the previous placement.
+/// Returns the moved deeds.
+pub fn move_level_deeds_to_groups(
+    data: &mut OwnerData,
+    catalog: &Catalog,
+    today: werdy_core::WerdyDay,
+) -> Vec<DeedId> {
+    let mut moved = Vec::new();
+    for deed in &mut data.deeds {
+        if data.level_group_move_handled.contains(&deed.id) {
+            continue;
+        }
+        let Some(group) = data
+            .starter_keys
+            .get(&deed.id)
+            .and_then(|key| catalog.group_of(key))
+        else {
+            continue;
+        };
+        let placed_by_owner = deed
+            .rule_versions()
+            .any(|(_, rule)| rule.slot.0 != "any_time");
+        let Some(mut rule) = deed.rule_on(today).cloned().filter(|_| !placed_by_owner) else {
+            continue;
+        };
+        rule.slot = SlotKey::new(group);
+        if deed.change_rule(today, rule).is_ok() {
+            data.level_group_move_handled.insert(deed.id);
+            moved.push(deed.id);
+        }
+    }
+    moved
 }
 
 /// Keys a set would add to this sheet. Shared deeds appear once.
@@ -145,6 +211,8 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
                 .range()
                 .ok()?,
         ),
+        CatalogSchedule::OnceAWeek => Schedule::OnceAWeek,
+        CatalogSchedule::WhenItComesUp => Schedule::WhenItComesUp,
     };
     let target = deed
         .target
@@ -156,35 +224,72 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
         schedule,
         target,
         category: CategoryKey::new(&deed.category),
-        slot: SlotKey::new(&deed.slot),
+        slot: SlotKey::new(deed.place()),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{fard_prayer_ids, missing_deeds, rule};
+    use super::{fard_prayer_sources, missing_deeds, place_name_key, rule, slot_order};
     use std::collections::BTreeSet;
     use werdy_core::DeedId;
     use werdy_store::OwnerData;
 
-    #[test]
-    fn fard_prayers_follow_the_five_prayers_set_order() -> Result<(), Box<dyn std::error::Error>> {
+    fn sources_of(keys: &[(u64, &str)]) -> Vec<(String, Option<u64>, Vec<u64>)> {
         let mut data = OwnerData::default();
-        for (id, key) in [
+        for (id, key) in keys {
+            data.starter_keys.insert(DeedId(*id), (*key).to_owned());
+        }
+        fard_prayer_sources(&data)
+            .into_iter()
+            .map(|source| {
+                (
+                    source.prayer.0,
+                    source.on_time.map(|id| id.0),
+                    source.congregation.iter().map(|id| id.0).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fard_prayers_follow_day_order_and_skip_prayers_with_no_deed() {
+        let found = sources_of(&[
             (7, "isha_on_time"),
             (3, "sunnah_before_fajr"),
             (5, "fajr_on_time"),
             (9, "asr_on_time"),
-        ] {
-            data.starter_keys.insert(DeedId(id), key.to_owned());
-        }
-        assert_eq!(fard_prayer_ids(&data), [DeedId(5), DeedId(9), DeedId(7)]);
-        Ok(())
+        ]);
+        assert_eq!(
+            found,
+            [
+                ("fajr".into(), Some(5), vec![]),
+                ("asr".into(), Some(9), vec![]),
+                ("isha".into(), Some(7), vec![]),
+            ]
+        );
     }
 
     #[test]
-    fn a_sheet_without_starter_prayers_has_no_fard_prayers() {
-        assert!(fard_prayer_ids(&OwnerData::default()).is_empty());
+    fn a_level_owner_gets_all_five_prayers_from_congregation_deeds() {
+        let found = sources_of(&[
+            (1, "lv_fajr_congregation"),
+            (2, "lv_dhuhr_congregation"),
+            (3, "lv_asr_congregation"),
+            (4, "lv_maghrib_congregation"),
+            (5, "lv_isha_congregation"),
+            (6, "asr_on_time"),
+            (7, "asr_congregation"),
+        ]);
+        let slots: Vec<_> = found.iter().map(|(slot, _, _)| slot.as_str()).collect();
+        assert_eq!(slots, ["fajr", "dhuhr", "asr", "maghrib", "isha"]);
+        assert_eq!(found[0], ("fajr".into(), None, vec![1]));
+        assert_eq!(found[2], ("asr".into(), Some(6), vec![3, 7]));
+    }
+
+    #[test]
+    fn a_sheet_without_prayer_deeds_has_no_fard_prayers() {
+        assert!(sources_of(&[(3, "sunnah_before_fajr")]).is_empty());
     }
 
     #[test]
@@ -218,5 +323,149 @@ mod tests {
         let catalog = werdy_data::builtin()?;
         assert!(catalog.deeds.iter().all(|deed| rule(deed).is_some()));
         Ok(())
+    }
+
+    #[test]
+    fn a_group_is_named_by_a_group_key_and_a_slot_by_a_slot_key() {
+        assert_eq!(place_name_key("quran"), "group-quran");
+        assert_eq!(place_name_key("self_review"), "group-self_review");
+        assert_eq!(place_name_key("fajr"), "slot-fajr");
+        assert_eq!(place_name_key("any_time"), "slot-any_time");
+    }
+
+    #[test]
+    fn the_sheet_order_puts_groups_between_night_and_any_time() {
+        let order: Vec<_> = slot_order().into_iter().map(|key| key.0).collect();
+        let night = order.iter().position(|key| key == "night");
+        let quran = order.iter().position(|key| key == "quran");
+        let any_time = order.iter().position(|key| key == "any_time");
+        assert!(night < quran && quran < any_time, "{order:?}");
+        assert_eq!(order.last().map(String::as_str), Some("any_time"));
+    }
+
+    #[test]
+    fn a_level_deed_keeps_its_group_as_its_place() -> Result<(), Box<dyn std::error::Error>> {
+        let catalog = werdy_data::builtin()?;
+        let parents = catalog.deed("lv_parents").ok_or("missing deed")?;
+        let rule = rule(parents).ok_or("no rule")?;
+        assert_eq!(rule.slot.0, "heart_and_character");
+        Ok(())
+    }
+
+    mod move_to_groups {
+        use super::super::move_level_deeds_to_groups;
+        use werdy_core::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, WerdyDay};
+        use werdy_store::OwnerData;
+
+        type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+        fn rule(place: &str) -> DeedRule {
+            DeedRule {
+                schedule: Schedule::EveryDay,
+                target: None,
+                category: CategoryKey::new("family"),
+                slot: SlotKey::new(place),
+            }
+        }
+
+        fn days() -> Result<(WerdyDay, WerdyDay), werdy_core::Error> {
+            let today = WerdyDay::new(2026, 11, 26)?;
+            Ok((today.previous()?.previous()?, today))
+        }
+
+        /// One deed from the parents level deed, added in any time before groups.
+        fn owner(start: WerdyDay, key: Option<&str>) -> OwnerData {
+            let mut data = OwnerData::default();
+            data.deeds
+                .push(Deed::new(DeedId(1), start, rule("any_time")));
+            data.last_deed_id = 1;
+            if let Some(key) = key {
+                data.starter_keys.insert(DeedId(1), key.to_owned());
+            }
+            data
+        }
+
+        fn place_on(data: &OwnerData, day: WerdyDay) -> Option<String> {
+            data.deeds[0].rule_on(day).map(|rule| rule.slot.0.clone())
+        }
+
+        #[test]
+        fn a_level_deed_in_any_time_moves_to_its_group_from_today() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut data = owner(start, Some("lv_parents"));
+            let moved = move_level_deeds_to_groups(&mut data, &catalog, today);
+            assert_eq!(moved, [DeedId(1)]);
+            assert_eq!(
+                place_on(&data, today).as_deref(),
+                Some("heart_and_character")
+            );
+            assert_eq!(
+                place_on(&data, today.previous()?).as_deref(),
+                Some("any_time")
+            );
+            assert_eq!(place_on(&data, start).as_deref(), Some("any_time"));
+            Ok(())
+        }
+
+        #[test]
+        fn running_the_move_again_adds_no_second_rule_version() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut data = owner(start, Some("lv_parents"));
+            move_level_deeds_to_groups(&mut data, &catalog, today);
+            let after_first = data.clone();
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today.next()?).is_empty());
+            assert_eq!(data, after_first);
+            assert_eq!(data.deeds[0].rule_versions().count(), 2);
+            Ok(())
+        }
+
+        #[test]
+        fn moving_back_to_any_time_on_the_same_day_is_preserved() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut data = owner(start, Some("lv_parents"));
+            assert_eq!(
+                move_level_deeds_to_groups(&mut data, &catalog, today),
+                [DeedId(1)]
+            );
+            data.deeds[0].change_rule(today, rule("any_time"))?;
+            let after_edit = data.clone();
+
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+            assert_eq!(data, after_edit);
+            Ok(())
+        }
+
+        #[test]
+        fn a_deed_the_owner_moved_by_hand_is_left_alone() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut elsewhere = owner(start, Some("lv_parents"));
+            elsewhere.deeds[0].change_rule(start.next()?, rule("night"))?;
+            let mut back = elsewhere.clone();
+            back.deeds[0].change_rule(today, rule("any_time"))?;
+            for mut data in [elsewhere, back] {
+                let before = data.clone();
+                assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+                assert_eq!(data, before);
+            }
+            Ok(())
+        }
+
+        #[test]
+        fn custom_deeds_and_level_deeds_without_a_group_stay_in_any_time() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            for key in [None, Some("lv_general_istighfar"), Some("no_such_key")] {
+                let mut data = owner(start, key);
+                let before = data.clone();
+                assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+                assert_eq!(data, before, "{key:?}");
+            }
+            Ok(())
+        }
     }
 }

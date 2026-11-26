@@ -32,13 +32,11 @@ impl WatchView {
     /// Pages must be complete through their cursor, including deferred headers.
     /// Bad input leaves both records and cursor untouched.
     pub fn apply(&mut self, page: Batch) -> Result<(), SyncError> {
-        self.engine.validate_pull(&page, self.cursor())?;
         let mut staged = self.clone();
-        for row in page.changes {
-            staged.engine.accept(row)?;
-        }
+        staged.engine.retry_held()?;
+        self.engine.validate_pull(&page, self.cursor())?;
+        staged.engine.accept_pull(page)?;
         rows::project(&mut staged.engine, &mut staged.records)?;
-        staged.engine.cursor = page.cursor;
         *self = staged;
         Ok(())
     }

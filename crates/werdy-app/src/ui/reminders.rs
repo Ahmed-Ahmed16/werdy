@@ -53,7 +53,7 @@ pub fn ReminderSettings() -> Element {
             if needs_location {
                 button { class: "settings-location", onclick: move |_| actions.view(|app| app.show_screen(crate::state::Screen::FirstRunLocation)), {i18n.t("reminders-location")} }
             }
-            for slot in ["fajr", "dhuhr", "asr", "maghrib", "isha", "morning", "night", "any_time"] {
+            for slot in reminder_places() {
                 SlotReminderRow { key: "{slot}", slot }
             }
         }
@@ -143,18 +143,35 @@ pub fn WebReminderSettings() -> Element {
                 }
             }
             for slot in ["fajr", "dhuhr", "asr", "maghrib", "isha"] {
-                SlotReminderRow { key: "{slot}", slot }
+                SlotReminderRow { key: "{slot}", slot: slot.to_owned() }
             }
         }
     }
 }
 
+/// Prayer slots first, then the clock slots, then the groups from the data
+/// file (decision 0045), which also use a clock time.
+#[cfg(target_os = "android")]
+fn reminder_places() -> Vec<String> {
+    let mut places: Vec<String> = [
+        "fajr", "dhuhr", "asr", "maghrib", "isha", "morning", "night", "any_time",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    if let Ok(catalog) = crate::editor_data::catalog() {
+        places.extend(catalog.groups.iter().cloned());
+    }
+    places
+}
+
 #[component]
-fn SlotReminderRow(slot: &'static str) -> Element {
+fn SlotReminderRow(slot: String) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
     let actions = use_actions();
-    let slot_key = SlotKey::new(slot);
+    let slot_key = SlotKey::new(&slot);
+    let name = i18n.t(&crate::starter::place_name_key(&slot));
     let rule = state
         .read()
         .data
@@ -163,7 +180,7 @@ fn SlotReminderRow(slot: &'static str) -> Element {
         .slots
         .get(&slot_key)
         .cloned();
-    let prayer = matches!(slot, "fajr" | "dhuhr" | "asr" | "maghrib" | "isha");
+    let prayer = matches!(slot.as_str(), "fajr" | "dhuhr" | "asr" | "maghrib" | "isha");
     let delay = match &rule {
         Some(SlotReminder::Prayer { offset_minutes }) => *offset_minutes,
         _ => PrayerDelay::default_for(&slot_key),
@@ -174,24 +191,25 @@ fn SlotReminderRow(slot: &'static str) -> Element {
         _ => "09:00".into(),
     };
     let toggle_time = time.clone();
+    let (toggle_key, delay_key, time_key) = (slot_key.clone(), slot_key.clone(), slot_key);
     rsx! {
         fieldset { class: "settings-row",
-            legend { {i18n.t(&format!("slot-{slot}"))} }
+            legend { "{name}" }
             label { class: "reminder-switch",
                 input { r#type: "checkbox", checked: rule.is_some(), onchange: move |event| {
                     let reminder = if !event.checked() { None }
                         else if prayer { Some(SlotReminder::Prayer { offset_minutes: delay }) }
                         else { parse_time(&toggle_time).map(SlotReminder::Clock) };
-                    actions.change(|app| app.set_slot_reminder(SlotKey::new(slot), reminder));
+                    actions.change(|app| app.set_slot_reminder(toggle_key.clone(), reminder));
                 } }
-                span { {i18n.t(&format!("slot-{slot}"))} }
+                span { "{name}" }
             }
             if rule.is_some() {
                 if prayer {
                     label { class: "editor-label", r#for: "reminder-delay-{slot}", {i18n.t("reminders-delay")} }
                     select { id: "reminder-delay-{slot}", class: "editor-input", value: "{delay_minutes}", onchange: move |event| {
                         if let Ok(delay) = event.value().parse::<u8>() && let Ok(delay) = PrayerDelay::try_from(delay) {
-                            actions.change(|app| app.set_slot_reminder(SlotKey::new(slot), Some(SlotReminder::Prayer { offset_minutes: delay })));
+                            actions.change(|app| app.set_slot_reminder(delay_key.clone(), Some(SlotReminder::Prayer { offset_minutes: delay })));
                         }
                     },
                         if ![0, 5, 10, 15, 30].contains(&delay_minutes) {
@@ -205,7 +223,7 @@ fn SlotReminderRow(slot: &'static str) -> Element {
                     label { class: "editor-label", r#for: "reminder-time-{slot}", {i18n.t("reminders-time")} }
                     input { id: "reminder-time-{slot}", class: "editor-input", r#type: "time", value: "{time}", onchange: move |event| {
                         if let Some(time) = parse_time(&event.value()) {
-                            actions.change(|app| app.set_slot_reminder(SlotKey::new(slot), Some(SlotReminder::Clock(time))));
+                            actions.change(|app| app.set_slot_reminder(time_key.clone(), Some(SlotReminder::Clock(time))));
                         }
                     } }
                 }

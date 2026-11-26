@@ -10,6 +10,7 @@ use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
 use crate::editor_data;
+use crate::starter::place_name_key;
 use crate::state::{AppState, EditorError, Screen};
 
 fn deed_name(state: &AppState, id: DeedId, i18n: &super::context::I18n) -> String {
@@ -92,7 +93,7 @@ pub fn MyDeeds() -> Element {
             if active_count == 0 { p { class: "sheet-empty", {i18n.t("deeds-empty")} } }
             for (slot, members) in groups {
                 section { class: "deeds-group", key: "{slot.0}",
-                    h2 { class: "slot-title", {i18n.t(&format!("slot-{}", slot.0))} }
+                    h2 { class: "slot-title", {i18n.t(&place_name_key(&slot.0))} }
                     div { class: "deeds-list",
                         for deed in members { DeedListRow { key: "{deed.id.0}", deed } }
                     }
@@ -144,7 +145,10 @@ fn DeedListRow(deed: Deed) -> Element {
         )
     });
     let archived = deed.is_archived_on(app.today);
-    let not_due = !archived && !deed.is_due_on(app.today, &app.data.settings.calendar);
+    let not_due = !archived
+        && !deed
+            .status_on(app.today, &app.data.settings.calendar, &app.data.marks)
+            .is_on_sheet();
     let id = deed.id;
     rsx! {
         div { class: "deeds-list-row",
@@ -205,6 +209,7 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
     };
     let categories = catalog.categories.clone();
     let slots = catalog.slots.clone();
+    let groups = catalog.groups.clone();
     let units = catalog.units.clone();
     let first_range = ranges.first().and_then(|choice| choice.range().ok());
     let selected = draft();
@@ -245,6 +250,15 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                     }
                 }
             }
+            fieldset { class: "editor-field",
+                legend { {i18n.t("editor-group")} }
+                div { class: "chip-list",
+                    for key in groups {
+                        button { class: "choice-chip", key: "{key}", aria_pressed: "{selected.slot.0 == key}", onclick: move |_| draft.write().slot = werdy_core::SlotKey::new(&key), {i18n.t(&format!("group-{key}"))} }
+                    }
+                }
+                p { class: "deeds-meta", {i18n.t("editor-place-help")} }
+            }
             fieldset { class: "editor-field editor-card",
                 legend { {i18n.t("editor-schedule")} }
                 div { class: "chip-list",
@@ -253,6 +267,8 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                     button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::Hijri(_))}", onclick: move |_| {
                         if let Some(range) = first_range { draft.write().schedule = Schedule::Hijri(range); }
                     }, {i18n.t("editor-hijri")} }
+                    button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::OnceAWeek)}", onclick: move |_| draft.write().schedule = Schedule::OnceAWeek, {i18n.t("editor-once-a-week")} }
+                    button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::WhenItComesUp)}", onclick: move |_| draft.write().schedule = Schedule::WhenItComesUp, {i18n.t("editor-when-it-comes-up")} }
                 }
                 if let Schedule::Weekdays(days) = &selected.schedule {
                     div { class: "weekday-list",

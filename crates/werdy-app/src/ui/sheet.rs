@@ -1,37 +1,41 @@
 //! The daily sheet: one surface of foldable slots, with a strip of slot chips.
 
-use std::collections::BTreeMap;
-
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_core::{SheetRow, SheetSlot, SlotKey, WerdyDay};
+use werdy_core::{RowTag, SheetRow, SheetSlot, SlotKey, WerdyDay};
 use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
 use super::icons::{CheckIcon, FoldChevron};
 use super::marks::{CountEntry, CountTag, MarkButton};
+use crate::platform;
+use crate::sheet_view::{FoldChoices, SlotProgress, fold_all_opens, nearest_slot, section_views};
+use crate::starter::place_name_key;
 use crate::state::{AppState, Tap};
-use crate::{platform, state};
 
-/// Slots folded or opened by hand, per day. Kept in memory only: whether a
-/// hand fold should last to the next day is still open on #73.
-type FoldChoices = BTreeMap<(WerdyDay, SlotKey), bool>;
-
-/// All slots of the day on screen, in slot order. No slot is ever hidden.
+/// The day's sections in sheet order, with an optional unmarked filter.
 #[component]
 pub fn Sheet() -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
+    let clock_slot = use_context::<Signal<&'static str>>();
     let actions = use_actions();
-    let mut choices = use_signal(FoldChoices::new);
-    let (sheet, showing_unmarked, open_count) = {
+    let (sheet, full_sheet, today, open_count) = {
         let app = state.read();
         (
             app.sheet_on_screen(),
-            app.showing_unmarked(),
+            app.showing_unmarked().then(|| app.sheet()),
+            app.today,
             app.summary().open,
         )
     };
+    let mut choices = use_context::<Signal<FoldChoices>>();
+    use_effect(move || {
+        let today = state.read().today;
+        if !choices.peek().is_for(today) {
+            choices.write().reset_for(today);
+        }
+    });
     let (welcome, milestone, is_today) = {
         let app = state.read();
         if app.is_today() && !super::sharing::read_only() {
@@ -57,26 +61,43 @@ pub fn Sheet() -> Element {
         None
     };
     let viewed_day = sheet.day;
-    let keys: Vec<SlotKey> = sheet.slots.iter().map(|slot| slot.slot.clone()).collect();
-    let current = if is_today {
-        let (hour, minute) = platform::local_time();
-        let order = &state.read().slot_order;
-        nearest_slot(&keys, order, state::current_slot(hour, minute)).cloned()
-    } else {
-        None
-    };
-    let opens: Vec<bool> = sheet
-        .slots
+    let wanted = if is_today { Some(clock_slot()) } else { None };
+    let sections = section_views(sheet, full_sheet.as_ref(), wanted);
+    let keys: Vec<_> = sections
         .iter()
-        .map(|slot| {
-            let choice = choices
+        .map(|section| section.slot.slot.clone())
+        .collect();
+    let current = sections
+        .iter()
+        .find(|section| section.current)
+        .map(|section| section.slot.slot.clone());
+    use_effect(use_reactive(
+        (&current, &i18n.language, &viewed_day),
+        |(current, _, _)| {
+            if current.is_some() {
+                platform::reveal_current_chip();
+            }
+        },
+    ));
+
+    let opens: Vec<bool> = sections
+        .iter()
+        .map(|section| {
+            let slot = &section.slot;
+            choices
                 .read()
-                .get(&(viewed_day, slot.slot.clone()))
-                .copied();
-            slot_open(slot.all_entered, choice)
+                .open(today, viewed_day, &slot.slot, slot.all_entered)
         })
         .collect();
     let open_all = fold_all_opens(&opens);
+
+    let mut pending_jump = use_signal(|| None::<SlotKey>);
+    use_effect(move || {
+        if let Some(key) = pending_jump() {
+            pending_jump.set(None);
+            platform::scroll_slot(&key.0);
+        }
+    });
 
     let mut last_scroll_day = use_signal(|| None::<(WerdyDay, WerdyDay)>);
     use_effect(move || {
@@ -97,14 +118,13 @@ pub fn Sheet() -> Element {
             return;
         }
         last_scroll_day.set(Some(day));
-        let (hour, minute) = platform::local_time();
         let shown: Vec<SlotKey> = app
             .sheet_on_screen()
             .slots
             .into_iter()
             .map(|slot| slot.slot)
             .collect();
-        let wanted = state::current_slot(hour, minute);
+        let wanted = *clock_slot.peek();
         if let Some(slot) = nearest_slot(&shown, &app.slot_order, wanted) {
             platform::scroll_slot(&slot.0);
         }
@@ -155,35 +175,39 @@ pub fn Sheet() -> Element {
                     }
                 }
             }
-            if showing_unmarked {
+            if let Some(full_sheet) = &full_sheet {
                 div { class: "sheet-notice sheet-filter", role: "status",
                     p {
-                        {i18n.t(unmarked_notice(sheet.slots.len(), state.read().sheet().slots.len()))}
+                        {i18n.t(unmarked_notice(sections.len(), full_sheet.slots.len()))}
                     }
                     button { class: "notice-dismiss",
                         onclick: move |_| actions.view(AppState::toggle_unmarked),
                         {i18n.t("sheet-show-all")}
                     }
                 }
-            } else if sheet.slots.is_empty() {
+            } else if sections.is_empty() {
                 p { class: "sheet-empty", {i18n.t("sheet-empty")} }
             }
-            if !sheet.slots.is_empty() {
+            if !sections.is_empty() {
                 nav { class: "slot-strip", aria_label: i18n.t("sheet-slots"),
-                    for slot in sheet.slots.iter() {
+                    onmounted: move |_| observe_strip_height(),
+                    for (section, open) in sections.iter().zip(opens.iter().copied()) {
                         SlotChip {
-                            key: "{slot.slot.0}",
-                            slot: slot.clone(),
-                            current: current.as_ref() == Some(&slot.slot),
+                            key: "{section.slot.slot.0}",
+                            slot: section.slot.slot.clone(),
+                            progress: section.progress,
+                            current: section.current,
                             on_jump: move |key: SlotKey| {
-                                choices.write().insert((viewed_day, key.clone()), true);
-                                platform::scroll_slot(&key.0);
+                                if !open {
+                                    choices.write().set(today, viewed_day, [&key], true);
+                                }
+                                pending_jump.set(Some(key));
                             },
                         }
                     }
                 }
                 div { class: "sheet-tools",
-                    if is_today && !showing_unmarked && open_count > 0 && !super::sharing::read_only() {
+                    if is_today && full_sheet.is_none() && open_count > 0 && !super::sharing::read_only() {
                         button { class: "text-button open-only",
                             onclick: move |_| actions.view(AppState::toggle_unmarked),
                             {i18n.t_with("sheet-open-only", &[("count", FluentValue::from(open_count))])}
@@ -191,22 +215,20 @@ pub fn Sheet() -> Element {
                     }
                     button { class: "text-button fold-all",
                         onclick: move |_| {
-                            let mut choices = choices.write();
-                            for key in &keys {
-                                choices.insert((viewed_day, key.clone()), open_all);
-                            }
+                            choices.write().set(today, viewed_day, &keys, open_all);
                         },
                         {i18n.t(if open_all { "sheet-open-all" } else { "sheet-fold-all" })}
                     }
                 }
                 div { class: "sheet-surface",
-                    for (slot, open) in sheet.slots.into_iter().zip(opens) {
+                    for (section, open) in sections.into_iter().zip(opens) {
                         SlotGroup {
-                            key: "{viewed_day:?}-{slot.slot.0}",
-                            slot,
+                            key: "{viewed_day:?}-{section.slot.slot.0}",
+                            slot: section.slot,
+                            progress: section.progress,
                             open,
                             on_toggle: move |key: SlotKey| {
-                                choices.write().insert((viewed_day, key), !open);
+                                choices.write().set(today, viewed_day, [&key], !open);
                             },
                         }
                     }
@@ -214,6 +236,28 @@ pub fn Sheet() -> Element {
             }
         }
     }
+}
+
+fn observe_strip_height() {
+    // Sticky headings and scroll targets both need the height after chips wrap.
+    let _ = document::eval(
+        r#"
+        const strip = document.querySelector(".slot-strip");
+        if (strip) {
+            const sheet = strip.parentElement;
+            const update = () => sheet.style.setProperty("--strip-block", `${strip.offsetHeight}px`);
+            update();
+            const observer = new ResizeObserver(() => {
+                if (strip.isConnected) {
+                    update();
+                } else {
+                    observer.disconnect();
+                }
+            });
+            observer.observe(strip);
+        }
+        "#,
+    );
 }
 
 /// Text key for the notice above a sheet filtered to open deeds. A day with
@@ -228,86 +272,72 @@ fn unmarked_notice(shown_slots: usize, due_slots: usize) -> &'static str {
     }
 }
 
+/// Holds the sheet's fold choices above the sheet, so leaving the sheet and
+/// coming back the same werdy day keeps the folds set by hand (decision 0046).
+/// Call it once in the component that holds the app state.
+pub(super) fn provide_fold_choices(today: WerdyDay) -> Signal<FoldChoices> {
+    use_context_provider(|| Signal::new(FoldChoices::new(today)))
+}
+
 fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool {
     is_today && !welcome && !milestone
 }
 
-/// Marked deeds and all deeds in a slot. A miss counts as marked: the person
-/// has dealt with it.
-fn slot_progress(rows: &[SheetRow]) -> (usize, usize) {
-    let marked = rows.iter().filter(|row| row.mark.is_some()).count();
-    (marked, rows.len())
-}
-
-/// A slot folds once every deed has a mark. A hand choice for that day wins.
-fn slot_open(all_entered: bool, choice: Option<bool>) -> bool {
-    choice.unwrap_or(!all_entered)
-}
-
-/// True when the one fold button should open every slot, which is only when
-/// every slot is folded. Otherwise it folds them all.
-fn fold_all_opens(open: &[bool]) -> bool {
-    !open.is_empty() && open.iter().all(|open| !open)
-}
-
-/// The slot that holds the wanted time, or the next one that has deeds, or the
-/// last one. Slots missing from `order` sort after it, as on the sheet.
-fn nearest_slot<'a>(shown: &'a [SlotKey], order: &[SlotKey], wanted: &str) -> Option<&'a SlotKey> {
-    let position = |key: &SlotKey| {
-        order
-            .iter()
-            .position(|slot| slot == key)
-            .unwrap_or(order.len())
-    };
-    let wanted_index = order.iter().position(|slot| slot.0 == wanted).unwrap_or(0);
-    shown
-        .iter()
-        .find(|slot| slot.0 == wanted)
-        .or_else(|| shown.iter().find(|slot| position(slot) >= wanted_index))
-        .or_else(|| shown.last())
+/// Text key for a row's quiet schedule tag.
+fn row_tag_key(tag: RowTag) -> &'static str {
+    match tag {
+        RowTag::ThisWeek => "sheet-this-week",
+        RowTag::WhenItComesUp => "sheet-when-it-comes-up",
+    }
 }
 
 /// A chip in the slot strip: name and marked count. Tapping it opens the slot
 /// and scrolls to it.
 #[component]
-fn SlotChip(slot: SheetSlot, current: bool, on_jump: EventHandler<SlotKey>) -> Element {
+fn SlotChip(
+    slot: SlotKey,
+    progress: SlotProgress,
+    current: bool,
+    on_jump: EventHandler<SlotKey>,
+) -> Element {
     let i18n = use_i18n();
-    let name = i18n.t(&format!("slot-{}", slot.slot.0));
-    let (marked, total) = slot_progress(&slot.rows);
+    let name = i18n.t(&place_name_key(&slot.0));
     let args = [
         ("slot", FluentValue::from(name)),
-        ("marked", FluentValue::from(marked)),
-        ("total", FluentValue::from(total)),
+        ("marked", FluentValue::from(progress.marked)),
+        ("total", FluentValue::from(progress.total)),
     ];
-    let key = slot.slot.clone();
 
     rsx! {
         button {
             class: "slot-chip",
             "data-current": if current { "true" } else { "false" },
-            "data-complete": if slot.complete { "true" } else { "false" },
+            "data-complete": if progress.complete { "true" } else { "false" },
             aria_current: if current { "time" } else { "false" },
             aria_label: i18n.t_with("slot-chip-label", &args),
-            onclick: move |_| on_jump.call(key.clone()),
-            if slot.complete { span { class: "chip-done", CheckIcon {} } }
+            onclick: move |_| on_jump.call(slot.clone()),
+            if progress.complete { span { class: "chip-done", CheckIcon {} } }
             span { {i18n.t_with("slot-chip", &args)} }
         }
     }
 }
 
-/// One time slot: a thin heading that stays in view, and its deed rows.
-/// Type groups (#107) will split the rows inside a slot; until then a slot
-/// holds one plain list.
+/// One place on the sheet, a time slot or a group (0045): a thin heading
+/// that stays in view, and its deed rows.
 #[component]
-fn SlotGroup(slot: SheetSlot, open: bool, on_toggle: EventHandler<SlotKey>) -> Element {
+fn SlotGroup(
+    slot: SheetSlot,
+    progress: SlotProgress,
+    open: bool,
+    on_toggle: EventHandler<SlotKey>,
+) -> Element {
     let i18n = use_i18n();
-    let name = i18n.t(&format!("slot-{}", slot.slot.0));
-    let (marked, total) = slot_progress(&slot.rows);
+    let name = i18n.t(&place_name_key(&slot.slot.0));
     let count = i18n.t_with(
         "slot-count",
         &[
-            ("marked", FluentValue::from(marked)),
-            ("total", FluentValue::from(total)),
+            ("marked", FluentValue::from(progress.marked)),
+            ("total", FluentValue::from(progress.total)),
         ],
     );
     let has_late_mark = slot.rows.iter().any(|row| row.added_later);
@@ -329,7 +359,7 @@ fn SlotGroup(slot: SheetSlot, open: bool, on_toggle: EventHandler<SlotKey>) -> E
                         span { class: "late-sign", {i18n.t("mark-added-later")} }
                     }
                     span { class: "slot-count",
-                        if slot.complete { span { class: "chip-done", CheckIcon {} } }
+                        if progress.complete { span { class: "chip-done", CheckIcon {} } }
                         "{count}"
                     }
                 }
@@ -361,28 +391,33 @@ fn DeedRow(row: SheetRow) -> Element {
     let target = row.target.as_ref().map(|target| target.amount());
 
     rsx! {
-        li { class: "deed-row",
-            div { class: "deed-identity",
-                span { class: "deed-name", "{name}" }
-                if let Some(target) = target {
-                    CountTag { deed_id, mark, target }
-                }
-                if row.added_later {
-                    span {
-                        class: "late-sign",
-                        aria_label: i18n.t("mark-added-later"),
-                        {i18n.t("mark-added-later")}
+        li {
+            div { class: "deed-row", role: "group", aria_labelledby: "deed-name-{deed_id.0}",
+                div { class: "deed-identity",
+                    span { class: "deed-name", id: "deed-name-{deed_id.0}", "{name}" }
+                    if let Some(target) = target {
+                        CountTag { deed_id, mark, target }
+                    }
+                    if let Some(tag) = row.tag {
+                        span { class: "schedule-tag", {i18n.t(row_tag_key(tag))} }
+                    }
+                    if row.added_later {
+                        span {
+                            class: "late-sign",
+                            aria_label: i18n.t("mark-added-later"),
+                            {i18n.t("mark-added-later")}
+                        }
                     }
                 }
-            }
-            div { class: "deed-controls",
-                MarkButton { deed_id, tap: Tap::Done, mark, target }
-                if let Some(target) = target {
-                    CountEntry { deed_id, mark, target }
-                } else {
-                    MarkButton { deed_id, tap: Tap::Partial, mark, target: None }
+                div { class: "deed-controls", dir: "ltr",
+                    MarkButton { deed_id, tap: Tap::Missed, mark, target }
+                    if let Some(target) = target {
+                        CountEntry { deed_id, mark, target }
+                    } else {
+                        MarkButton { deed_id, tap: Tap::Partial, mark, target: None }
+                    }
+                    MarkButton { deed_id, tap: Tap::Done, mark, target }
                 }
-                MarkButton { deed_id, tap: Tap::Missed, mark, target }
             }
         }
     }
@@ -390,12 +425,52 @@ fn DeedRow(row: SheetRow) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::{DeedId, Mark, SheetRow, SlotKey};
+    use super::{should_scroll_to_slot, unmarked_notice};
 
-    use super::{
-        fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress,
-        unmarked_notice,
-    };
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::panic)]
+    fn fold_choices_live_above_the_sheet_so_a_new_sheet_keeps_them() {
+        use dioxus::prelude::*;
+        use werdy_core::{SlotKey, WerdyDay};
+
+        use crate::sheet_view::FoldChoices;
+
+        fn day() -> WerdyDay {
+            WerdyDay::new(2026, 11, 26).unwrap()
+        }
+        // The first sheet folds fajr by hand; a sheet drawn after it must
+        // still see that choice, as when the owner leaves and comes back.
+        #[component]
+        fn FirstSheet() -> Element {
+            let mut choices = use_context::<Signal<FoldChoices>>();
+            use_hook(move || {
+                choices
+                    .write()
+                    .set(day(), day(), [&SlotKey::new("fajr")], false);
+            });
+            rsx! {}
+        }
+        #[component]
+        fn LaterSheet() -> Element {
+            let choices = use_context::<Signal<FoldChoices>>();
+            use_hook(move || {
+                let open = choices
+                    .peek()
+                    .open(day(), day(), &SlotKey::new("fajr"), false);
+                assert!(!open, "the fold set by hand was lost");
+            });
+            rsx! {}
+        }
+        fn root() -> Element {
+            super::provide_fold_choices(day());
+            rsx! {
+                FirstSheet {}
+                LaterSheet {}
+            }
+        }
+        let mut dom = VirtualDom::new(root);
+        dom.rebuild_in_place();
+    }
 
     #[test]
     fn unmarked_notice_distinguishes_no_due_deeds_from_all_marked() {
@@ -416,68 +491,5 @@ mod tests {
         assert!(!should_scroll_to_slot(true, true, true));
         assert!(!should_scroll_to_slot(false, false, false));
         assert!(should_scroll_to_slot(true, false, false));
-    }
-
-    fn row(id: u64, mark: Option<Mark>) -> SheetRow {
-        SheetRow {
-            deed_id: DeedId(id),
-            mark,
-            added_later: false,
-            target: None,
-        }
-    }
-
-    #[test]
-    fn slot_progress_counts_every_mark_including_misses() {
-        assert_eq!(slot_progress(&[]), (0, 0));
-        let rows = [
-            row(1, None),
-            row(2, Some(Mark::Done)),
-            row(3, Some(Mark::Missed)),
-            row(4, Some(Mark::Count(0))),
-            row(5, Some(Mark::partial_without_target())),
-            row(6, Some(Mark::Count(120))),
-        ];
-        assert_eq!(slot_progress(&rows), (5, 6));
-    }
-
-    #[test]
-    fn a_slot_folds_when_all_marks_are_entered_and_a_hand_choice_wins() {
-        assert!(slot_open(false, None));
-        assert!(!slot_open(true, None));
-        assert!(slot_open(true, Some(true)));
-        assert!(!slot_open(false, Some(false)));
-        assert!(!slot_open(true, Some(false)));
-        assert!(slot_open(false, Some(true)));
-    }
-
-    #[test]
-    fn the_fold_all_button_opens_only_when_every_slot_is_folded() {
-        assert!(!fold_all_opens(&[true, false, true]));
-        assert!(!fold_all_opens(&[true]));
-        assert!(fold_all_opens(&[false, false]));
-        // With no slots there is nothing to open.
-        assert!(!fold_all_opens(&[]));
-    }
-
-    fn keys(names: &[&str]) -> Vec<SlotKey> {
-        names
-            .iter()
-            .map(|name| SlotKey((*name).to_owned()))
-            .collect()
-    }
-
-    #[test]
-    fn the_current_slot_is_the_wanted_one_or_the_next_one_with_deeds() {
-        let order = keys(&[
-            "fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night",
-        ]);
-        let shown = keys(&["fajr", "dhuhr", "isha"]);
-        assert_eq!(nearest_slot(&shown, &order, "dhuhr"), Some(&shown[1]));
-        assert_eq!(nearest_slot(&shown, &order, "asr"), Some(&shown[2]));
-        assert_eq!(nearest_slot(&shown, &order, "morning"), Some(&shown[1]));
-        // Past the last slot with deeds, the last one stays current.
-        assert_eq!(nearest_slot(&shown, &order, "night"), Some(&shown[2]));
-        assert_eq!(nearest_slot(&[], &order, "night"), None);
     }
 }

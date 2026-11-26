@@ -123,14 +123,17 @@ pub fn schedule(
     });
     Ok(plan)
 }
+/// Prayer slots follow a prayer time; every other place, a slot or a group
+/// (decision 0045), follows a clock time the owner picks.
 fn validate_slots(settings: &Settings) -> Result<(), Error> {
     for (slot, rule) in &settings.reminders.slots {
+        let prayer = matches!(
+            slot.0.as_str(),
+            "fajr" | "dhuhr" | "asr" | "maghrib" | "isha"
+        );
         let valid = match rule {
-            SlotReminder::Prayer { .. } => matches!(
-                slot.0.as_str(),
-                "fajr" | "dhuhr" | "asr" | "maghrib" | "isha"
-            ),
-            SlotReminder::Clock(_) => matches!(slot.0.as_str(), "morning" | "night" | "any_time"),
+            SlotReminder::Prayer { .. } => prayer,
+            SlotReminder::Clock(_) => !prayer,
         };
         if !valid {
             return Err(Error::InvalidSlotRule(slot.clone()));
@@ -229,7 +232,9 @@ impl<F: Fn(WerdyDay, u16) -> i32> Planner<'_, F> {
             .iter()
             .filter(|deed| {
                 !self.owner.deleted_deeds.contains(&deed.id)
-                    && deed.is_due_on(day, &self.owner.settings.calendar)
+                    && deed
+                        .status_on(day, &self.owner.settings.calendar, &self.owner.marks)
+                        .is_expected()
                     && !self
                         .owner
                         .marks

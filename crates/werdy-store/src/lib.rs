@@ -201,6 +201,8 @@ pub struct OwnerData {
     pub chosen_sets: BTreeSet<String>,
     /// Catalog key of each deed added from a set.
     pub starter_keys: BTreeMap<DeedId, String>,
+    /// Local deed ids that started in a level group or already moved there.
+    pub level_group_move_handled: BTreeSet<DeedId>,
     /// Deeds with their dated rules.
     pub deeds: Vec<Deed>,
     /// Highest id issued, including deeds removed later.
@@ -332,7 +334,12 @@ impl OwnerData {
     /// falls inside its lifetime. The other copies are deleted and their marks
     /// move to the kept deed. On a day both have, a mark not yet sent (in
     /// `unsent`) wins, otherwise the later change. Returns whether anything changed.
-    pub fn merge_duplicate_starters(&mut self, unsent: &BTreeSet<(DeedId, WerdyDay)>) -> bool {
+    /// Groups with a deed in `held` wait so unreadable edits are not lost.
+    pub fn merge_duplicate_starters(
+        &mut self,
+        unsent: &BTreeSet<(DeedId, WerdyDay)>,
+        held: &BTreeSet<DeedId>,
+    ) -> bool {
         let mut groups: BTreeMap<&str, Vec<DeedId>> = BTreeMap::new();
         for deed in &self.deeds {
             if let Some(key) = self.starter_keys.get(&deed.id) {
@@ -341,7 +348,7 @@ impl OwnerData {
         }
         let merges: Vec<Vec<DeedId>> = groups
             .into_values()
-            .filter(|ids| ids.len() > 1)
+            .filter(|ids| ids.len() > 1 && ids.iter().all(|id| !held.contains(id)))
             .map(|mut ids| {
                 ids.sort_by_key(|id| self.keep_order(*id));
                 ids
@@ -393,6 +400,9 @@ impl OwnerData {
         self.cleared_marks
             .retain(|(deed_id, _), _| *deed_id != copy);
         self.starter_keys.remove(&copy);
+        if self.level_group_move_handled.remove(&copy) {
+            self.level_group_move_handled.insert(kept);
+        }
         self.deleted_deeds.insert(copy);
     }
 
@@ -480,6 +490,9 @@ impl OwnerData {
 /// Conflicting deed identities return an error without changing either copy.
 pub fn merge_records(stored: &OwnerData, local: &OwnerData) -> Result<OwnerData, StoreError> {
     let mut merged = stored.clone();
+    merged
+        .level_group_move_handled
+        .extend(&local.level_group_move_handled);
     merged
         .dismissed_milestones
         .extend(&local.dismissed_milestones);
@@ -635,6 +648,8 @@ struct DataFile<S = Settings> {
     chosen_sets: Vec<String>,
     #[serde(default)]
     starter_keys: Vec<StarterKeyEntry>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    level_group_move_handled: BTreeSet<DeedId>,
     deeds: Vec<Deed>,
     #[serde(default)]
     last_deed_id: u64,
@@ -710,6 +725,7 @@ impl<S> DataFile<S> {
             first_run: self.first_run,
             chosen_sets: self.chosen_sets,
             starter_keys: self.starter_keys,
+            level_group_move_handled: self.level_group_move_handled,
             deeds: self.deeds,
             last_deed_id: self.last_deed_id,
             deleted_deeds: self.deleted_deeds,
@@ -792,6 +808,7 @@ pub fn to_json(data: &OwnerData) -> Result<String, StoreError> {
                 key: key.clone(),
             })
             .collect(),
+        level_group_move_handled: data.level_group_move_handled.clone(),
         deeds: data.deeds.clone(),
         last_deed_id: data
             .last_deed_id
@@ -986,6 +1003,7 @@ pub fn from_json(text: &str) -> Result<OwnerData, StoreError> {
         first_run: file.first_run,
         chosen_sets,
         starter_keys,
+        level_group_move_handled: file.level_group_move_handled,
         deeds: file.deeds,
         last_deed_id,
         deleted_deeds,

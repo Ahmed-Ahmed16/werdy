@@ -15,6 +15,7 @@
 
 mod email;
 mod fake;
+mod incoming;
 pub use email::normalize_email;
 mod rows;
 mod watch;
@@ -23,6 +24,7 @@ pub use watch::WatchView;
 mod supabase;
 
 pub use fake::FakeBackend;
+pub use incoming::{BatchRow, HeldRow};
 pub use rows::{Change, DeedKey, DeedRow, MAX_NAME_BYTES, MAX_NOTE_BYTES, Setting};
 #[cfg(feature = "supabase")]
 pub use supabase::PushSubscription;
@@ -41,6 +43,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use werdy_core::{DeedId, WerdyDay};
 use werdy_store::OwnerData;
+
+use incoming::DeedDependency;
 
 /// Failures leave local records and queued operations available for retry.
 #[derive(Clone, Debug, PartialEq)]
@@ -102,8 +106,17 @@ pub struct Accepted {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Batch {
-    pub changes: Vec<Accepted>,
+    pub changes: Vec<BatchRow>,
     pub cursor: u64,
+}
+
+impl Batch {
+    pub fn new(changes: Vec<Accepted>, cursor: u64) -> Self {
+        Self {
+            changes: changes.into_iter().map(BatchRow::from).collect(),
+            cursor,
+        }
+    }
 }
 
 /// A checked pull from an attempt whose push hit an operation collision.
@@ -170,6 +183,8 @@ pub struct Sync {
     #[serde(default)]
     local_only: Vec<Change>,
     accepted: Vec<Accepted>,
+    #[serde(default)]
+    held: Vec<HeldRow>,
     cursor: u64,
 }
 
@@ -188,6 +203,7 @@ impl Sync {
             outbox: Vec::new(),
             local_only: Vec::new(),
             accepted: Vec::new(),
+            held: Vec::new(),
             cursor: 0,
         })
     }
@@ -224,29 +240,44 @@ impl Sync {
             return Err(invalid("collision belongs to another state"));
         }
         let mut staged = self.clone();
+        staged.retry_held()?;
         let mut merged = records.clone();
         let pulled = &collision.pulled;
         staged.rebind_new_deeds(pulled, new_install);
         staged.drop_superseded(pulled);
         staged.move_install(new_install)?;
-        for row in &pulled.changes {
-            staged.accept(row.clone())?;
-        }
+        staged.accept_pull(pulled.clone())?;
         rows::project_with_outbox(&mut staged, &mut merged)?;
         staged.remember_deed_keys(&mut merged);
         staged.observed = rows::snapshot(&mut staged, &merged)?;
-        staged.cursor = pulled.cursor;
         *self = staged;
         *records = merged;
         Ok(())
     }
 
-    fn rebind_new_deeds(&mut self, pulled: &Batch, new_install: &str) {
-        // Compare the first headers. Later renames of a shared deed keep its key.
+    fn first_deed_headers<'a>(
+        &'a self,
+        pulled: &'a Batch,
+    ) -> BTreeMap<&'a DeedKey, Option<&'a Option<DeedRow>>> {
+        // Later renames of a shared deed keep its key. A held first header cannot prove a match.
         let mut first_headers = BTreeMap::new();
-        for accepted in &pulled.changes {
-            if let Change::Deed { id, row } = &accepted.pending.change {
-                first_headers.entry(id).or_insert(row);
+        for held in &self.held {
+            if let Some(DeedDependency::Deed { id }) = &held.dependency {
+                first_headers.entry(id).or_insert(None);
+            }
+        }
+        for row in &pulled.changes {
+            match row {
+                BatchRow::Readable(accepted) => {
+                    if let Change::Deed { id, row } = &accepted.pending.change {
+                        first_headers.entry(id).or_insert(Some(row));
+                    }
+                }
+                BatchRow::Held(held) => {
+                    if let Some(DeedDependency::Deed { id }) = &held.dependency {
+                        first_headers.entry(id).or_insert(None);
+                    }
+                }
             }
         }
         for accepted in &self.accepted {
@@ -254,6 +285,11 @@ impl Sync {
                 first_headers.remove(id);
             }
         }
+        first_headers
+    }
+
+    fn rebind_new_deeds(&mut self, pulled: &Batch, new_install: &str) {
+        let mut first_headers = self.first_deed_headers(pulled);
         let mut conflicts = BTreeSet::new();
         for change in self
             .outbox
@@ -263,7 +299,9 @@ impl Sync {
         {
             if let Change::Deed { id, row } = change
                 && id.install == self.install
-                && first_headers.remove(id).is_some_and(|server| server != row)
+                && first_headers
+                    .remove(id)
+                    .is_some_and(|server| server != Some(row))
             {
                 conflicts.insert(id.clone());
             }
@@ -293,6 +331,7 @@ impl Sync {
         let receipts: BTreeMap<_, _> = pulled
             .changes
             .iter()
+            .filter_map(BatchRow::accepted)
             .map(|row| {
                 (
                     (row.pending.install.as_str(), row.pending.operation),
@@ -371,6 +410,7 @@ impl Sync {
         for row in &completed.accepted {
             staged.accept(row.clone())?;
         }
+        staged.held.clone_from(&completed.held);
         staged.cursor = completed.cursor;
         for row in &completed.local_only {
             if !staged
@@ -474,6 +514,23 @@ impl Sync {
         Ok(())
     }
 
+    /// Local deeds with a held header, rule or mark in the server stream.
+    pub fn held_deed_ids(&self) -> BTreeSet<DeedId> {
+        let held_keys: BTreeSet<_> = self
+            .held
+            .iter()
+            .filter_map(|row| match row.dependency.as_ref()? {
+                DeedDependency::Deed { id }
+                | DeedDependency::Rule { id, .. }
+                | DeedDependency::Mark { id } => Some(id),
+            })
+            .collect();
+        self.bindings
+            .iter()
+            .filter_map(|binding| held_keys.contains(&binding.remote).then_some(binding.local))
+            .collect()
+    }
+
     /// Local marks and clears captured but not yet acknowledged by the server.
     pub fn unsent_marks(&self) -> std::collections::BTreeSet<(DeedId, WerdyDay)> {
         self.outbox
@@ -516,6 +573,8 @@ impl Sync {
         mut phone_time: impl FnMut() -> u64,
     ) -> Result<ClockOffset, SyncError> {
         self.capture(records)?;
+        let mut staged = self.clone();
+        staged.retry_held()?;
         let before = phone_time();
         let server_time = backend.server_time().await?;
         let after = phone_time();
@@ -542,7 +601,7 @@ impl Sync {
                     .changes
                     .iter()
                     .zip(&batch)
-                    .any(|(row, pending)| &row.pending != pending)
+                    .any(|(row, pending)| row.accepted().map(|row| &row.pending) != Some(pending))
                 || receipt.cursor < pushed.cursor
             {
                 return Err(invalid("incomplete push acknowledgement"));
@@ -570,14 +629,10 @@ impl Sync {
                 pulled,
             })));
         }
-        let mut staged = self.clone();
         staged.outbox.clear();
-        for accepted in pulled.changes {
-            staged.accept(accepted)?;
-        }
+        staged.accept_pull(pulled)?;
         let mut merged = records.clone();
         rows::project_with_outbox(&mut staged, &mut merged)?;
-        staged.cursor = pulled.cursor;
         staged.observed = rows::snapshot(&mut staged, &merged)?;
         *records = merged;
         *self = staged;
@@ -627,7 +682,10 @@ impl Sync {
             return Err(invalid("incomplete push acknowledgement"));
         }
         let pending: Vec<_> = self.push_batches().into_iter().flatten().collect();
-        for (accepted, pending) in pushed.changes.iter().zip(&pending) {
+        for (row, pending) in pushed.changes.iter().zip(&pending) {
+            let accepted = row
+                .accepted()
+                .ok_or_else(|| invalid("push acknowledged an unreadable operation"))?;
             validate_accepted(accepted, pushed.cursor)?;
             if &accepted.pending != pending {
                 return Err(invalid("push acknowledged a different operation"));
@@ -645,21 +703,52 @@ impl Sync {
             .accepted
             .iter()
             .map(|row| row.stamp.received_at)
+            .chain(self.held.iter().map(|row| row.stamp.received_at))
             .max()
             .unwrap_or(0);
-        for accepted in &pulled.changes {
-            validate_accepted(accepted, pulled.cursor)?;
-            if accepted.stamp.sequence != previous.checked_add(1).ok_or(SyncError::Exhausted)?
-                || accepted.stamp.received_at < previous_time
+        for row in &pulled.changes {
+            let stamp = row.stamp();
+            match row {
+                BatchRow::Readable(accepted) => validate_accepted(accepted, pulled.cursor)?,
+                BatchRow::Held(held) => {
+                    rows::validate_operation(&held.install, held.operation)?;
+                    validate_stamp(stamp, pulled.cursor)?;
+                }
+            }
+            if stamp.sequence != previous.checked_add(1).ok_or(SyncError::Exhausted)?
+                || stamp.received_at < previous_time
             {
                 return Err(invalid("pull stream is incomplete or out of order"));
             }
-            previous = accepted.stamp.sequence;
-            previous_time = accepted.stamp.received_at;
+            previous = stamp.sequence;
+            previous_time = stamp.received_at;
         }
         if previous != pulled.cursor {
             return Err(invalid("pull cursor skipped changes"));
         }
+        Ok(())
+    }
+
+    fn retry_held(&mut self) -> Result<(), SyncError> {
+        for held in std::mem::take(&mut self.held) {
+            if let Some(accepted) = held.decode() {
+                validate_accepted(&accepted, self.cursor)?;
+                self.accept(accepted)?;
+            } else {
+                self.held.push(held);
+            }
+        }
+        Ok(())
+    }
+
+    fn accept_pull(&mut self, pulled: Batch) -> Result<(), SyncError> {
+        for row in pulled.changes {
+            match row {
+                BatchRow::Readable(accepted) => self.accept(accepted)?,
+                BatchRow::Held(held) => self.held.push(held),
+            }
+        }
+        self.cursor = pulled.cursor;
         Ok(())
     }
 
@@ -729,7 +818,11 @@ impl Sync {
 
 fn validate_accepted(accepted: &Accepted, cursor: u64) -> Result<(), SyncError> {
     rows::validate_pending(&accepted.pending)?;
-    if accepted.stamp.sequence == 0 || accepted.stamp.sequence > cursor {
+    validate_stamp(accepted.stamp, cursor)
+}
+
+fn validate_stamp(stamp: Stamp, cursor: u64) -> Result<(), SyncError> {
+    if stamp.sequence == 0 || stamp.sequence > cursor {
         return Err(invalid("server stamp outside cursor"));
     }
     Ok(())

@@ -412,7 +412,7 @@ pub struct AppState {
     pub today: WerdyDay,
     /// The day on screen. Never after today.
     pub viewing: WerdyDay,
-    /// Time slot order from the data file.
+    /// Place order from the data file: time slots, then groups, then any time.
     pub slot_order: Vec<SlotKey>,
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
@@ -446,6 +446,7 @@ pub struct AppState {
     sets_dirty: bool,
     first_run_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
+    checked_level_group_move_after_sync: bool,
 }
 
 impl AppState {
@@ -462,6 +463,14 @@ impl AppState {
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
         crate::platform::reschedule_reminders(&self.data);
+    }
+
+    pub fn accept_successful_sync(&mut self, records: OwnerData, store: &dyn Store) {
+        self.accept_sync(records);
+        if !self.checked_level_group_move_after_sync {
+            self.checked_level_group_move_after_sync = true;
+            self.move_level_deeds_to_groups(store);
+        }
     }
 
     /// Loads saved data. Empty storage opens setup. Unreadable data is never overwritten.
@@ -499,6 +508,7 @@ impl AppState {
             sets_dirty: migrated,
             first_run_dirty: false,
             deed_changes: BTreeMap::new(),
+            checked_level_group_move_after_sync: false,
         };
         state.backfill_setup_deed_ids();
         state
@@ -896,7 +906,8 @@ impl AppState {
 
     pub fn finish_first_run(&mut self, screen: Screen) {
         if !self.data.first_run_complete {
-            self.redate_setup_deeds();
+            // A late sign up may still mark the week before today (#170).
+            self.redate_setup_deeds(werdy_core::first_markable_day(self.today));
         }
         self.data.first_run_complete = true;
         self.data.first_run = Default::default();
@@ -1270,6 +1281,9 @@ impl AppState {
             let created_deed = Deed::new(id, self.today, rule);
             self.data.deeds.push(created_deed.clone());
             self.data.names.insert(id, DeedName::Key(deed.name.clone()));
+            if catalog.group_of(&key).is_some() {
+                self.data.level_group_move_handled.insert(id);
+            }
             self.data.starter_keys.insert(id, key);
             if !self.data.first_run_complete {
                 self.data.first_run.setup_deed_ids.insert(id);
@@ -1330,7 +1344,7 @@ impl AppState {
                 .is_some_and(|deed| {
                     let mut day = deed.created_on();
                     while day < self.today {
-                        if deed.is_due_on(day, &self.data.settings.calendar) {
+                        if deed.is_due_on(day, &self.data.settings.calendar, &self.data.marks) {
                             return true;
                         }
                         let Ok(next) = day.next() else { break };
@@ -1576,8 +1590,27 @@ impl AppState {
             self.invalidate_kept_days();
         }
         if moved && !self.data.first_run_complete {
-            self.redate_setup_deeds();
+            self.redate_setup_deeds(today);
         }
+    }
+
+    /// Moves level deeds that still sit in any time into their groups, once
+    /// (decision 0045), and saves them as deed edits so sync sends them.
+    pub fn move_level_deeds_to_groups(&mut self, store: &dyn Store) {
+        if self.save_status == SaveStatus::LoadFailed {
+            return;
+        }
+        let Ok(catalog) = crate::editor_data::catalog() else {
+            return;
+        };
+        let moved = crate::starter::move_level_deeds_to_groups(&mut self.data, catalog, self.today);
+        if moved.is_empty() {
+            return;
+        }
+        for id in moved {
+            self.record_upsert(id);
+        }
+        self.save_to(store);
     }
 
     fn backfill_setup_deed_ids(&mut self) {
@@ -1602,7 +1635,8 @@ impl AppState {
         self.first_run_dirty = true;
     }
 
-    fn redate_setup_deeds(&mut self) {
+    /// Restarts setup deeds that have no marks on `first_day`.
+    fn redate_setup_deeds(&mut self, first_day: WerdyDay) {
         self.backfill_setup_deed_ids();
         let ids: Vec<_> = self
             .data
@@ -1617,7 +1651,7 @@ impl AppState {
             if let Some(deed) = self.data.deeds.iter_mut().find(|deed| deed.id == id)
                 && let Some(rule) = deed.rule_on(deed.created_on()).cloned()
             {
-                *deed = Deed::new(id, self.today, rule);
+                *deed = Deed::new(id, first_day, rule);
                 self.record_upsert(id);
             }
         }
@@ -1800,6 +1834,9 @@ impl AppState {
         }
         if let Some(key) = self.data.starter_keys.remove(&old_id) {
             self.data.starter_keys.insert(new_id, key);
+        }
+        if self.data.level_group_move_handled.remove(&old_id) {
+            self.data.level_group_move_handled.insert(new_id);
         }
         self.move_mark_ids(old_id, new_id);
         if let Some(DeedChange::Upsert { mut deed, name, .. }) = self.deed_changes.remove(&old_id) {
@@ -2434,6 +2471,165 @@ mod tests {
     }
 
     #[test]
+    fn opening_moves_a_level_deed_into_its_group_and_saves_it_as_a_deed_edit() -> TestResult {
+        let store = MemoryStore::default();
+        let start = today()?.previous()?;
+        let mut data = five_prayers(start)?;
+        let id = data.next_deed_id();
+        data.last_deed_id = id.0;
+        data.deeds.push(werdy_core::Deed::new(
+            id,
+            start,
+            werdy_core::DeedRule {
+                schedule: werdy_core::Schedule::EveryDay,
+                target: None,
+                category: werdy_core::CategoryKey::new("family"),
+                slot: werdy_core::SlotKey::new("any_time"),
+            },
+        ));
+        data.names
+            .insert(id, werdy_store::DeedName::Key("deed-lv-parents".to_owned()));
+        data.starter_keys.insert(id, "lv_parents".to_owned());
+        store.save(&data)?;
+
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.move_level_deeds_to_groups(&store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
+        let place = |state: &AppState, day| {
+            state
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == id)
+                .and_then(|deed| deed.rule_on(day))
+                .map(|rule| rule.slot.0.clone())
+        };
+        let reloaded = AppState::start(&store, today()?, slot_order());
+        assert_eq!(
+            place(&reloaded, today()?).as_deref(),
+            Some("heart_and_character")
+        );
+        assert_eq!(place(&reloaded, start).as_deref(), Some("any_time"));
+
+        let mut edited = reloaded;
+        let mut draft = edited.draft_for(id).ok_or("missing deed draft")?;
+        draft.slot = SlotKey::new("any_time");
+        edited.save_deed(Some(id), &draft)?;
+        edited.save_to(&store);
+
+        let mut reopened = AppState::start(&store, today()?, slot_order());
+        reopened.move_level_deeds_to_groups(&store);
+        assert_eq!(place(&reopened, today()?).as_deref(), Some("any_time"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_new_level_deed_can_move_from_its_group_to_any_time() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        state.toggle_set("level_1")?;
+        let id = state
+            .data
+            .starter_keys
+            .iter()
+            .find_map(|(id, key)| (key == "lv_parents").then_some(*id))
+            .ok_or("missing parents deed")?;
+        let mut draft = state.draft_for(id).ok_or("missing deed draft")?;
+        assert_eq!(draft.slot.0, "heart_and_character");
+        draft.slot = SlotKey::new("any_time");
+        state.save_deed(Some(id), &draft)?;
+        state.save_to(&store);
+
+        let mut reopened = AppState::start(&store, today()?, slot_order());
+        reopened.move_level_deeds_to_groups(&store);
+        let draft = reopened.draft_for(id).ok_or("missing deed draft")?;
+        assert_eq!(draft.slot.0, "any_time");
+        Ok(())
+    }
+
+    #[test]
+    fn when_it_comes_up_deed_saves_and_comes_back() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let draft = EditorDraft {
+            name: "Istikhara".to_owned(),
+            schedule: Schedule::WhenItComesUp,
+            ..EditorDraft::default()
+        };
+        let id = state.save_deed(None, &draft)?;
+        state.save_to(&store);
+
+        let saved = started(&store)?;
+        let deed = saved
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .ok_or("missing deed")?;
+        assert_eq!(
+            deed.rule_on(today()?).map(|rule| &rule.schedule),
+            Some(&Schedule::WhenItComesUp)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_custom_deed_in_a_group_sits_after_the_slots_and_before_any_time() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        for place in ["any_time", "dua", "night", "quran"] {
+            let draft = EditorDraft {
+                name: place.to_owned(),
+                slot: werdy_core::SlotKey::new(place),
+                ..EditorDraft::default()
+            };
+            state.save_deed(None, &draft)?;
+        }
+        state.save_to(&store);
+        let order = |state: &AppState| -> Vec<String> {
+            state
+                .sheet()
+                .slots
+                .into_iter()
+                .map(|slot| slot.slot.0)
+                .collect()
+        };
+        let expected = [
+            "fajr", "dhuhr", "asr", "maghrib", "isha", "night", "quran", "dua", "any_time",
+        ];
+        assert_eq!(order(&state), expected);
+        let resumed = AppState::start(&store, today()?, slot_order());
+        assert_eq!(order(&resumed), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn once_a_week_deed_saves_and_comes_back() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let draft = EditorDraft {
+            name: "Visiting graves".to_owned(),
+            schedule: Schedule::OnceAWeek,
+            ..EditorDraft::default()
+        };
+        let id = state.save_deed(None, &draft)?;
+        state.save_to(&store);
+
+        let saved = started(&store)?;
+        let deed = saved
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .ok_or("missing deed")?;
+        assert_eq!(
+            deed.rule_on(today()?).map(|rule| &rule.schedule),
+            Some(&Schedule::OnceAWeek)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn add_and_edit_deed_save_rules_from_today_without_moving_past_due_days() -> TestResult {
         let store = MemoryStore::default();
         let mut state = started(&store)?;
@@ -2450,7 +2646,11 @@ mod tests {
                 .deeds
                 .iter()
                 .find(|deed| deed.id == id)
-                .is_some_and(|deed| deed.is_due_on(created, &state.data.settings.calendar))
+                .is_some_and(|deed| deed.is_due_on(
+                    created,
+                    &state.data.settings.calendar,
+                    &state.data.marks
+                ))
         );
         let later = today()?.next()?;
         state.update_today(later);
@@ -2466,7 +2666,7 @@ mod tests {
             .iter()
             .find(|deed| deed.id == id)
             .ok_or("missing deed")?;
-        assert!(deed.is_due_on(today()?, &saved.data.settings.calendar));
+        assert!(deed.is_due_on(today()?, &saved.data.settings.calendar, &saved.data.marks));
         assert_eq!(
             deed.rule_on(later).map(|rule| &rule.schedule),
             Some(&draft.schedule)
@@ -2488,16 +2688,20 @@ mod tests {
         state.update_today(archived);
         state.archive_deed(id)?;
         state.save_to(&store);
-        assert!(!state.data.deeds[0].is_due_on(archived, &state.data.settings.calendar));
+        assert!(!state.data.deeds[0].is_due_on(
+            archived,
+            &state.data.settings.calendar,
+            &state.data.marks
+        ));
         let restored = archived.next()?;
         state.update_today(restored);
         state.restore_deed(id)?;
         state.save_to(&store);
         let loaded = started(&store)?;
         let deed = &loaded.data.deeds[0];
-        assert!(deed.is_due_on(today()?, &loaded.data.settings.calendar));
-        assert!(!deed.is_due_on(archived, &loaded.data.settings.calendar));
-        assert!(deed.is_due_on(restored, &loaded.data.settings.calendar));
+        assert!(deed.is_due_on(today()?, &loaded.data.settings.calendar, &loaded.data.marks));
+        assert!(!deed.is_due_on(archived, &loaded.data.settings.calendar, &loaded.data.marks));
+        assert!(deed.is_due_on(restored, &loaded.data.settings.calendar, &loaded.data.marks));
         assert_eq!(
             state.delete_deed_confirmed(id, false),
             Err(EditorError::DeleteNotConfirmed)
@@ -3143,7 +3347,7 @@ mod tests {
                 let expected = if [outside, marked].contains(&id) {
                     start
                 } else {
-                    next
+                    werdy_core::first_markable_day(next)
                 };
                 assert_eq!(deed.created_on(), expected, "{source}: deed {id:?}");
             }
@@ -3194,7 +3398,7 @@ mod tests {
                 .data
                 .deeds
                 .iter()
-                .all(|deed| deed.created_on() == state.today)
+                .all(|deed| deed.created_on() == werdy_core::first_markable_day(state.today))
         );
         Ok(())
     }
@@ -3204,8 +3408,9 @@ mod tests {
         let store = MemoryStore::default();
         let start = today()?;
         let finish = start.next()?;
-        let created = WerdyDay::new(2026, 10, 20)?;
-        let changed = WerdyDay::new(2026, 10, 23)?;
+        // Before the late sign up week, so only the imported deed is due.
+        let created = WerdyDay::from_unix_days(start.days_since_unix_epoch() - 12)?;
+        let changed = WerdyDay::from_unix_days(created.days_since_unix_epoch() + 3)?;
         let past_due = created.next()?;
         let mut state = AppState::start(&store, start, slot_order());
         state.select_first_run_level("level_1")?;
@@ -3259,14 +3464,18 @@ mod tests {
             imported.rule_versions().collect::<Vec<_>>(),
             vec![(created, &first_rule), (changed, &later_rule)]
         );
-        assert!(imported.is_due_on(past_due, &resumed.data.settings.calendar));
+        assert!(imported.is_due_on(
+            past_due,
+            &resumed.data.settings.calendar,
+            &resumed.data.marks
+        ));
         assert!(setup_ids.iter().all(|id| {
             resumed
                 .data
                 .deeds
                 .iter()
                 .find(|deed| deed.id == *id)
-                .is_some_and(|deed| deed.created_on() == finish)
+                .is_some_and(|deed| deed.created_on() == werdy_core::first_markable_day(finish))
         }));
         resumed.viewing = past_due;
         assert_eq!(resumed.summary().missed, 1);
@@ -3972,7 +4181,7 @@ mod tests {
     }
 
     #[test]
-    fn finishing_setup_dates_added_deeds_on_finish_day() -> TestResult {
+    fn finishing_setup_lets_the_week_before_the_finish_day_be_marked() -> TestResult {
         let start = today()?;
         let mut state = AppState::start(&MemoryStore::default(), start, slot_order());
         state.toggle_set("five_prayers")?;
@@ -3980,13 +4189,25 @@ mod tests {
         state.update_today(finish);
         state.finish_first_run(Screen::Sheet);
         assert_eq!(state.summary().open, 5);
+        let first = werdy_core::first_markable_day(finish);
         assert!(
             state
                 .data
                 .deeds
                 .iter()
-                .all(|deed| deed.created_on() == finish)
+                .all(|deed| deed.created_on() == first)
         );
+        let calendar = &state.data.settings.calendar;
+        let due_on = |day| {
+            state
+                .data
+                .deeds
+                .iter()
+                .filter(|deed| deed.is_due_on(day, calendar, &state.data.marks))
+                .count()
+        };
+        assert_eq!(due_on(first), 5);
+        assert_eq!(due_on(first.previous()?), 0);
         Ok(())
     }
 
