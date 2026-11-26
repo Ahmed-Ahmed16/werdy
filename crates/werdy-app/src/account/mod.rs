@@ -66,6 +66,7 @@ impl Schedule {
 pub struct Account {
     pub sharing_busy: bool,
     pub session: Option<Session>,
+    session_write_pending: bool,
     pub checkpoint: Option<Checkpoint>,
     pub schedule: Schedule,
     pub generation: u64,
@@ -127,8 +128,7 @@ impl AccountStore {
     }
 
     /// Starts a sync run if no other copy of the app on this device holds
-    /// the sync lease. The run starts from the session and checkpoint in
-    /// storage, so it includes what another copy saved or refreshed.
+    /// the sync lease. Reads what another copy saved before starting the run.
     pub fn claim_flight(&self, now: u64) -> Result<Option<Flight>, StoreError> {
         if !self.take_lease(now)? {
             return Ok(None);
@@ -208,8 +208,7 @@ impl AccountStore {
         Ok(())
     }
 
-    /// Supabase rotates the refresh token, so a copy must use the newest
-    /// session any copy saved.
+    /// Use the session another copy saved unless our refresh still needs saving.
     fn reread_session(&self, account: &mut Account) -> Result<(), StoreError> {
         let Some(json) = self.vault.read(File::Session)? else {
             return Ok(());
@@ -217,7 +216,8 @@ impl AccountStore {
         let saved = serde_json::from_str::<Session>(&json)
             .ok()
             .filter(|saved| saved.validate().is_ok());
-        if let Some(saved) = saved
+        if !account.session_write_pending
+            && let Some(saved) = saved
             && account
                 .session
                 .as_ref()
@@ -253,6 +253,7 @@ impl AccountStore {
         let mut account = self.account.borrow_mut();
         account.generation = account.generation.wrapping_add(1);
         account.session = Some(session);
+        account.session_write_pending = false;
         account.checkpoint = Some(checkpoint);
         account.error = None;
         account.signing_in = false;
@@ -301,7 +302,12 @@ impl AccountStore {
 
     pub fn write_session(&self, session: &Session) -> Result<(), StoreError> {
         let json = serde_json::to_string(session).map_err(|_| storage_error())?;
-        self.vault.write(File::Session, &json)
+        self.vault.write(File::Session, &json)?;
+        let mut account = self.account.borrow_mut();
+        if account.session.as_ref() == Some(session) {
+            account.session_write_pending = false;
+        }
+        Ok(())
     }
 
     pub fn write_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), StoreError> {

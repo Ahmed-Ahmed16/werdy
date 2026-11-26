@@ -214,11 +214,14 @@ pub(crate) fn save_refresh(
     session: &Session,
     generation: u64,
 ) -> Result<(), SyncError> {
-    if store.account.borrow().generation != generation {
+    let mut account = store.account.borrow_mut();
+    if account.generation != generation {
         return Err(SyncError::Invalid("account changed".into()));
     }
     // Keep a rotated refresh token in memory even if saving it fails.
-    store.account.borrow_mut().session = Some(session.clone());
+    account.session = Some(session.clone());
+    account.session_write_pending = true;
+    drop(account);
     store
         .write_session(session)
         .map_err(|_| SyncError::Backend("account storage failed".into()))

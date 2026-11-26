@@ -627,6 +627,64 @@ fn a_flight_uses_the_session_another_tab_refreshed() {
     assert_eq!(session.refresh_token, "rotated");
 }
 
+#[derive(Default)]
+struct SessionWriteFailingVault {
+    inner: storage::MemoryVault,
+    fail_next_session_write: std::cell::Cell<bool>,
+}
+
+impl Vault for SessionWriteFailingVault {
+    fn read(&self, file: File) -> Result<Option<String>, StoreError> {
+        self.inner.read(file)
+    }
+
+    fn write(&self, file: File, text: &str) -> Result<(), StoreError> {
+        if file == File::Session && self.fail_next_session_write.replace(false) {
+            return Err(storage_error());
+        }
+        self.inner.write(file, text)
+    }
+
+    fn remove(&self, file: File) -> Result<(), StoreError> {
+        self.inner.remove(file)
+    }
+}
+
+#[test]
+fn next_flight_retries_saving_a_rotated_refresh_token() {
+    let vault = Rc::new(SessionWriteFailingVault::default());
+    let store = AccountStore::open(
+        Rc::new(werdy_store::MemoryStore::default()),
+        vault.clone(),
+        true,
+    );
+    store.sign_in(session(), &records()).unwrap();
+    let (mut rotated, _, generation) = store.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+    vault.fail_next_session_write.set(true);
+    assert!(runtime::save_refresh(&store, &rotated, generation).is_err());
+    store.release_flight();
+    assert_eq!(
+        restore(vault.as_ref()).unwrap().0.unwrap().refresh_token,
+        session().refresh_token
+    );
+
+    let (retry, _, _) = store.claim_flight(2_000).unwrap().unwrap();
+    assert_eq!(retry.refresh_token, rotated.refresh_token);
+    store.write_session(&retry).unwrap();
+    assert_eq!(
+        restore(vault.as_ref()).unwrap().0.unwrap().refresh_token,
+        rotated.refresh_token
+    );
+    store.release_flight();
+
+    let other = AccountStore::open(store.inner.clone(), vault.clone(), true);
+    rotated.refresh_token = "rotated again".into();
+    other.write_session(&rotated).unwrap();
+    let (latest, _, _) = store.claim_flight(3_000).unwrap().unwrap();
+    assert_eq!(latest.refresh_token, rotated.refresh_token);
+}
+
 #[test]
 fn a_late_sync_in_one_tab_keeps_an_edit_saved_in_the_other() {
     let (first, second) = two_tabs();
