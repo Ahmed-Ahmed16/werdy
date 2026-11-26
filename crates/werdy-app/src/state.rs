@@ -463,11 +463,16 @@ impl AppState {
         crate::platform::reschedule_reminders(&self.data);
     }
 
-    pub fn accept_successful_sync(&mut self, records: OwnerData, store: &dyn Store) {
+    pub fn accept_successful_sync(
+        &mut self,
+        records: OwnerData,
+        store: &dyn Store,
+        held_deed_ids: &BTreeSet<DeedId>,
+    ) {
         self.accept_sync(records);
         if !self.checked_level_group_move_after_sync {
             self.checked_level_group_move_after_sync = true;
-            self.move_level_deeds_to_groups(store);
+            self.move_level_deeds_to_groups(store, held_deed_ids);
         }
     }
 
@@ -1592,14 +1597,23 @@ impl AppState {
 
     /// Moves level deeds that still sit in any time into their groups, once
     /// (decision 0045), and saves them as deed edits so sync sends them.
-    pub fn move_level_deeds_to_groups(&mut self, store: &dyn Store) {
+    pub fn move_level_deeds_to_groups(
+        &mut self,
+        store: &dyn Store,
+        held_deed_ids: &BTreeSet<DeedId>,
+    ) {
         if self.save_status == SaveStatus::LoadFailed {
             return;
         }
         let Ok(catalog) = crate::editor_data::catalog() else {
             return;
         };
-        let moved = crate::starter::move_level_deeds_to_groups(&mut self.data, catalog, self.today);
+        let moved = crate::starter::move_level_deeds_to_groups(
+            &mut self.data,
+            catalog,
+            self.today,
+            held_deed_ids,
+        );
         if moved.is_empty() {
             return;
         }
@@ -2476,7 +2490,7 @@ mod tests {
         store.save(&data)?;
 
         let mut state = AppState::start(&store, today()?, slot_order());
-        state.move_level_deeds_to_groups(&store);
+        state.move_level_deeds_to_groups(&store, &BTreeSet::new());
         assert_eq!(state.save_status, SaveStatus::Saved);
         let place = |state: &AppState, day| {
             state
@@ -2501,7 +2515,7 @@ mod tests {
         edited.save_to(&store);
 
         let mut reopened = AppState::start(&store, today()?, slot_order());
-        reopened.move_level_deeds_to_groups(&store);
+        reopened.move_level_deeds_to_groups(&store, &BTreeSet::new());
         assert_eq!(place(&reopened, today()?).as_deref(), Some("any_time"));
         Ok(())
     }
@@ -2524,7 +2538,7 @@ mod tests {
         state.save_to(&store);
 
         let mut reopened = AppState::start(&store, today()?, slot_order());
-        reopened.move_level_deeds_to_groups(&store);
+        reopened.move_level_deeds_to_groups(&store, &BTreeSet::new());
         let draft = reopened.draft_for(id).ok_or("missing deed draft")?;
         assert_eq!(draft.slot.0, "any_time");
         Ok(())

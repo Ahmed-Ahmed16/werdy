@@ -2,7 +2,7 @@ use super::{AccountStore, Checkpoint, config};
 use crate::state::AppState;
 use dioxus::prelude::*;
 use std::{rc::Rc, time::Duration};
-use werdy_store::Store;
+use werdy_store::{OwnerData, Store};
 use werdy_sync::{Session, SupabaseAuth, SupabaseBackend, SyncError};
 
 #[derive(Clone)]
@@ -98,9 +98,11 @@ pub fn use_background(mut state: Signal<AppState>) {
                                                 Some(error_key(&SyncError::OperationReused));
                                             false
                                         } else {
-                                            state
-                                                .write()
-                                                .accept_successful_sync(records, store.as_ref());
+                                            apply_successful_sync(
+                                                &mut state.write(),
+                                                records,
+                                                &store,
+                                            );
                                             true
                                         }
                                     }
@@ -133,6 +135,21 @@ pub fn use_background(mut state: Signal<AppState>) {
             }
         }
     });
+}
+
+pub(super) fn apply_successful_sync(
+    state: &mut AppState,
+    records: OwnerData,
+    store: &AccountStore,
+) {
+    let held_deed_ids = store
+        .account
+        .borrow()
+        .checkpoint
+        .as_ref()
+        .map(|checkpoint| checkpoint.engine.held_deed_ids())
+        .unwrap_or_default();
+    state.accept_successful_sync(records, store, &held_deed_ids);
 }
 
 enum Attempt {
