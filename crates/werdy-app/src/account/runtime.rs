@@ -94,10 +94,12 @@ pub fn use_background(mut state: Signal<AppState>) {
                             }
                         };
                         let mut account = store.account.borrow_mut();
-                        if success {
-                            account.error = None;
+                        if account.generation == generation {
+                            if success {
+                                account.error = None;
+                            }
+                            account.schedule.finish(elapsed_ms(), success);
                         }
-                        account.schedule.finish(elapsed_ms(), success);
                         drop(account);
                         store.release_flight();
                     });
@@ -123,7 +125,9 @@ fn claim(store: &AccountStore) -> Option<super::Flight> {
         Ok(None) => {}
         Err(_) => account.error = Some("account-storage-error"),
     }
-    account.schedule.finish(elapsed_ms(), false);
+    if account.session.is_some() {
+        account.schedule.finish(elapsed_ms(), false);
+    }
     None
 }
 
@@ -139,6 +143,13 @@ pub(super) fn finish_attempt(
     generation: u64,
 ) -> Result<Option<OwnerData>, StoreError> {
     if state.has_unsaved_changes() {
+        {
+            let mut account = store.account.borrow_mut();
+            store.reread_session(&mut account)?;
+            if account.generation != generation || account.session.is_none() {
+                return Ok(None);
+            }
+        }
         state.save_to(store);
         if state.save_status != SaveStatus::Saved {
             return Err(storage_error());
@@ -158,6 +169,9 @@ async fn attempt(
     mut checkpoint: Checkpoint,
     generation: u64,
 ) -> Result<Attempt, SyncError> {
+    if store.account.borrow().generation != generation {
+        return Err(SyncError::Invalid("account changed".into()));
+    }
     let auth = SupabaseAuth::new(config::SUPABASE_URL, config::SUPABASE_KEY)?;
     // Retry saving a rotated token if the previous attempt hit a storage error.
     store
@@ -168,9 +182,6 @@ async fn attempt(
             .refresh(&session, crate::platform::change_time() / 1000)
             .await?;
         save_refresh(store, &session, generation)?;
-    }
-    if store.account.borrow().generation != generation {
-        return Err(SyncError::Invalid("account changed".into()));
     }
     let mut backend = SupabaseBackend::new(
         config::SUPABASE_URL,
@@ -215,7 +226,12 @@ pub(crate) fn save_refresh(
     generation: u64,
 ) -> Result<(), SyncError> {
     let mut account = store.account.borrow_mut();
-    if account.generation != generation {
+    if account.generation != generation
+        || !account
+            .session
+            .as_ref()
+            .is_some_and(|current| current.user_id == session.user_id)
+    {
         return Err(SyncError::Invalid("account changed".into()));
     }
     // Keep a rotated refresh token in memory even if saving it fails.

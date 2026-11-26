@@ -790,3 +790,69 @@ fn a_mark_cleared_during_a_sync_stays_cleared_when_a_stale_tab_reloads() {
         werdy_sync::Change::Mark { entry: Some(_), .. }
     )));
 }
+
+#[test]
+fn a_sign_out_in_another_tab_stops_the_next_sync_from_restoring_the_account() {
+    let inner: Rc<dyn Store> = Rc::new(werdy_store::MemoryStore::default());
+    let vault: Rc<dyn Vault> = Rc::new(storage::MemoryVault::default());
+    let first = AccountStore::open(inner.clone(), vault.clone(), true);
+    first.sign_in(session(), &records()).unwrap();
+    let second = AccountStore::open(inner.clone(), vault.clone(), true);
+
+    second.sign_out(&records()).unwrap();
+
+    assert!(first.claim_flight(1_000).unwrap().is_none());
+    assert!(first.account.borrow().session.is_none());
+    let reopened = AccountStore::open(inner, vault, true);
+    assert!(reopened.account.borrow().session.is_none());
+}
+
+#[test]
+fn a_sync_running_when_another_tab_signs_out_does_not_write_the_account_back() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let completed = flight(&first, &mut backend);
+
+    second.sign_out(&records()).unwrap();
+
+    assert!(
+        first
+            .complete(&completed, generation, 1_000)
+            .unwrap()
+            .is_none()
+    );
+    assert!(first.vault.read(File::Sync).unwrap().is_none());
+    assert!(first.vault.read(File::Session).unwrap().is_none());
+}
+
+#[test]
+fn a_refresh_after_another_tab_signs_out_does_not_restore_the_session() {
+    let (first, second) = two_tabs();
+    let (mut rotated, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+
+    second.sign_out(&records()).unwrap();
+
+    let refresh = runtime::save_refresh(&first, &rotated, generation);
+    assert!(first.vault.read(File::Session).unwrap().is_none());
+    assert!(refresh.is_err());
+    assert!(first.account.borrow().session.is_none());
+}
+
+#[test]
+fn a_save_after_another_tab_signs_out_does_not_restore_the_checkpoint() {
+    let (first, second) = two_tabs();
+    let mut stale = first.load().unwrap().unwrap();
+    stale.settings.language = "ar".into();
+    second.sign_out(&records()).unwrap();
+
+    let save = first.save(&stale);
+
+    assert!(first.vault.read(File::Sync).unwrap().is_none());
+    assert!(save.is_err());
+    assert_eq!(
+        first.inner.load().unwrap().unwrap().settings.language,
+        records().settings.language
+    );
+}

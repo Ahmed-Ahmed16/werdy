@@ -74,6 +74,15 @@ pub struct Account {
     pub signing_in: bool,
 }
 
+impl Account {
+    fn reset(&mut self) {
+        *self = Self {
+            generation: self.generation.wrapping_add(1),
+            ..Self::default()
+        };
+    }
+}
+
 pub struct AccountStore {
     pub active_task: RefCell<Option<dioxus::dioxus_core::Task>>,
     pub inner: Rc<dyn Store>,
@@ -133,20 +142,20 @@ impl AccountStore {
         if !self.take_lease(now)? {
             return Ok(None);
         }
-        let mut account = self.account.borrow_mut();
-        let reread = self
-            .reread_checkpoint(&mut account)
-            .and_then(|()| self.reread_session(&mut account));
-        if let Err(error) = reread {
-            drop(account);
+        let claimed = {
+            let mut account = self.account.borrow_mut();
+            self.reread_checkpoint(&mut account).map(|()| {
+                account
+                    .session
+                    .clone()
+                    .zip(account.checkpoint.clone())
+                    .map(|(session, checkpoint)| (session, checkpoint, account.generation))
+            })
+        };
+        if !matches!(claimed, Ok(Some(_))) {
             self.release_flight();
-            return Err(error);
         }
-        Ok(account
-            .session
-            .clone()
-            .zip(account.checkpoint.clone())
-            .map(|(session, checkpoint)| (session, checkpoint, account.generation)))
+        claimed
     }
 
     /// Gives the sync lease back so another copy can sync. A copy that
@@ -191,6 +200,7 @@ impl AccountStore {
     /// wrote the checkpoint. Its counters must be the base for the next
     /// write, or both copies hand out the same operation number.
     fn reread_checkpoint(&self, account: &mut Account) -> Result<(), StoreError> {
+        self.reread_session(account)?;
         let Some(current) = account.checkpoint.as_ref() else {
             return Ok(());
         };
@@ -208,22 +218,24 @@ impl AccountStore {
         Ok(())
     }
 
-    /// Use the session another copy saved unless our refresh still needs saving.
+    /// A missing or replaced session ends this copy's account without touching
+    /// records or files owned by the other copy.
     fn reread_session(&self, account: &mut Account) -> Result<(), StoreError> {
-        let Some(json) = self.vault.read(File::Session)? else {
+        let Some(current) = account.session.as_ref() else {
             return Ok(());
         };
-        let saved = serde_json::from_str::<Session>(&json)
-            .ok()
-            .filter(|saved| saved.validate().is_ok());
-        if !account.session_write_pending
-            && let Some(saved) = saved
-            && account
-                .session
-                .as_ref()
-                .is_some_and(|session| session.user_id == saved.user_id)
+        let Some(json) = self.vault.read(File::Session)? else {
+            account.reset();
+            return Ok(());
+        };
+        if let Ok(saved) = serde_json::from_str::<Session>(&json)
+            && saved.validate().is_ok()
         {
-            account.session = Some(saved);
+            if saved.user_id != current.user_id {
+                account.reset();
+            } else if !account.session_write_pending {
+                account.session = Some(saved);
+            }
         }
         Ok(())
     }
@@ -246,7 +258,7 @@ impl AccountStore {
             last_sync: None,
         };
         self.write_checkpoint(&checkpoint)?;
-        self.write_session(&session)?;
+        self.persist_session(&session)?;
         if self.inner.save(&records).is_err() {
             dioxus::prelude::warn!("Records mirror save failed; sync checkpoint keeps the records");
         }
@@ -275,12 +287,7 @@ impl AccountStore {
         }
         self.release_flight();
         let removed = self.vault.remove(File::Sync);
-        let mut account = self.account.borrow_mut();
-        let generation = account.generation.wrapping_add(1);
-        *account = Account {
-            generation,
-            ..Account::default()
-        };
+        self.account.borrow_mut().reset();
         removed
     }
 
@@ -301,16 +308,28 @@ impl AccountStore {
     }
 
     pub fn write_session(&self, session: &Session) -> Result<(), StoreError> {
-        let json = serde_json::to_string(session).map_err(|_| storage_error())?;
-        self.vault.write(File::Session, &json)?;
         let mut account = self.account.borrow_mut();
+        self.reread_session(&mut account)?;
+        if !account
+            .session
+            .as_ref()
+            .is_some_and(|current| current.user_id == session.user_id)
+        {
+            return Err(StoreError::Backend("account changed".into()));
+        }
+        self.persist_session(session)?;
         if account.session.as_ref() == Some(session) {
             account.session_write_pending = false;
         }
         Ok(())
     }
 
-    pub fn write_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), StoreError> {
+    fn persist_session(&self, session: &Session) -> Result<(), StoreError> {
+        let json = serde_json::to_string(session).map_err(|_| storage_error())?;
+        self.vault.write(File::Session, &json)
+    }
+
+    fn write_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), StoreError> {
         let json = serde_json::to_string(checkpoint).map_err(|_| storage_error())?;
         self.vault.write(File::Sync, &json)?;
         *self.seen.borrow_mut() = json;
@@ -359,6 +378,9 @@ impl AccountStore {
             return Ok(None);
         }
         self.reread_checkpoint(&mut account)?;
+        if account.generation != generation {
+            return Ok(None);
+        }
         let mut current = account.checkpoint.clone().ok_or_else(storage_error)?;
         let mut records = from_json(&current.records)?;
         merge(&mut current, &mut records)?;
@@ -397,7 +419,11 @@ impl Store for AccountStore {
     fn save(&self, records: &OwnerData) -> Result<(), StoreError> {
         let mut records = records.clone();
         let mut account = self.account.borrow_mut();
+        let generation = account.generation;
         self.reread_checkpoint(&mut account)?;
+        if account.generation != generation {
+            return Err(StoreError::Backend("account changed".into()));
+        }
         if let Some(mut checkpoint) = account.checkpoint.clone() {
             checkpoint
                 .engine
