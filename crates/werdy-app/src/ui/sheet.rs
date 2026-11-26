@@ -10,6 +10,7 @@ use werdy_store::DeedName;
 use super::context::{use_actions, use_i18n};
 use super::icons::{CheckIcon, FoldChevron};
 use super::marks::{CountEntry, CountTag, MarkButton};
+use crate::starter::place_name_key;
 use crate::state::{AppState, Tap};
 use crate::{platform, state};
 
@@ -281,7 +282,7 @@ fn nearest_slot<'a>(shown: &'a [SlotKey], order: &[SlotKey], wanted: &str) -> Op
 #[component]
 fn SlotChip(slot: SheetSlot, current: bool, on_jump: EventHandler<SlotKey>) -> Element {
     let i18n = use_i18n();
-    let name = i18n.t(&format!("slot-{}", slot.slot.0));
+    let name = i18n.t(&place_name_key(&slot.slot.0));
     let (marked, total) = slot_progress(&slot.rows);
     let args = [
         ("slot", FluentValue::from(name)),
@@ -304,13 +305,12 @@ fn SlotChip(slot: SheetSlot, current: bool, on_jump: EventHandler<SlotKey>) -> E
     }
 }
 
-/// One time slot: a thin heading that stays in view, and its deed rows.
-/// Type groups (#107) will split the rows inside a slot; until then a slot
-/// holds one plain list.
+/// One place on the sheet, a time slot or a group (0045): a thin heading
+/// that stays in view, and its deed rows.
 #[component]
 fn SlotGroup(slot: SheetSlot, open: bool, on_toggle: EventHandler<SlotKey>) -> Element {
     let i18n = use_i18n();
-    let name = i18n.t(&format!("slot-{}", slot.slot.0));
+    let name = i18n.t(&place_name_key(&slot.slot.0));
     let (marked, total) = slot_progress(&slot.rows);
     let count = i18n.t_with(
         "slot-count",

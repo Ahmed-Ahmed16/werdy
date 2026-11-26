@@ -1,7 +1,8 @@
 //! Loads werdy's starter sets from `data/starter-sets.toml` and checks them.
 //!
-//! The data file lists the known time slots, categories, Hijri ranges and
-//! units, then every deed once, then each set as a list of deed keys. Two
+//! The data file lists the known time slots, groups, sheet order,
+//! categories, Hijri ranges and units, then every deed once, then each set
+//! as a list of deed keys. Two
 //! sets that share a deed name the same deed key, so adding both sets adds
 //! the deed once. Names are Fluent message keys, looked up in
 //! `locales/<lang>/starter-sets.ftl`.
@@ -19,8 +20,12 @@ const BUILTIN_EN: &str = include_str!("../../../locales/en/starter-sets.ftl");
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Catalog {
-    /// Known time slot keys, in sheet order.
+    /// Known time slot keys, in day order.
     pub slots: Vec<String>,
+    /// Known group keys, in sheet order (decision 0045).
+    pub groups: Vec<String>,
+    /// Every slot and group once, in the order the sheet shows them.
+    pub sheet_order: Vec<String>,
     /// Known category keys.
     pub categories: Vec<String>,
     /// Known Hijri range keys.
@@ -67,8 +72,12 @@ pub struct Deed {
     pub key: String,
     /// Fluent key for the deed's name.
     pub name: String,
-    /// Time slot key.
-    pub slot: String,
+    /// Time slot key, when the deed sits in a slot.
+    #[serde(default)]
+    pub slot: Option<String>,
+    /// Group key, when the deed sits in a group. A deed has a slot or a group.
+    #[serde(default)]
+    pub group: Option<String>,
     /// Category key.
     pub category: String,
     /// Days the deed is due.
@@ -188,6 +197,23 @@ pub enum Error {
         /// The unknown slot.
         slot: String,
     },
+    /// A deed uses a group that is not in the known list.
+    UnknownGroup {
+        /// The deed key.
+        deed: String,
+        /// The unknown group.
+        group: String,
+    },
+    /// A deed names both a slot and a group, or neither.
+    NotOnePlace {
+        /// The deed key.
+        deed: String,
+    },
+    /// The sheet order misses, repeats or adds this slot or group key.
+    SheetOrder {
+        /// The key at fault.
+        key: String,
+    },
     /// A deed uses a category that is not in the known list.
     UnknownCategory {
         /// The deed key.
@@ -272,6 +298,15 @@ impl fmt::Display for Error {
             Self::DuplicateKey { kind, key } => write!(f, "{kind} key {key} appears twice"),
             Self::DuplicateName { name } => write!(f, "name key {name} appears twice"),
             Self::UnknownSlot { deed, slot } => write!(f, "deed {deed} uses unknown slot {slot}"),
+            Self::UnknownGroup { deed, group } => {
+                write!(f, "deed {deed} uses unknown group {group}")
+            }
+            Self::NotOnePlace { deed } => {
+                write!(f, "deed {deed} needs exactly one of slot or group")
+            }
+            Self::SheetOrder { key } => {
+                write!(f, "sheet order must list {key} once, as a slot or group")
+            }
             Self::UnknownCategory { deed, category } => {
                 write!(f, "deed {deed} uses unknown category {category}")
             }
@@ -306,10 +341,27 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl Deed {
+    /// The slot or group key the deed sits in. A checked catalog gives each
+    /// deed exactly one; an unchecked deed with neither gives an empty key.
+    pub fn place(&self) -> &str {
+        self.slot
+            .as_deref()
+            .or(self.group.as_deref())
+            .unwrap_or_default()
+    }
+}
+
 impl Catalog {
     /// Finds a deed by key.
     pub fn deed(&self, key: &str) -> Option<&Deed> {
         self.deeds.iter().find(|deed| deed.key == key)
+    }
+
+    /// The group a starter deed sits in, or `None` for a slot deed or an
+    /// unknown key. A saved starter key (decision 0041) finds its group here.
+    pub fn group_of(&self, key: &str) -> Option<&str> {
+        self.deed(key)?.group.as_deref()
     }
 
     /// Finds a set by key.
@@ -377,6 +429,9 @@ pub fn builtin() -> Result<Catalog, Error> {
 
 fn check_keys(catalog: &Catalog) -> Result<(), Error> {
     unique("slot", catalog.slots.iter().map(String::as_str))?;
+    unique("group", catalog.groups.iter().map(String::as_str))?;
+    unique("place", places(catalog))?;
+    check_sheet_order(catalog)?;
     unique("category", catalog.categories.iter().map(String::as_str))?;
     unique(
         "hijri range",
@@ -468,14 +523,50 @@ fn unique<'a>(kind: &'static str, keys: impl Iterator<Item = &'a str>) -> Result
     Ok(())
 }
 
+fn places(catalog: &Catalog) -> impl Iterator<Item = &str> {
+    catalog
+        .slots
+        .iter()
+        .chain(&catalog.groups)
+        .map(String::as_str)
+}
+
+fn check_sheet_order(catalog: &Catalog) -> Result<(), Error> {
+    let known: BTreeSet<&str> = places(catalog).collect();
+    let mut seen = BTreeSet::new();
+    for key in catalog.sheet_order.iter().map(String::as_str) {
+        if !known.contains(key) || !seen.insert(key) {
+            return Err(Error::SheetOrder { key: key.into() });
+        }
+    }
+    match known.difference(&seen).next() {
+        Some(missing) => Err(Error::SheetOrder {
+            key: (*missing).into(),
+        }),
+        None => Ok(()),
+    }
+}
+
+fn check_place(catalog: &Catalog, deed: &Deed) -> Result<(), Error> {
+    match (&deed.slot, &deed.group) {
+        (Some(slot), None) if !catalog.slots.contains(slot) => Err(Error::UnknownSlot {
+            deed: deed.key.clone(),
+            slot: slot.clone(),
+        }),
+        (None, Some(group)) if !catalog.groups.contains(group) => Err(Error::UnknownGroup {
+            deed: deed.key.clone(),
+            group: group.clone(),
+        }),
+        (Some(_), None) | (None, Some(_)) => Ok(()),
+        _ => Err(Error::NotOnePlace {
+            deed: deed.key.clone(),
+        }),
+    }
+}
+
 fn check_deed(catalog: &Catalog, deed: &Deed) -> Result<(), Error> {
     let name = || deed.key.clone();
-    if !catalog.slots.contains(&deed.slot) {
-        return Err(Error::UnknownSlot {
-            deed: name(),
-            slot: deed.slot.clone(),
-        });
-    }
+    check_place(catalog, deed)?;
     if !catalog.categories.contains(&deed.category) {
         return Err(Error::UnknownCategory {
             deed: name(),

@@ -99,11 +99,30 @@ pub fn fard_prayer_sources(data: &OwnerData) -> Vec<PrayerSource> {
         .collect()
 }
 
+/// Places in sheet order: time slots, then groups, then any time (0045).
+/// A deed's place is stored in its rule's slot key.
 pub fn slot_order() -> Vec<SlotKey> {
     crate::editor_data::catalog().map_or_else(
         |_| Vec::new(),
-        |catalog| catalog.slots.iter().map(|key| SlotKey::new(key)).collect(),
+        |catalog| {
+            catalog
+                .sheet_order
+                .iter()
+                .map(|key| SlotKey::new(key))
+                .collect()
+        },
     )
+}
+
+/// Fluent key that names a place: `group-<key>` for a group, else `slot-<key>`.
+pub fn place_name_key(place: &str) -> String {
+    let group = crate::editor_data::catalog()
+        .is_ok_and(|catalog| catalog.groups.iter().any(|key| key == place));
+    if group {
+        format!("group-{place}")
+    } else {
+        format!("slot-{place}")
+    }
 }
 
 /// Keys a set would add to this sheet. Shared deeds appear once.
@@ -168,13 +187,13 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
         schedule,
         target,
         category: CategoryKey::new(&deed.category),
-        slot: SlotKey::new(&deed.slot),
+        slot: SlotKey::new(deed.place()),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{fard_prayer_sources, missing_deeds, rule};
+    use super::{fard_prayer_sources, missing_deeds, place_name_key, rule, slot_order};
     use std::collections::BTreeSet;
     use werdy_core::DeedId;
     use werdy_store::OwnerData;
@@ -266,6 +285,33 @@ mod tests {
     fn every_catalog_deed_has_a_core_rule() -> Result<(), Box<dyn std::error::Error>> {
         let catalog = werdy_data::builtin()?;
         assert!(catalog.deeds.iter().all(|deed| rule(deed).is_some()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_group_is_named_by_a_group_key_and_a_slot_by_a_slot_key() {
+        assert_eq!(place_name_key("quran"), "group-quran");
+        assert_eq!(place_name_key("self_review"), "group-self_review");
+        assert_eq!(place_name_key("fajr"), "slot-fajr");
+        assert_eq!(place_name_key("any_time"), "slot-any_time");
+    }
+
+    #[test]
+    fn the_sheet_order_puts_groups_between_night_and_any_time() {
+        let order: Vec<_> = slot_order().into_iter().map(|key| key.0).collect();
+        let night = order.iter().position(|key| key == "night");
+        let quran = order.iter().position(|key| key == "quran");
+        let any_time = order.iter().position(|key| key == "any_time");
+        assert!(night < quran && quran < any_time, "{order:?}");
+        assert_eq!(order.last().map(String::as_str), Some("any_time"));
+    }
+
+    #[test]
+    fn a_level_deed_keeps_its_group_as_its_place() -> Result<(), Box<dyn std::error::Error>> {
+        let catalog = werdy_data::builtin()?;
+        let parents = catalog.deed("lv_parents").ok_or("missing deed")?;
+        let rule = rule(parents).ok_or("no rule")?;
+        assert_eq!(rule.slot.0, "heart_and_character");
         Ok(())
     }
 }

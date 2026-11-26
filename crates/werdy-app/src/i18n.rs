@@ -405,6 +405,24 @@ mod tests {
     }
 
     #[test]
+    fn every_slot_and_group_has_a_name_in_both_languages() -> Result<(), String> {
+        let texts = Texts::load();
+        let catalog = werdy_data::builtin().map_err(|error| error.to_string())?;
+        for place in &catalog.sheet_order {
+            let key = crate::starter::place_name_key(place);
+            for language in [Language::Arabic, Language::English] {
+                assert_ne!(texts.get(language, &key, &[]), key, "{language:?}");
+            }
+        }
+        assert_eq!(
+            texts.get(Language::Arabic, "group-heart_and_character", &[]),
+            "القلب والأخلاق"
+        );
+        assert_eq!(texts.get(Language::Arabic, "editor-group", &[]), "مجموعة");
+        Ok(())
+    }
+
+    #[test]
     fn a_missing_key_shows_the_key() {
         assert_eq!(
             Texts::load().get(Language::Arabic, "no-such-key", &[]),
