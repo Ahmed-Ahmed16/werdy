@@ -56,9 +56,9 @@ self.addEventListener("fetch", (event) => {
 async function fontResponse(request) {
   const cache = await caches.open(FONT_CACHE);
   const cached = await cache.match(request);
-  const fresh = fetch(request).then((response) => {
+  const fresh = fetch(request).then(async (response) => {
     if (response.ok || response.type === "opaque") {
-      return cache.put(request, response.clone()).then(() => response);
+      await cache.put(request, response.clone()).catch(() => {});
     }
     return response;
   });

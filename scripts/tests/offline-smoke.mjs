@@ -15,6 +15,7 @@
 
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
@@ -97,13 +98,18 @@ function connect(url) {
     pending.get(message.id)?.(message);
     pending.delete(message.id);
   });
-  // A page stuck in a navigation can leave a call unanswered, so each call
-  // gets a time limit and then resolves empty, which callers read as "not yet".
+  // A page stuck in a navigation can leave a call unanswered.
   const send = (method, params = {}) => new Promise((done) => {
     const id = ++next;
-    pending.set(id, done);
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      done({ timedOut: true });
+    }, 3000);
+    pending.set(id, (reply) => {
+      clearTimeout(timer);
+      done(reply);
+    });
     socket.send(JSON.stringify({ id, method, params }));
-    setTimeout(() => done({}), 3000);
   });
   return new Promise((done) => socket.addEventListener("open", () => done({ socket, send })));
 }
@@ -126,6 +132,20 @@ async function until(cdp, expression, what, seconds = 60) {
 }
 
 const RENDERED = `document.querySelectorAll('#main button').length > 5`;
+async function reloadAndRender(cdp, what, seconds) {
+  const marker = randomUUID();
+  if (await evaluate(cdp, `window.__werdySmokeOld = ${JSON.stringify(marker)}`) !== marker) {
+    fail(`could not mark the old page before waiting for ${what}`);
+  }
+  const reply = await cdp.send("Page.reload");
+  if (reply.timedOut) fail(`Page.reload timed out before waiting for ${what}`);
+  if (reply.id === undefined || !reply.result) {
+    fail(`Page.reload failed before waiting for ${what}: ${reply.error?.message ?? "missing reply"}`);
+  }
+  // The old page can still answer while the worker waits for the network.
+  await until(cdp, `typeof window.__werdySmokeOld === 'undefined' && (${RENDERED})`, what, seconds);
+}
+
 const CONTROLLED = `!!navigator.serviceWorker.controller`;
 const RECORDS = `localStorage.getItem('werdy.demo.records')`;
 // Opens the first group if every group is folded, then taps the first open mark.
@@ -152,14 +172,12 @@ async function main() {
     await until(cdp, RENDERED, "the first online render");
     await until(cdp, `navigator.serviceWorker.ready.then((r) => r.active?.state === 'activated')`, "the worker to activate");
     // The page that installed the worker is not controlled by it; the next one is.
-    await cdp.send("Page.reload");
+    await reloadAndRender(cdp, "the second online render");
     await until(cdp, CONTROLLED, "the worker to control the page");
-    await until(cdp, RENDERED, "the second online render");
 
     network.hanging = true;
     console.log("weak signal: the server takes requests but never answers");
-    await cdp.send("Page.reload");
-    await until(cdp, RENDERED, "the app to render while the network hangs", 20);
+    await reloadAndRender(cdp, "the app to render while the network hangs", 20);
     if (!(await evaluate(cdp, CONTROLLED))) fail("the offline page is not served by the worker");
     const before = await evaluate(cdp, RECORDS);
     await until(cdp, TAP, "a mark button to tap");
@@ -169,8 +187,7 @@ async function main() {
     server.closeAllConnections();
     await closed;
     console.log("airplane mode: the server is gone");
-    await cdp.send("Page.reload");
-    await until(cdp, RENDERED, "the app to render offline");
+    await reloadAndRender(cdp, "the app to render offline");
     if ((await evaluate(cdp, RECORDS)) !== saved) fail("the mark tapped offline was lost on reload");
     console.log("ok: the app opens on a hanging network and offline, and a mark tapped offline is kept");
   } finally {
