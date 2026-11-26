@@ -2,6 +2,22 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0052 (2026-11-26): An older build keeps syncing past rows it cannot read
+A pull reads each row on its own. When a row holds something this build does not know, such as a schedule kind added in a newer version (0047), the phone keeps that row as it came, unread, and goes on with the rest of the stream. It never pushes anything because of a row it could not read: a deed whose first rule it cannot read stays hidden on that phone, and a deed it already showed keeps its last rule it could read. After the app updates, the kept rows are read again on the next sync, without starting the pull from zero. Watching another person's sheet also skips rows it cannot read, but a watched sheet is not saved: reopening it after a restart pulls it again from the start.
+
+Why: before this, one unknown value in one row made the whole pull fail, so a phone on an older build stopped syncing as soon as a newer phone used "once a week" or "when it comes up". Its own data was safe, but nothing new arrived until it updated. Found in the reviews of #200 and #203; the owner chose to fix it on 2026-11-26. Revisit: if a future change needs every phone on the same build, which would need a version check instead.
+
+## 0051 (2026-11-26): How the v2 schedules and groups meet data people already have
+The owner answered these questions from the v2 reviews in chat on 2026-11-26:
+* Owners who already added the advanced level do not get the two new weekly deeds (visiting graves, weekly sunan al fitra). Only a new add of the level brings them.
+* Deeds already added that 0047 gives "when it comes up" (istikhara, hajah, the five makeups of missed prayers, the advanced level's fasting) stay daily. Only new adds get "when it comes up". There is no one time schedule move, unlike groups.
+* A section holding only unmarked "when it comes up" deeds folds by itself (0046, 0047).
+* Starter deeds that are not level deeds and sit in "any time", such as Quran reading, stay there. 0045 moves level deeds only.
+* Archived level deeds also move into their groups (0045), so restoring one puts it in its group.
+* The two weekly deeds, visiting graves and weekly sunan al fitra, stay in "any time"; 0045 names no group for them.
+
+Why: each point keeps what an owner already sees unchanged unless 0045 or 0047 says otherwise, and settles a case the earlier entries left open. Revisit: if owners ask for their old deeds to take the new schedules.
+
 ## 0050 (2026-11-26): A late sign up may mark the week before
 When a person finishes first run, their setup deeds start 7 days before that day (`first_markable_day` in werdy-core, `LATE_SIGN_UP_DAYS`), so they can fill in the last week. Days before that week are not due, so no statistic counts them as Missed; this is scoring rule 4 with an earlier start day, not a new rule. Deeds added after first run still start on the day they are added. Marks entered more than 2 days after their day carry the "added later" sign (0021), so most of that week shows it. The owner decided a week on 2026-11-26 (#170); a month was considered.
 

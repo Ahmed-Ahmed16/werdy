@@ -30,8 +30,8 @@ async fn supabase_round_trip() {
     assert!(backend.server_time().await.unwrap() > 0);
     let pushed = backend.push(std::slice::from_ref(&pending)).await.unwrap();
     assert_eq!(pushed.changes.len(), 1);
-    assert_eq!(pushed.changes[0].pending, pending);
-    let stamp = pushed.changes[0].stamp;
+    assert_eq!(pushed.changes[0].accepted().unwrap().pending, pending);
+    let stamp = pushed.changes[0].stamp();
     assert!(stamp.sequence > 0);
     let pulled = backend.pull(stamp.sequence - 1).await.unwrap();
     assert!(pulled.changes.contains(&pushed.changes[0]));
