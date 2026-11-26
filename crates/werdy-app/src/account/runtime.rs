@@ -92,12 +92,15 @@ pub fn use_background(mut state: Signal<AppState>) {
                                         });
                                 match saved {
                                     Ok(Some(records)) => {
-                                        state.write().accept_sync(records);
                                         if matches!(outcome, Attempt::Collision(_)) {
+                                            state.write().accept_sync(records);
                                             store.account.borrow_mut().error =
                                                 Some(error_key(&SyncError::OperationReused));
                                             false
                                         } else {
+                                            state
+                                                .write()
+                                                .accept_successful_sync(records, store.as_ref());
                                             true
                                         }
                                     }

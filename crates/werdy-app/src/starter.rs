@@ -126,8 +126,9 @@ pub fn place_name_key(place: &str) -> String {
 }
 
 /// Moves each level deed that has always sat in any time to its group
-/// (decision 0045). Past days keep any time (0020). Leave deeds with a
-/// saved move marker or another place in their rule history alone.
+/// (decision 0045). Past days keep any time (0020). Rule history carries
+/// another phone's placement. The local marker also covers same day edits,
+/// which replace that day's rule and can erase the previous placement.
 /// Returns the moved deeds.
 pub fn move_level_deeds_to_groups(
     data: &mut OwnerData,

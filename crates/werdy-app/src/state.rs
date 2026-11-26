@@ -445,6 +445,7 @@ pub struct AppState {
     sets_dirty: bool,
     first_run_dirty: bool,
     deed_changes: BTreeMap<DeedId, DeedChange>,
+    checked_level_group_move_after_sync: bool,
 }
 
 impl AppState {
@@ -460,6 +461,14 @@ impl AppState {
         self.invalidate_kept_days();
         self.save_status = SaveStatus::Saved;
         crate::platform::reschedule_reminders(&self.data);
+    }
+
+    pub fn accept_successful_sync(&mut self, records: OwnerData, store: &dyn Store) {
+        self.accept_sync(records);
+        if !self.checked_level_group_move_after_sync {
+            self.checked_level_group_move_after_sync = true;
+            self.move_level_deeds_to_groups(store);
+        }
     }
 
     /// Loads saved data. Empty storage opens setup. Unreadable data is never overwritten.
@@ -495,6 +504,7 @@ impl AppState {
             sets_dirty: migrated,
             first_run_dirty: false,
             deed_changes: BTreeMap::new(),
+            checked_level_group_move_after_sync: false,
         };
         state.backfill_setup_deed_ids();
         state
