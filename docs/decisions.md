@@ -23,10 +23,17 @@ When a person finishes first run, their setup deeds start 7 days before that day
 
 Why: someone who starts using werdy mid week has already prayed and read this week, and should be able to record it. Moving the start day keeps every report, strip and sheet consistent with one rule. Open: an unmarked day in that week counts as Missed, like any past due day. Revisit: if new people find a week of red they did not choose to fill, by counting only marked days in that week.
 
+## 0049 (2026-11-26): The five prayers block is built on the congregation deed
+The reports block "The five prayers" shows, for each prayer and each day, the mark of the owner's congregation deed for that prayer, from a level or the mosque prayer set. The mark already tells the whole story: done (green) is the first congregation, partial (yellow) is a later congregation, and missed (X) is a prayer prayed alone. A day with no mark at all is the real "missed or not recorded" state and must look clearly different from an X. The on time deed from the five prayers set is used only on a day no congregation deed for that prayer is due, for example when the owner has none. Each row counts done, partial, missed and unmarked days over the shown range, from pure tested functions. Which deeds belong to which prayer is the `fard_prayers` table in `data/starter-sets.toml`.
+
+Why: the owner uses this block to see at a glance, by colour, what he missed on past days. On time and congregation as two prayer rows make no sense there, since a person prays either way, and the congregation mark carries more. This revises the block's source in 0048, which put the on time deed first. 0048 still stands for the deeds themselves: they stay two deeds, and merging the duplicate rows on the daily sheet stays parked (#183). Decided by the owner in chat on 2026-11-26 (issues #189 and #192). Revisit: when #183 or #184 is picked up, or if people who pray at home find X for "alone" harsh.
+
 ## 0048 (2026-11-20): Prayer on time and in congregation stay two deeds in v2
 Praying on time and praying in congregation stay separate deeds, with no graded single prayer deed. The reports block from 0041 is renamed "The five prayers". For each prayer it shows the owner's on time deed from the five prayers set, or, when there is none, the congregation deed from a level or the mosque prayer set. Owners who already have both deeds keep them and their history as they are; they can archive one in the editor.
 
 Why: a graded deed (congregation is Done, on time alone is half) would score people who rightly pray at home, such as women or people with no mosque near, at half forever. The owner chose not to change the deed shape for v2. Two ways to drop the duplicate rows are parked under the "future feat" label: asking at first run where a person usually prays (#183), and using gender to shape the prayer deeds (#184). Decided by the owner in chat on 2026-11-20 (issue #169, map #104). This revises the block's source in 0041. Revisit: when #183 or #184 is picked up.
+
+Revised by 0049 (2026-11-26): the block uses the congregation deed first and the on time deed only when no congregation deed is due.
 
 ## 0047 (2026-11-20): Two new schedules: once a week, and when it comes up
 This extends 0009 with two schedules. Every due deed is still due on a day, so scoring stays "mark fractions over due deeds, per day".

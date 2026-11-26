@@ -618,6 +618,57 @@ fn counted_level_deeds_carry_a_times_target() {
     }
 }
 
+/// SMALL with one fard prayer appended.
+fn with_prayer(slot: &str, congregation: &str) -> String {
+    format!(
+        "{SMALL}\n[[fard_prayers]]\nslot = \"{slot}\"\non_time = \"fajr_on_time\"\ncongregation = [{congregation}]\n"
+    )
+}
+
+#[test]
+fn every_fard_prayer_has_an_on_time_deed_and_congregation_deeds() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let slots: Vec<_> = catalog
+        .fard_prayers
+        .iter()
+        .map(|p| p.slot.as_str())
+        .collect();
+    assert_eq!(slots, ["fajr", "dhuhr", "asr", "maghrib", "isha"]);
+    let five = catalog.set("five_prayers").expect("set exists");
+    for prayer in &catalog.fard_prayers {
+        assert!(five.deeds.contains(&prayer.on_time), "{}", prayer.slot);
+        assert!(!prayer.congregation.is_empty(), "{}", prayer.slot);
+    }
+}
+
+#[test]
+fn fard_prayers_must_use_known_slots_and_deeds() {
+    assert!(parse(&with_prayer("fajr", "\"qiyam\"")).is_ok());
+    assert_eq!(
+        parse(&with_prayer("asr", "")),
+        Err(Error::UnknownPrayerSlot { slot: "asr".into() })
+    );
+    assert_eq!(
+        parse(&with_prayer("fajr", "\"fajr_congregation\"")),
+        Err(Error::UnknownPrayerDeed {
+            slot: "fajr".into(),
+            deed: "fajr_congregation".into()
+        })
+    );
+    let twice = format!(
+        "{}{}",
+        with_prayer("fajr", ""),
+        &with_prayer("fajr", "")[SMALL.len()..]
+    );
+    assert_eq!(
+        parse(&twice),
+        Err(Error::DuplicateKey {
+            kind: "fard prayer",
+            key: "fajr".into()
+        })
+    );
+}
+
 /// The unit picker offers every shipped unit, hours included (#175), and
 /// each one has a picker label in both locales.
 #[test]

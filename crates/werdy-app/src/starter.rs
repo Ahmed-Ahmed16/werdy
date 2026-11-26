@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use werdy_core::{CategoryKey, DeedId, DeedRule, Schedule, SlotKey, Target, Weekday};
+use werdy_core::{CategoryKey, DeedRule, PrayerSource, Schedule, SlotKey, Target, Weekday};
 use werdy_data::{Catalog, Deed as CatalogDeed, Schedule as CatalogSchedule};
 use werdy_store::{DeedName, OwnerData};
 
@@ -69,23 +69,33 @@ pub fn five_prayers(today: werdy_core::WerdyDay) -> Result<OwnerData, werdy_data
     Ok(data)
 }
 
-/// The owner's five fard prayer deeds, in the five prayers set order.
-/// A prayer deed is one added from that starter set (decision 0041).
-pub fn fard_prayer_ids(data: &OwnerData) -> Vec<DeedId> {
-    let Some(set) = crate::editor_data::catalog()
-        .ok()
-        .and_then(|catalog| catalog.set("five_prayers"))
-    else {
+/// Where the owner marks each fard prayer, in day order (decision 0049). The
+/// congregation deeds come from a level or the mosque prayer set and the on
+/// time deed from the five prayers set. A prayer the owner has no deed for is
+/// left out.
+pub fn fard_prayer_sources(data: &OwnerData) -> Vec<PrayerSource> {
+    let Ok(catalog) = crate::editor_data::catalog() else {
         return Vec::new();
     };
-    set.deeds
+    let id_of = |key: &str| {
+        data.starter_keys
+            .iter()
+            .find(|(_, stored)| *stored == key)
+            .map(|(id, _)| *id)
+    };
+    catalog
+        .fard_prayers
         .iter()
-        .filter_map(|key| {
-            data.starter_keys
+        .map(|prayer| PrayerSource {
+            prayer: SlotKey::new(&prayer.slot),
+            on_time: id_of(&prayer.on_time),
+            congregation: prayer
+                .congregation
                 .iter()
-                .find(|(_, stored)| *stored == key)
-                .map(|(id, _)| *id)
+                .filter_map(|key| id_of(key))
+                .collect(),
         })
+        .filter(|source| source.on_time.is_some() || !source.congregation.is_empty())
         .collect()
 }
 
@@ -164,29 +174,66 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fard_prayer_ids, missing_deeds, rule};
+    use super::{fard_prayer_sources, missing_deeds, rule};
     use std::collections::BTreeSet;
     use werdy_core::DeedId;
     use werdy_store::OwnerData;
 
-    #[test]
-    fn fard_prayers_follow_the_five_prayers_set_order() -> Result<(), Box<dyn std::error::Error>> {
+    fn sources_of(keys: &[(u64, &str)]) -> Vec<(String, Option<u64>, Vec<u64>)> {
         let mut data = OwnerData::default();
-        for (id, key) in [
+        for (id, key) in keys {
+            data.starter_keys.insert(DeedId(*id), (*key).to_owned());
+        }
+        fard_prayer_sources(&data)
+            .into_iter()
+            .map(|source| {
+                (
+                    source.prayer.0,
+                    source.on_time.map(|id| id.0),
+                    source.congregation.iter().map(|id| id.0).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fard_prayers_follow_day_order_and_skip_prayers_with_no_deed() {
+        let found = sources_of(&[
             (7, "isha_on_time"),
             (3, "sunnah_before_fajr"),
             (5, "fajr_on_time"),
             (9, "asr_on_time"),
-        ] {
-            data.starter_keys.insert(DeedId(id), key.to_owned());
-        }
-        assert_eq!(fard_prayer_ids(&data), [DeedId(5), DeedId(9), DeedId(7)]);
-        Ok(())
+        ]);
+        assert_eq!(
+            found,
+            [
+                ("fajr".into(), Some(5), vec![]),
+                ("asr".into(), Some(9), vec![]),
+                ("isha".into(), Some(7), vec![]),
+            ]
+        );
     }
 
     #[test]
-    fn a_sheet_without_starter_prayers_has_no_fard_prayers() {
-        assert!(fard_prayer_ids(&OwnerData::default()).is_empty());
+    fn a_level_owner_gets_all_five_prayers_from_congregation_deeds() {
+        let found = sources_of(&[
+            (1, "lv_fajr_congregation"),
+            (2, "lv_dhuhr_congregation"),
+            (3, "lv_asr_congregation"),
+            (4, "lv_maghrib_congregation"),
+            (5, "lv_isha_congregation"),
+            (6, "asr_on_time"),
+            (7, "asr_congregation"),
+        ]);
+        let slots: Vec<_> = found.iter().map(|(slot, _, _)| slot.as_str()).collect();
+        assert_eq!(slots, ["fajr", "dhuhr", "asr", "maghrib", "isha"]);
+        assert_eq!(found[0], ("fajr".into(), None, vec![1]));
+        assert_eq!(found[2], ("asr".into(), Some(6), vec![3, 7]));
+    }
+
+    #[test]
+    fn a_sheet_without_prayer_deeds_has_no_fard_prayers() {
+        assert!(sources_of(&[(3, "sunnah_before_fajr")]).is_empty());
     }
 
     #[test]
