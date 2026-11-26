@@ -107,6 +107,8 @@ pub struct DeedDay {
     pub day: WerdyDay,
     /// Value after any day credit.
     pub value: Fraction,
+    /// A mark was recorded for this deed and day.
+    pub marked: bool,
     /// A mark or day note added more than two days after this day.
     pub added_later: bool,
 }
@@ -256,19 +258,19 @@ fn deed_day_history(
         let due_days: Vec<_> = days
             .iter()
             .filter_map(|day| {
-                deed.due_rule_on(*day, &records.calendar)
-                    .map(|rule| DeedDay {
+                deed.due_rule_on(*day, &records.calendar).map(|rule| {
+                    let mark = records.marks.get(&(deed.id, *day));
+                    DeedDay {
                         day: *day,
                         value: crate::score::due_value(records, deed, *day, rule),
-                        added_later: records
-                            .marks
-                            .get(&(deed.id, *day))
-                            .is_some_and(|entry| entry.is_late_for(*day))
+                        marked: mark.is_some(),
+                        added_later: mark.is_some_and(|entry| entry.is_late_for(*day))
                             || records
                                 .day_notes
                                 .get(day)
                                 .is_some_and(|note| note.is_late_for(*day)),
-                    })
+                    }
+                })
             })
             .collect();
         if due_days.is_empty() {
@@ -510,6 +512,10 @@ pub struct PrayerDay {
     pub deed_id: Option<DeedId>,
     /// How the prayer went that day.
     pub dot: DayDot,
+    /// The prayer was due and had neither a mark nor credit.
+    pub unmarked: bool,
+    /// The day uses a congregation deed.
+    pub congregation: bool,
     /// A mark or day note for this day was added more than two days late.
     pub added_later: bool,
     /// The day has a day note, so a credit is never hidden.
@@ -525,6 +531,53 @@ pub struct PrayerRow {
     pub days: Vec<PrayerDay>,
     /// Score over the shown days only.
     pub score: Score,
+}
+
+/// Counts of the shown prayer days.
+///
+/// A row's tally satisfies `done + partial + alone + missed == due`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PrayerTally {
+    /// Days with a Done dot.
+    pub done: usize,
+    /// Days with a Partial dot.
+    pub partial: usize,
+    /// Days marked as prayed alone on a congregation deed.
+    pub alone: usize,
+    /// Unmarked misses and marked misses on the on time deed.
+    pub missed: usize,
+    /// The subset of missed days without a mark.
+    pub unmarked: usize,
+    /// Days when a prayer deed was due.
+    pub due: usize,
+}
+
+impl PrayerRow {
+    /// Counts only days when the prayer was due.
+    pub fn tally(&self) -> PrayerTally {
+        let mut tally = PrayerTally::default();
+        for cell in &self.days {
+            match cell.dot {
+                DayDot::NotDue => continue,
+                DayDot::Done => tally.done += 1,
+                DayDot::Partial => tally.partial += 1,
+                DayDot::Missed if cell.congregation && !cell.unmarked => tally.alone += 1,
+                DayDot::Missed => {
+                    tally.missed += 1;
+                    tally.unmarked += usize::from(cell.unmarked);
+                }
+            }
+            tally.due += 1;
+        }
+        tally
+    }
+}
+
+/// Counts unmarked misses and marked misses on the on time deed across rows.
+pub fn missed_prayers(rows: &[PrayerRow]) -> usize {
+    rows.iter()
+        .map(|row| row.tally().missed)
+        .fold(0, usize::saturating_add)
 }
 
 /// Builds a row of dots for each prayer over the given days.
@@ -562,10 +615,14 @@ pub fn prayer_grid(
                 earned.add_fraction(entry.value)?;
                 due = due.checked_add(1).ok_or(Error::ScoreOverflow)?;
             }
+            let dot = found.map_or(DayDot::NotDue, |(_, entry)| DayDot::from_value(entry.value));
             cells.push(PrayerDay {
                 day: *day,
                 deed_id: found.map(|(deed_id, _)| deed_id),
-                dot: found.map_or(DayDot::NotDue, |(_, entry)| DayDot::from_value(entry.value)),
+                dot,
+                unmarked: dot == DayDot::Missed && found.is_some_and(|(_, entry)| !entry.marked),
+                congregation: found
+                    .is_some_and(|(deed_id, _)| source.congregation.contains(&deed_id)),
                 added_later: found.is_some_and(|(_, entry)| entry.added_later),
                 noted: report.noted_days.contains(day),
             });
