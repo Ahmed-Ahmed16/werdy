@@ -507,6 +507,41 @@ fn advanced_weekly_box_is_due_once_a_week() {
 }
 
 #[test]
+fn deeds_for_a_need_are_due_when_they_come_up() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let mut comes_up = catalog
+        .deeds
+        .iter()
+        .filter(|deed| deed.schedule == Schedule::WhenItComesUp)
+        .map(|deed| deed.key.as_str())
+        .collect::<Vec<_>>();
+    comes_up.sort_unstable();
+    assert_eq!(
+        comes_up,
+        [
+            "lv_asr_makeup",
+            "lv_dhuhr_makeup",
+            "lv_fajr_makeup",
+            "lv_fasting",
+            "lv_hajah",
+            "lv_isha_makeup",
+            "lv_istikhara",
+            "lv_maghrib_makeup",
+        ]
+    );
+
+    // Situational adhkar happen almost every day, so they stay daily.
+    for key in [
+        "lv_riding_adhkar",
+        "lv_mosque_enter_leave_adhkar",
+        "lv_food_adhkar",
+    ] {
+        let deed = catalog.deed(key).expect("deed exists");
+        assert_eq!(deed.schedule, Schedule::EveryDay, "{key}");
+    }
+}
+
+#[test]
 fn once_a_week_is_read_from_the_file() {
     let weekly = SMALL.replace(
         "schedule = { hijri = \"ramadan\" }",
@@ -516,6 +551,19 @@ fn once_a_week_is_read_from_the_file() {
     assert_eq!(
         catalog.deed("qiyam").map(|deed| &deed.schedule),
         Some(&Schedule::OnceAWeek)
+    );
+}
+
+#[test]
+fn when_it_comes_up_is_read_from_the_file() {
+    let comes_up = SMALL.replace(
+        "schedule = { hijri = \"ramadan\" }",
+        "schedule = \"when_it_comes_up\"",
+    );
+    let catalog = parse(&comes_up).expect("when it comes up parses");
+    assert_eq!(
+        catalog.deed("qiyam").map(|deed| &deed.schedule),
+        Some(&Schedule::WhenItComesUp)
     );
 }
 

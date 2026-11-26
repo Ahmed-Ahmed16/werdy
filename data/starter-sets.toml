@@ -677,7 +677,9 @@ schedule = { hijri = "last_ten_nights" }
 # not say what it is. Groups wait on #107, so group rows use any_time.
 # The advanced sheet's weekly box (visiting graves and sunan al fitra) is
 # due once a week on any day (0047). Levels 1 to 3 keep sunan al fitra in
-# the Friday box.
+# the Friday box. Deeds that apply only when a need comes up (istikhara,
+# hajah, the five makeups and the advanced level's fasting) are due only on
+# a day they are marked (0047). Situational adhkar stay daily.
 # Added by the owner, not on the sheets: istikhara and salat al hajah in
 # levels 2 and 3, placed after dawah.
 
@@ -751,7 +753,7 @@ key = "lv_fajr_makeup"
 name = "deed-lv-fajr-makeup"
 slot = "fajr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds in the morning.
 
@@ -875,7 +877,7 @@ key = "lv_dhuhr_makeup"
 name = "deed-lv-dhuhr-makeup"
 slot = "dhuhr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at Asr, and the evening adhkar (Asr slot, like set 5).
 
@@ -947,7 +949,7 @@ key = "lv_asr_makeup"
 name = "deed-lv-asr-makeup"
 slot = "asr"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_evening_adhkar"
@@ -1047,7 +1049,7 @@ key = "lv_maghrib_makeup"
 name = "deed-lv-maghrib-makeup"
 slot = "maghrib"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at Isha.
 
@@ -1126,7 +1128,7 @@ key = "lv_isha_makeup"
 name = "deed-lv-isha-makeup"
 slot = "isha"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds at night.
 
@@ -1268,7 +1270,7 @@ key = "lv_fasting"
 name = "deed-lv-fasting"
 slot = "any_time"
 category = "fasting"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 # Level deeds: situational adhkar (الأذكار المقيدة).
 
@@ -1469,14 +1471,14 @@ key = "lv_istikhara"
 name = "deed-lv-istikhara"
 slot = "any_time"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_hajah"
 name = "deed-lv-hajah"
 slot = "any_time"
 category = "prayer"
-schedule = "every_day"
+schedule = "when_it_comes_up"
 
 [[deeds]]
 key = "lv_keep_wudu"
