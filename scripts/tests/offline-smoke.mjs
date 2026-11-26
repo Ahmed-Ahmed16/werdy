@@ -12,6 +12,9 @@
 // CHROME=<path> picks the browser; otherwise common install paths are tried.
 // Chrome only: WebKit is not installed here or in CI, so iOS still needs a
 // check on a real iPhone.
+//
+// The run can never hang: Chrome and the server are stopped on every path,
+// and a watchdog ends the process after RUN_LIMIT_MS whatever is still open.
 
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -28,11 +31,44 @@ const TYPES = {
   ".png": "image/png", ".svg": "image/svg+xml",
 };
 
+// A full run takes well under a minute; anything near these limits is a hang.
+const RUN_LIMIT_MS = 5 * 60 * 1000;
+const CHROME_START_MS = 60 * 1000;
+const CONNECT_MS = 10 * 1000;
+
 function fail(message) {
   console.error(`offline smoke test failed: ${message}`);
   process.exitCode = 1;
   throw new Error(message);
 }
+
+// Everything that could keep node alive, so every exit path can stop it.
+const running = { chrome: undefined, server: undefined, socket: undefined };
+
+function stopEverything() {
+  running.socket?.close();
+  const chrome = running.chrome;
+  if (chrome && chrome.exitCode === null && chrome.signalCode === null) {
+    try {
+      // On Linux the Chrome wrapper script and its helpers share a process
+      // group; killing the group stops them all, not just the wrapper.
+      if (process.platform === "win32") chrome.kill();
+      else process.kill(-chrome.pid, "SIGKILL");
+    } catch {
+      chrome.kill("SIGKILL");
+    }
+  }
+  chrome?.stderr?.destroy();
+  running.server?.closeAllConnections();
+  running.server?.close();
+}
+
+const watchdog = setTimeout(() => {
+  console.error(`offline smoke test failed: still running after ${RUN_LIMIT_MS / 1000} s`);
+  stopEverything();
+  process.exit(1);
+}, RUN_LIMIT_MS);
+watchdog.unref();
 
 const network = { hanging: false };
 
@@ -77,20 +113,32 @@ async function launch() {
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
     "--no-first-run", "--no-default-browser-check", "--disable-gpu",
     "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
-  ], { stdio: "ignore" });
+  ], { stdio: ["ignore", "ignore", "pipe"], detached: process.platform !== "win32" });
+  running.chrome = chrome;
+  // Keep the end of Chrome's log to explain a failed start.
+  let log = "";
+  chrome.stderr.on("data", (chunk) => {
+    log = (log + chunk).slice(-4000);
+  });
+  chrome.on("error", () => {});
+  const startFailed = (why) => fail(`Chrome ${why}. Its last output:\n${log || "(none)"}`);
   const portFile = join(profile, "DevToolsActivePort");
-  for (let tries = 0; !existsSync(portFile) || !readFileSync(portFile, "utf8").includes("\n"); tries++) {
-    if (tries > 100) fail("Chrome did not start");
+  const deadline = Date.now() + CHROME_START_MS;
+  while (!existsSync(portFile) || !readFileSync(portFile, "utf8").includes("\n")) {
+    if (chrome.exitCode !== null || chrome.signalCode !== null) startFailed(`exited (${chrome.exitCode ?? chrome.signalCode}) before opening DevTools`);
+    if (Date.now() > deadline) startFailed(`did not open DevTools within ${CHROME_START_MS / 1000} s`);
     await wait(100);
   }
   const port = readFileSync(portFile, "utf8").split("\n")[0];
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+  const list = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(CONNECT_MS) });
+  const targets = await list.json();
   const page = targets.find((target) => target.type === "page") ?? fail("no page target");
-  return { chrome, socket: await connect(page.webSocketDebuggerUrl) };
+  return connect(page.webSocketDebuggerUrl);
 }
 
 function connect(url) {
   const socket = new WebSocket(url);
+  running.socket = socket;
   const pending = new Map();
   let next = 0;
   socket.addEventListener("message", (event) => {
@@ -111,7 +159,17 @@ function connect(url) {
     });
     socket.send(JSON.stringify({ id, method, params }));
   });
-  return new Promise((done) => socket.addEventListener("open", () => done({ socket, send })));
+  return new Promise((done, failed) => {
+    const timer = setTimeout(() => failed(new Error("DevTools socket did not open")), CONNECT_MS);
+    socket.addEventListener("open", () => {
+      clearTimeout(timer);
+      done({ socket, send });
+    });
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      failed(new Error("DevTools socket failed to open"));
+    });
+  });
 }
 
 const wait = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
@@ -163,10 +221,11 @@ async function main() {
   if (!existsSync(join(publicDir, "service-worker.js"))) {
     fail(`${publicDir} has no service-worker.js; run scripts/prepare-pages.ps1 first`);
   }
-  const server = await serve();
-  const address = `http://localhost:${server.address().port}${BASE}?demo`;
-  const { chrome, socket: cdp } = await launch();
   try {
+    const server = await serve();
+    running.server = server;
+    const address = `http://localhost:${server.address().port}${BASE}?demo`;
+    const cdp = await launch();
     await cdp.send("Page.enable");
     await cdp.send("Page.navigate", { url: address });
     await until(cdp, RENDERED, "the first online render");
@@ -191,10 +250,7 @@ async function main() {
     if ((await evaluate(cdp, RECORDS)) !== saved) fail("the mark tapped offline was lost on reload");
     console.log("ok: the app opens on a hanging network and offline, and a mark tapped offline is kept");
   } finally {
-    cdp.socket.close();
-    chrome.kill();
-    server.closeAllConnections();
-    server.close();
+    stopEverything();
   }
 }
 

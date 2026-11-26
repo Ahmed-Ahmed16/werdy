@@ -89,6 +89,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-latest
+    # A cached run takes about two minutes; a cold one builds dioxus-cli first.
+    timeout-minutes: 45
     permissions:
       contents: read
       pages: write
@@ -114,6 +116,8 @@ jobs:
         run: ./scripts/prepare-pages.ps1 -PublicDir target/dx/werdy-app/release/web/public
       # Never deploy a build that cannot open, or save a mark, offline (#180).
       - name: Offline smoke test in Chrome
+        # The script stops itself after five minutes; this is the backstop.
+        timeout-minutes: 8
         env:
           CHROME: /usr/bin/google-chrome
         run: node scripts/tests/offline-smoke.mjs target/dx/werdy-app/release/web/public
