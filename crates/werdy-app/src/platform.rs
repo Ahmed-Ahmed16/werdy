@@ -509,7 +509,7 @@ pub fn demo_generation() -> String {
 }
 
 /// Local hour and minute for the temporary time slot boundaries.
-pub fn local_time() -> (u8, u8) {
+fn local_time() -> (u8, u8) {
     #[cfg(target_arch = "wasm32")]
     {
         let now = js_sys::Date::new_0();
@@ -523,6 +523,12 @@ pub fn local_time() -> (u8, u8) {
     {
         (0, 0)
     }
+}
+
+/// The current time slot, using the app's temporary clock boundaries.
+pub fn local_slot() -> &'static str {
+    let (hour, minute) = local_time();
+    crate::state::current_slot(hour, minute)
 }
 
 /// Scrolls a visible time slot into view in the browser.
@@ -541,6 +547,26 @@ pub fn scroll_slot(slot: &str) {
     }
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _ = slot;
+}
+
+/// Brings the current chip into view without moving the page down to the strip.
+pub fn reveal_current_chip() {
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+    let _ = dioxus::document::eval(
+        r#"
+        const strip = document.querySelector(".slot-strip");
+        const chip = strip?.querySelector('[data-current="true"]');
+        if (chip) {
+            const viewport = strip.getBoundingClientRect();
+            const bounds = chip.getBoundingClientRect();
+            if (bounds.left < viewport.left) {
+                strip.scrollBy(bounds.left - viewport.left, 0);
+            } else if (bounds.right > viewport.right) {
+                strip.scrollBy(bounds.right - viewport.right, 0);
+            }
+        }
+        "#,
+    );
 }
 
 /// Restores the top after a new screen has rendered its content.

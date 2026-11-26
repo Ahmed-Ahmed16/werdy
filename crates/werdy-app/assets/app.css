@@ -475,7 +475,7 @@ textarea:focus-visible {
 .today-card {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-s);
+  gap: var(--gap-xs);
   padding: var(--gap-s) var(--gap-m);
   border: var(--stroke-thin) solid var(--border);
   border-radius: var(--radius-control);
