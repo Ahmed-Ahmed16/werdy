@@ -38,15 +38,7 @@ pub async fn execute(
     request: &Request,
     generation: u64,
 ) -> Result<Reply, SyncError> {
-    let mut session = store
-        .account
-        .borrow()
-        .session
-        .clone()
-        .ok_or(SyncError::Http(401))?;
-    store
-        .write_session(&session)
-        .map_err(|_| SyncError::Backend("account storage failed".into()))?;
+    let mut session = store.current_session(generation)?;
     let auth = SupabaseAuth::new(config::SUPABASE_URL, config::SUPABASE_KEY)?;
     if session.needs_refresh(crate::platform::change_time() / 1000, false) {
         session = auth

@@ -55,11 +55,11 @@ pub fn use_background(mut state: Signal<AppState>) {
                         && account.schedule.start(elapsed_ms())
                 };
                 let flight = if ready { claim(&store) } else { None };
-                if let Some((session, checkpoint, generation)) = flight {
+                if let Some((_, checkpoint, generation)) = flight {
                     let store = store.clone();
                     let active = store.clone();
                     let task = spawn(async move {
-                        let outcome = attempt(&store, session, checkpoint, generation).await;
+                        let outcome = attempt(&store, checkpoint, generation).await;
                         if store.account.borrow().generation != generation {
                             store.release_flight();
                             return;
@@ -166,18 +166,11 @@ pub(super) fn finish_attempt(
 
 async fn attempt(
     store: &AccountStore,
-    mut session: Session,
     mut checkpoint: Checkpoint,
     generation: u64,
 ) -> Result<Attempt, SyncError> {
-    if store.account.borrow().generation != generation {
-        return Err(SyncError::Invalid("account changed".into()));
-    }
+    let mut session = store.current_session(generation)?;
     let auth = SupabaseAuth::new(config::SUPABASE_URL, config::SUPABASE_KEY)?;
-    // Retry saving a rotated token if the previous attempt hit a storage error.
-    store
-        .write_session(&session)
-        .map_err(|_| SyncError::Backend("account storage failed".into()))?;
     if session.needs_refresh(crate::platform::change_time() / 1000, false) {
         session = auth
             .refresh(&session, crate::platform::change_time() / 1000)
@@ -239,9 +232,7 @@ pub(crate) fn save_refresh(
     account.session = Some(session.clone());
     account.session_write_pending = true;
     drop(account);
-    store
-        .write_session(session)
-        .map_err(|_| SyncError::Backend("account storage failed".into()))
+    store.current_session(generation).map(|_| ())
 }
 
 pub fn error_key(error: &SyncError) -> &'static str {

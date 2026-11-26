@@ -785,6 +785,90 @@ fn sync_tab(tab: &AccountStore, backend: &mut FakeBackend, now: u64) -> OwnerDat
 }
 
 #[test]
+fn sharing_uses_the_session_another_tab_refreshed_without_overwriting_it() {
+    let (first, second) = two_tabs();
+    let (mut rotated, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+    runtime::save_refresh(&first, &rotated, generation).unwrap();
+
+    let used = second.current_session(0).unwrap();
+    let stored = restore(first.vault.as_ref()).unwrap().0.unwrap();
+    assert_eq!(stored.refresh_token, rotated.refresh_token);
+    assert_eq!(used.refresh_token, rotated.refresh_token);
+}
+
+#[test]
+fn a_tab_open_before_sign_in_saves_edits_to_the_checkpoint() {
+    for load_before_save in [true, false] {
+        let first = store();
+        let second = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+        assert!(!runtime::view(&second).signed_in);
+        first.sign_in(session(), &records()).unwrap();
+
+        let mut edited = if load_before_save {
+            second.load().unwrap().unwrap()
+        } else {
+            records()
+        };
+        let key = (DeedId(1), day());
+        edited.set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 1);
+        second.save(&edited).unwrap();
+
+        let checkpoint = restore(first.vault.as_ref()).unwrap().1.unwrap();
+        assert_eq!(from_json(&checkpoint.records).unwrap().marks, edited.marks);
+        let reopened = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+        assert_eq!(reopened.load().unwrap().unwrap().marks, edited.marks);
+        assert!(runtime::view(&second).signed_in);
+    }
+}
+
+#[test]
+fn stale_screen_keeps_a_server_clear_with_an_older_revision() {
+    let (first, second) = two_tabs();
+    let key = (DeedId(1), day());
+    let mut marked = first.load().unwrap().unwrap();
+    marked.set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 5000);
+    first.save(&marked).unwrap();
+    let mut stale = AppState::start(&second, day(), vec![]);
+    assert_eq!(stale.data.mark_revisions[&key], 5000);
+
+    let mut backend = FakeBackend::new(1000);
+    let mut cleared = sync_tab(&first, &mut backend, 1000);
+    cleared.set_mark(key.0, key.1, None, 6000);
+    first.save(&cleared).unwrap();
+    backend.set_time(2000);
+    let accepted = sync_tab(&first, &mut backend, 2000);
+    assert_eq!(accepted.cleared_marks[&key], 2000);
+    let stored = first.vault.read(File::Sync).unwrap();
+
+    stale.reload_from(&second);
+
+    assert_eq!(stale.data.marks.get(&key), None);
+    assert_eq!(stale.data.cleared_marks[&key], 2000);
+    assert_eq!(first.vault.read(File::Sync).unwrap(), stored);
+}
+
+#[test]
+fn an_unsaved_mark_wins_over_an_older_stored_clear() {
+    let (first, second) = two_tabs();
+    let key = (DeedId(1), day());
+    let mut screen = AppState::start(&second, day(), vec![]);
+    screen
+        .data
+        .set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 5000);
+    let mut cleared = first.load().unwrap().unwrap();
+    cleared.set_mark(key.0, key.1, None, 2000);
+    first.save(&cleared).unwrap();
+
+    screen.reload_from(&second);
+
+    let saved = first.load().unwrap().unwrap();
+    assert_eq!(screen.data.marks[&key].mark, Mark::Done);
+    assert_eq!(saved.marks[&key].mark, Mark::Done);
+    assert_eq!(saved.mark_revisions[&key], 5000);
+}
+
+#[test]
 fn two_tabs_sharing_storage_never_reuse_an_operation_id() {
     let (first, second) = two_tabs();
     let mut edited = first.load().unwrap().unwrap();
@@ -839,7 +923,7 @@ fn a_flight_uses_the_session_another_tab_refreshed() {
     let (first, second) = two_tabs();
     let mut rotated = session();
     rotated.refresh_token = "rotated".into();
-    first.write_session(&rotated).unwrap();
+    runtime::save_refresh(&first, &rotated, 1).unwrap();
     let (session, _, _) = second.claim_flight(1_000).unwrap().unwrap();
     assert_eq!(session.refresh_token, "rotated");
 }
@@ -886,9 +970,9 @@ fn next_flight_retries_saving_a_rotated_refresh_token() {
         session().refresh_token
     );
 
-    let (retry, _, _) = store.claim_flight(2_000).unwrap().unwrap();
+    let (retry, _, generation) = store.claim_flight(2_000).unwrap().unwrap();
     assert_eq!(retry.refresh_token, rotated.refresh_token);
-    store.write_session(&retry).unwrap();
+    store.current_session(generation).unwrap();
     assert_eq!(
         restore(vault.as_ref()).unwrap().0.unwrap().refresh_token,
         rotated.refresh_token
@@ -897,7 +981,7 @@ fn next_flight_retries_saving_a_rotated_refresh_token() {
 
     let other = AccountStore::open(store.inner.clone(), vault.clone(), true);
     rotated.refresh_token = "rotated again".into();
-    other.write_session(&rotated).unwrap();
+    runtime::save_refresh(&other, &rotated, 0).unwrap();
     let (latest, _, _) = store.claim_flight(3_000).unwrap().unwrap();
     assert_eq!(latest.refresh_token, rotated.refresh_token);
 }

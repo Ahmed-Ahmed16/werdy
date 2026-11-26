@@ -1931,6 +1931,28 @@ impl AppState {
             || !self.deed_changes.is_empty()
     }
 
+    fn local_records_for_merge(&self) -> OwnerData {
+        let mut local = self.data.clone();
+        let saved = &self.last_saved_data;
+        let mark_changed = |key: &(DeedId, WerdyDay)| {
+            self.data.marks.get(key) != saved.marks.get(key)
+                || self.data.mark_revisions.get(key) != saved.mark_revisions.get(key)
+                || self.data.cleared_marks.get(key) != saved.cleared_marks.get(key)
+        };
+        local.marks.retain(|key, _| mark_changed(key));
+        local.mark_revisions.retain(|key, _| mark_changed(key));
+        local.cleared_marks.retain(|key, _| mark_changed(key));
+        let note_changed = |day: &WerdyDay| {
+            self.data.day_notes.get(day) != saved.day_notes.get(day)
+                || self.data.note_revisions.get(day) != saved.note_revisions.get(day)
+                || self.data.cleared_notes.get(day) != saved.cleared_notes.get(day)
+        };
+        local.day_notes.retain(|day, _| note_changed(day));
+        local.note_revisions.retain(|day, _| note_changed(day));
+        local.cleared_notes.retain(|day, _| note_changed(day));
+        local
+    }
+
     /// Saves the data, unless saved data could not be read at start.
     pub fn save_to(&mut self, store: &dyn Store) {
         if self.save_status == SaveStatus::LoadFailed {
@@ -1952,7 +1974,7 @@ impl AppState {
                 }
                 let merged = stored.map_or_else(
                     || Ok(self.data.clone()),
-                    |data| merge_records(&data, &self.data),
+                    |data| merge_records(&data, &self.local_records_for_merge()),
                 );
                 let Ok(mut merged) = merged else {
                     self.save_status = SaveStatus::SaveFailed;
@@ -2029,7 +2051,7 @@ impl AppState {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
                 }
-                let Ok(mut merged) = merge_records(&stored, &self.data) else {
+                let Ok(mut merged) = merge_records(&stored, &self.local_records_for_merge()) else {
                     self.save_status = SaveStatus::SaveFailed;
                     return;
                 };
@@ -2057,6 +2079,7 @@ impl AppState {
                     self.adopt_first_run_view();
                 } else {
                     self.data = merged;
+                    self.last_saved_data = stored;
                     self.invalidate_kept_days();
                     self.save_to(store);
                 }

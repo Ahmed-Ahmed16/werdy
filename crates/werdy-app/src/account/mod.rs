@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, rc::Rc};
 use storage::{File, Vault};
 use werdy_store::{OwnerData, Store, StoreError, from_json, to_json};
-use werdy_sync::{Session, Sync};
+use werdy_sync::{Session, Sync, SyncError};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
@@ -218,23 +218,34 @@ impl AccountStore {
         Ok(())
     }
 
-    /// A missing or replaced session ends this copy's account without touching
-    /// records or files owned by the other copy.
+    /// Follow sign in and sign out in another copy.
     fn reread_session(&self, account: &mut Account) -> Result<(), StoreError> {
-        let Some(current) = account.session.as_ref() else {
+        if !self.enabled {
             return Ok(());
-        };
+        }
         let Some(json) = self.vault.read(File::Session)? else {
-            account.reset();
+            if account.session.is_some() {
+                account.reset();
+            }
             return Ok(());
         };
         if let Ok(saved) = serde_json::from_str::<Session>(&json)
             && saved.validate().is_ok()
         {
-            if saved.user_id != current.user_id {
-                account.reset();
-            } else if !account.session_write_pending {
+            if let Some(current) = account.session.as_ref() {
+                if saved.user_id != current.user_id {
+                    account.reset();
+                } else if !account.session_write_pending {
+                    account.session = Some(saved);
+                }
+            } else if let Some((checkpoint, json)) = read_checkpoint(self.vault.as_ref(), &saved)? {
+                account.generation = account.generation.wrapping_add(1);
                 account.session = Some(saved);
+                account.session_write_pending = false;
+                account.checkpoint = Some(checkpoint);
+                account.error = None;
+                account.schedule.immediate();
+                *self.seen.borrow_mut() = json;
             }
         }
         Ok(())
@@ -307,21 +318,20 @@ impl AccountStore {
         self.sign_out(records).map_err(|_| "account-storage-error")
     }
 
-    pub fn write_session(&self, session: &Session) -> Result<(), StoreError> {
+    fn current_session(&self, generation: u64) -> Result<Session, SyncError> {
         let mut account = self.account.borrow_mut();
-        self.reread_session(&mut account)?;
-        if !account
-            .session
-            .as_ref()
-            .is_some_and(|current| current.user_id == session.user_id)
-        {
-            return Err(StoreError::Backend("account changed".into()));
+        self.reread_session(&mut account)
+            .map_err(|_| SyncError::Backend("account storage failed".into()))?;
+        if account.generation != generation {
+            return Err(SyncError::Invalid("account changed".into()));
         }
-        self.persist_session(session)?;
-        if account.session.as_ref() == Some(session) {
+        let session = account.session.clone().ok_or(SyncError::Http(401))?;
+        if account.session_write_pending {
+            self.persist_session(&session)
+                .map_err(|_| SyncError::Backend("account storage failed".into()))?;
             account.session_write_pending = false;
         }
-        Ok(())
+        Ok(session)
     }
 
     fn persist_session(&self, session: &Session) -> Result<(), StoreError> {
@@ -421,8 +431,9 @@ impl Store for AccountStore {
         let mut records = records.clone();
         let mut account = self.account.borrow_mut();
         let generation = account.generation;
+        let was_signed_in = account.session.is_some();
         self.reread_checkpoint(&mut account)?;
-        if account.generation != generation {
+        if was_signed_in && account.generation != generation {
             return Err(StoreError::Backend("account changed".into()));
         }
         if let Some(mut checkpoint) = account.checkpoint.clone() {
@@ -446,13 +457,23 @@ fn restore(vault: &dyn Vault) -> Result<(Option<Session>, Option<Checkpoint>), S
     };
     let session: Session = serde_json::from_str(&json).map_err(|_| storage_error())?;
     session.validate().map_err(|_| storage_error())?;
-    let json = vault.read(File::Sync)?.ok_or_else(storage_error)?;
+    let (checkpoint, _) = read_checkpoint(vault, &session)?.ok_or_else(storage_error)?;
+    Ok((Some(session), Some(checkpoint)))
+}
+
+fn read_checkpoint(
+    vault: &dyn Vault,
+    session: &Session,
+) -> Result<Option<(Checkpoint, String)>, StoreError> {
+    let Some(json) = vault.read(File::Sync)? else {
+        return Ok(None);
+    };
     let checkpoint: Checkpoint = serde_json::from_str(&json).map_err(|_| storage_error())?;
     if checkpoint.owner_id != session.user_id {
-        return Err(storage_error());
+        return Ok(None);
     }
     from_json(&checkpoint.records)?;
-    Ok((Some(session), Some(checkpoint)))
+    Ok(Some((checkpoint, json)))
 }
 
 #[cfg(test)]
