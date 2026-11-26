@@ -369,6 +369,26 @@ fn watch_applies_readable_rows_around_an_unreadable_row() {
 }
 
 #[test]
+fn readable_rule_before_creation_is_rejected_even_when_the_creation_rule_is_held() {
+    let mut rows = wire_history();
+    let mut early = wire_rule(&rows);
+    for row in &mut rows {
+        if let Some(rule) = row["pending"]["change"].get_mut("Rule") {
+            rule["rule"]["schedule"] = "some_future_kind".into();
+        }
+    }
+    early["from_day"] = serde_json::to_value(day().previous().unwrap()).unwrap();
+    let cursor = rows.len() as u64 + 1;
+    rows.push(wire_row(cursor, serde_json::json!({"Rule": early})));
+    let mut view = werdy_sync::WatchView::new().unwrap();
+    assert!(
+        view.apply(serde_json::from_value(wire_page(cursor, rows)).unwrap())
+            .is_err()
+    );
+    assert_eq!(view.cursor(), 0);
+}
+
+#[test]
 fn unreadable_change_does_not_bypass_envelope_or_stream_validation() {
     let row = wire_row(1, serde_json::json!({"FutureKind": {}}));
     let mut extra = wire_page(1, vec![row.clone()]);

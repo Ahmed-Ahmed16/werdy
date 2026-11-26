@@ -427,7 +427,8 @@ fn rules_deferred(
             _ => None,
         })
         .min();
-    first.is_none() || (first != Some(created_on) && held_rules.contains(&(id.clone(), created_on)))
+    // A readable rule before creation is invalid, so it is never deferred.
+    first.is_none() || (first > Some(created_on) && held_rules.contains(&(id.clone(), created_on)))
 }
 
 fn replace_deed(records: &mut OwnerData, local: DeedId, replacement: Option<(Deed, &DeedRow)>) {
