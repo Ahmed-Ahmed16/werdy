@@ -533,12 +533,49 @@ fn checkpoint_recovers_edits_when_owner_file_write_failed() {
     let vault = Rc::new(storage::MemoryVault::default());
     let store = AccountStore::open(Rc::new(BrokenMirror), vault.clone(), true);
     let mut records = records();
+    assert!(store.save(&records).is_err());
     store.sign_in(session(), &records).unwrap();
     records = store.load().unwrap().unwrap();
     records.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
-    assert!(store.save(&records).is_err());
+    store.save(&records).unwrap();
     let reopened = AccountStore::open(Rc::new(BrokenMirror), vault, true);
     assert_eq!(reopened.load().unwrap().unwrap(), records);
+}
+
+#[test]
+fn saving_again_after_a_mirror_failure_keeps_one_new_deed() {
+    use crate::state::{EditorDraft, SaveStatus};
+    use werdy_store::DeedName;
+
+    let store = AccountStore::open(
+        Rc::new(BrokenMirror),
+        Rc::new(storage::MemoryVault::default()),
+        true,
+    );
+    store.sign_in(session(), &records()).unwrap();
+    let mut screen = AppState::start(&store, day(), vec![]);
+    let draft = EditorDraft {
+        name: "Reading".into(),
+        ..EditorDraft::default()
+    };
+    screen.save_deed(None, &draft).unwrap();
+    screen.save_to(&store);
+    let first_save_status = screen.save_status;
+    screen.save_to(&store);
+
+    let checkpoint = restore(store.vault.as_ref()).unwrap().1.unwrap();
+    let stored = from_json(&checkpoint.records).unwrap();
+    let name = DeedName::Text(draft.name);
+    assert_eq!(
+        stored
+            .names
+            .values()
+            .filter(|stored| **stored == name)
+            .count(),
+        1
+    );
+    assert_eq!(first_save_status, SaveStatus::Saved);
+    assert_eq!(screen.save_status, SaveStatus::Saved);
 }
 
 #[test]

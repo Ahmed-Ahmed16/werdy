@@ -446,6 +446,12 @@ impl Store for AccountStore {
             self.write_checkpoint(&checkpoint)?;
             account.checkpoint = Some(checkpoint);
             account.schedule.saved(runtime::elapsed_ms());
+            if self.inner.save(&records).is_err() {
+                dioxus::prelude::warn!(
+                    "Records mirror save failed; sync checkpoint keeps the records"
+                );
+            }
+            return Ok(());
         }
         self.inner.save(&records)
     }
