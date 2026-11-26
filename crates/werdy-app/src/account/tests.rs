@@ -749,3 +749,44 @@ fn sync_completion_saves_an_unsaved_screen_edit_made_during_the_request() {
     assert_eq!(merged.marks[&(DeedId(1), day())].mark, Mark::Done);
     assert_eq!(store.load().unwrap().unwrap().marks, merged.marks);
 }
+
+#[test]
+fn a_mark_cleared_during_a_sync_stays_cleared_when_a_stale_tab_reloads() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let mut marked = first.load().unwrap().unwrap();
+    marked.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    first.save(&marked).unwrap();
+    sync_tab(&first, &mut backend, 1_000);
+    let mut stale = crate::state::AppState::start(&second, day(), vec![]);
+    assert_eq!(stale.data.marks[&(DeedId(1), day())].mark, Mark::Done);
+
+    backend.set_time(2000);
+    let (_, _, generation) = first.claim_flight(2_000).unwrap().unwrap();
+    let completed = flight(&first, &mut backend);
+    let mut cleared = first.load().unwrap().unwrap();
+    cleared.set_mark(DeedId(1), day(), None, 3000);
+    first.save(&cleared).unwrap();
+    first
+        .complete(&completed, generation, 2_000)
+        .unwrap()
+        .unwrap();
+    first.release_flight();
+
+    stale.reload_from(&second);
+    assert!(!stale.data.marks.contains_key(&(DeedId(1), day())));
+    assert!(
+        !second
+            .load()
+            .unwrap()
+            .unwrap()
+            .marks
+            .contains_key(&(DeedId(1), day()))
+    );
+    let account = first.account.borrow();
+    let checkpoint = account.checkpoint.as_ref().unwrap();
+    assert!(!checkpoint.engine.outbox().iter().any(|pending| matches!(
+        pending.change,
+        werdy_sync::Change::Mark { entry: Some(_), .. }
+    )));
+}

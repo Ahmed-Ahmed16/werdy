@@ -459,6 +459,28 @@ fn clears_deletions_and_archive_history_survive_sync_and_stale_phone() {
 }
 
 #[test]
+fn a_mark_cleared_during_sync_keeps_its_local_time() {
+    let mut backend = FakeBackend::new(1_000);
+    let mut engine = Sync::new("first").unwrap();
+    let mut records = history("shared");
+    sync(&mut engine, &mut backend, &mut records);
+
+    let mut background = engine.clone();
+    let mut background_records = records.clone();
+    let clear_time = 3_000;
+    records.set_mark(DeedId(1), day(), None, clear_time);
+    engine.capture(&records).unwrap();
+
+    sync(&mut background, &mut backend, &mut background_records);
+    engine.finish_from(&background, &mut records).unwrap();
+
+    assert_eq!(
+        records.cleared_marks.get(&(DeedId(1), day())),
+        Some(&clear_time)
+    );
+}
+
+#[test]
 fn exhausted_local_ids_return_error_instead_of_aliasing_remote_deed() {
     let mut backend = FakeBackend::new(100);
     let mut seed = history("account");
