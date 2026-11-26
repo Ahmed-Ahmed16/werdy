@@ -338,6 +338,31 @@ fn london_missing_summer_prayer_keeps_clock_reminder() {
 }
 
 #[test]
+fn a_group_clock_reminder_lists_its_due_deeds_at_the_chosen_time() {
+    let mut owner = owner("quran");
+    owner.settings.location = None;
+    clock(&mut owner, "quran", 20, 30);
+    let plan = schedule(&owner, now(8, 0), 1, |_, _| 180).unwrap();
+    assert_eq!(plan.notifications.len(), 1);
+    assert_eq!(plan.notifications[0].minute, 20 * 60 + 30);
+    assert_eq!(plan.notifications[0].deeds, vec![DeedId(1), DeedId(2)]);
+    assert_eq!(
+        plan.notifications[0].target,
+        werdy_reminders::Target::Slot(SlotKey::new("quran"))
+    );
+}
+
+#[test]
+fn a_prayer_slot_still_rejects_a_clock_reminder() {
+    let mut owner = owner("fajr");
+    clock(&mut owner, "fajr", 5, 0);
+    assert!(matches!(
+        schedule(&owner, now(0, 0), 1, |_, _| 180),
+        Err(werdy_reminders::Error::InvalidSlotRule(_))
+    ));
+}
+
+#[test]
 fn weekly_deed_is_reminded_until_marked_that_week() {
     // 28 October 2026 is a Wednesday; its week started on Saturday 24 October.
     let saturday = WerdyDay::new(2026, 10, 24).unwrap();

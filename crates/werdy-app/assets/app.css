@@ -286,6 +286,8 @@ textarea:focus-visible {
 }
 
 .day-dates {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   text-align: center;
 }
 
@@ -475,7 +477,7 @@ textarea:focus-visible {
 .today-card {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-s);
+  gap: var(--gap-xs);
   padding: var(--gap-s) var(--gap-m);
   border: var(--stroke-thin) solid var(--border);
   border-radius: var(--radius-control);
@@ -488,6 +490,7 @@ textarea:focus-visible {
   align-items: baseline;
   column-gap: var(--gap-s);
   row-gap: var(--gap-xs);
+  overflow-wrap: anywhere;
 }
 
 .today-title {
@@ -546,7 +549,6 @@ textarea:focus-visible {
 
 .week-card .report-day-cell {
   min-width: 0;
-  overflow: hidden;
 }
 
 .week-card .report-score-detail,
@@ -578,6 +580,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--gap-s);
+  overflow-wrap: anywhere;
 }
 
 .sheet-notice {
@@ -624,8 +627,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: var(--gap-xs);
-  block-size: var(--strip-block);
   margin-inline: calc(-1 * var(--page-gutter));
+  padding-block: var(--gap-xs);
   padding-inline: var(--page-gutter);
   overflow-x: auto;
   scrollbar-width: none;
@@ -639,13 +642,13 @@ textarea:focus-visible {
   gap: var(--gap-xs);
   min-width: var(--mark-touch);
   min-height: var(--mark-touch);
+  max-inline-size: 100%;
   padding-inline: var(--gap-m);
   border: var(--stroke-thin) solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   font-size: var(--size-caption);
-  white-space: nowrap;
 }
 
 .slot-chip[data-complete="true"] {
@@ -671,6 +674,7 @@ textarea:focus-visible {
 
 .sheet-tools {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--gap-s);
 }
@@ -721,6 +725,7 @@ textarea:focus-visible {
 }
 
 .fold-chevron {
+  flex: none;
   inline-size: var(--mark-icon);
   block-size: var(--mark-icon);
   transition: transform 0.15s;
@@ -735,7 +740,8 @@ textarea:focus-visible {
 }
 
 .slot-name {
-  flex: 1 1 auto;
+  flex: 1 1 var(--name-min);
+  min-inline-size: 0;
 }
 
 .slot-count {
@@ -762,7 +768,7 @@ textarea:focus-visible {
   padding-inline: var(--gap-m) var(--gap-xs);
 }
 
-.deed-row + .deed-row {
+.slot-rows > li + li {
   border-block-start: var(--stroke-thin) solid var(--border);
 }
 
@@ -772,21 +778,19 @@ textarea:focus-visible {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: var(--gap-s);
+  gap: var(--gap-xs) var(--gap-s);
   padding-block: var(--gap-xs);
 }
 
 .deed-name {
   font-size: var(--size-label);
   font-weight: var(--weight-medium);
-  overflow-wrap: anywhere;
 }
 
 .count-tag,
 .schedule-tag {
   font-size: var(--size-caption);
   color: var(--text-muted);
-  white-space: nowrap;
 }
 
 .late-sign {
@@ -795,14 +799,20 @@ textarea:focus-visible {
   border-radius: var(--radius-pill);
   color: var(--text-muted);
   font-size: var(--size-caption);
-  white-space: nowrap;
 }
 
 .deed-controls {
-  flex: none;
+  flex: 0 1 auto;
   display: flex;
   align-items: center;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  /* The row follows the page direction while marks keep their own order. */
   margin-inline-start: auto;
+}
+
+.deed-controls > .mark-button {
+  flex: 0 0 var(--mark-touch);
 }
 
 /* Mark buttons: a small face drawn inside a finger sized tap area. Each mark
@@ -822,7 +832,7 @@ textarea:focus-visible {
 .mark-face {
   display: grid;
   place-items: center;
-  min-inline-size: var(--mark-face);
+  inline-size: min(100%, var(--mark-face));
   block-size: var(--mark-face);
   border-radius: var(--radius-mark);
   background: var(--surface-muted);
@@ -830,6 +840,7 @@ textarea:focus-visible {
 
 .mark-face .icon {
   inline-size: var(--mark-icon);
+  max-inline-size: 100%;
   block-size: var(--mark-icon);
 }
 
@@ -863,19 +874,30 @@ textarea:focus-visible {
 }
 
 .count-face {
+  inline-size: auto;
+  min-inline-size: min(100%, var(--mark-face));
+  min-block-size: var(--mark-face);
+  block-size: auto;
   padding-inline: var(--gap-xs);
   font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
+}
+
+.count-button {
+  max-inline-size: 100%;
 }
 
 .count-entry {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-inline-size: var(--mark-touch);
 }
 
 .count-input {
   inline-size: var(--count-input);
+  min-inline-size: var(--mark-touch);
+  max-inline-size: 100%;
   min-height: var(--mark-touch);
   font: inherit;
   text-align: center;
@@ -908,6 +930,7 @@ textarea:focus-visible {
   flex-direction: column;
   gap: var(--gap-m);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .report-layout {
@@ -919,15 +942,16 @@ textarea:focus-visible {
 
 .period-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--gap-xs);
   padding: var(--gap-xs);
-  overflow-x: auto;
   border-radius: var(--radius-control);
   background: var(--track);
 }
 
 .period-chip {
-  flex: 1 0 auto;
+  flex: 1 1 auto;
+  max-inline-size: 100%;
   min-height: var(--touch-min);
   padding-inline: var(--gap-s);
   border: 0;
@@ -954,6 +978,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-inline-size: 0;
   text-align: center;
   font-weight: var(--weight-semibold);
 }
@@ -971,6 +996,7 @@ textarea:focus-visible {
   border: var(--stroke-thin) solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
+  overflow-wrap: anywhere;
 }
 
 .report-surface {
@@ -1177,6 +1203,7 @@ textarea:focus-visible {
   border-radius: var(--radius-control);
   background: var(--surface-muted);
   font-size: var(--size-caption);
+  text-align: center;
 }
 
 .report-cell-symbol {

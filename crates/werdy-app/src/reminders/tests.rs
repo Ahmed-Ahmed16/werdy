@@ -347,3 +347,35 @@ fn web_batch_keeps_only_prayers_and_uses_private_text_in_both_languages() -> Tes
     );
     Ok(())
 }
+
+#[test]
+fn a_group_clock_reminder_is_titled_with_the_group_name() -> TestResult {
+    let mut owner = OwnerData::default();
+    let day = WerdyDay::new(2026, 10, 28)?;
+    owner.deeds.push(Deed::new(
+        DeedId(1),
+        day,
+        DeedRule {
+            schedule: Schedule::EveryDay,
+            target: None,
+            category: CategoryKey::new("quran"),
+            slot: SlotKey::new("quran"),
+        },
+    ));
+    owner.settings.reminders.slots.insert(
+        SlotKey::new("quran"),
+        SlotReminder::Clock(ClockTime::new(20, 0)?),
+    );
+    let now = werdy_reminders::LocalMoment::new(day, 8, 0)?;
+    let plan = werdy_reminders::schedule(&owner, now, 1, |_, _| 120)?;
+    let texts = Texts::load();
+    for (language, title) in [("ar", "القرآن"), ("en", "Quran")] {
+        owner.settings.language = language.into();
+        let payload = payload(&owner, &plan, &texts, |date, minute| {
+            epoch_millis(date, minute, 120).map(Some)
+        })?;
+        assert_eq!(payload.notifications.len(), 1);
+        assert!(payload.notifications[0].title.contains(title), "{language}");
+    }
+    Ok(())
+}

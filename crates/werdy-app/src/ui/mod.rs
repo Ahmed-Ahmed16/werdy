@@ -69,6 +69,9 @@ fn start_app_state(
     if seed_failed {
         state.save_status = SaveStatus::SaveFailed;
     }
+    if mode == platform::DataMode::Normal {
+        state.move_level_deeds_to_groups(store);
+    }
     state.show_welcome_on_open(store);
     if mode == platform::DataMode::Normal {
         state.show_whats_new_on_open(store);
@@ -236,6 +239,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
         }
     });
     let mut wide_layout = use_signal(platform::wide_layout);
+    let mut clock_slot = use_signal(platform::local_slot);
     let mut last_screen = use_signal(|| state.read().screen);
     use_effect(move || {
         let screen = state.read().screen;
@@ -250,6 +254,10 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
         Rc::new(platform::watch_changes(
             mode,
             move || {
+                let slot = platform::local_slot();
+                if *clock_slot.peek() != slot {
+                    clock_slot.set(slot);
+                }
                 let settings = state.read().data.settings.clone();
                 if let Ok(today) = platform::today_with_settings(&settings) {
                     let changed = state.read().today != today;
@@ -273,6 +281,8 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
     });
     use_context_provider(|| context::Actions::new(state, store));
     use_context_provider(|| state);
+    use_context_provider(|| clock_slot);
+    sheet::provide_fold_choices(state.peek().today);
     let sharing = sharing::use_sharing();
 
     let settings = &state.read().data.settings;

@@ -1,4 +1,4 @@
-//! Header: the date on screen, day arrows, and the language switch.
+//! The date, day arrows, and note tools on the daily sheet.
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
@@ -28,7 +28,6 @@ pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
     };
     let date = date_text(&i18n, viewing);
     let hijri = hijri_text(&i18n, viewing, hijri_offset);
-    let other = i18n.language.other();
 
     rsx! {
         header { class: "day-header",
@@ -65,13 +64,6 @@ pub fn DayHeader(on_open_note: EventHandler<WerdyDay>) -> Element {
                         onclick: move |_| actions.view(AppState::show_today),
                         {i18n.t("sheet-back-to-today")}
                     }
-                }
-                button {
-                    class: "text-button",
-                    lang: other.code(),
-                    disabled: super::sharing::read_only(),
-                    onclick: move |_| actions.change(|state| state.set_language(other.code())),
-                    {i18n.t("language-switch")}
                 }
             }
         }

@@ -62,14 +62,6 @@ impl Language {
             Self::English => "ltr",
         }
     }
-
-    /// Returns the other language, for the language switch.
-    pub fn other(self) -> Self {
-        match self {
-            Self::Arabic => Self::English,
-            Self::English => Self::Arabic,
-        }
-    }
 }
 
 /// Fluent files for one language, one per feature.
@@ -402,6 +394,24 @@ mod tests {
         );
 
         assert_eq!(text.replace(['\u{2068}', '\u{2069}'], ""), "3 of 5");
+    }
+
+    #[test]
+    fn every_slot_and_group_has_a_name_in_both_languages() -> Result<(), String> {
+        let texts = Texts::load();
+        let catalog = werdy_data::builtin().map_err(|error| error.to_string())?;
+        for place in &catalog.sheet_order {
+            let key = crate::starter::place_name_key(place);
+            for language in [Language::Arabic, Language::English] {
+                assert_ne!(texts.get(language, &key, &[]), key, "{language:?}");
+            }
+        }
+        assert_eq!(
+            texts.get(Language::Arabic, "group-heart_and_character", &[]),
+            "القلب والأخلاق"
+        );
+        assert_eq!(texts.get(Language::Arabic, "editor-group", &[]), "مجموعة");
+        Ok(())
     }
 
     #[test]

@@ -510,6 +510,32 @@ fn two_phones_converge_and_keep_different_rule_edits() {
 }
 
 #[test]
+fn a_deed_moved_into_a_group_reaches_the_other_phone_in_that_group() {
+    let mut backend = FakeBackend::new(1_000);
+    let mut first = Sync::new("first").unwrap();
+    let mut account = history("shared");
+    sync(&mut first, &mut backend, &mut account);
+    let tomorrow = day().next().unwrap();
+    account.deeds[0]
+        .change_rule(tomorrow, rule("heart_and_character"))
+        .unwrap();
+    sync(&mut first, &mut backend, &mut account);
+
+    let mut second = Sync::new("second").unwrap();
+    let mut other = OwnerData::default();
+    sync(&mut second, &mut backend, &mut other);
+
+    assert_eq!(
+        other.deeds[0].rule_on(day()).unwrap().slot,
+        SlotKey::new("fajr")
+    );
+    assert_eq!(
+        other.deeds[0].rule_on(tomorrow).unwrap().slot,
+        SlotKey::new("heart_and_character")
+    );
+}
+
+#[test]
 fn later_server_receipt_wins_even_with_earlier_phone_time() {
     let mut backend = FakeBackend::new(1_000);
     let mut first = Sync::new("first").unwrap();

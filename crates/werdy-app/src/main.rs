@@ -13,6 +13,7 @@ mod platform;
 mod pwa_check;
 #[cfg(any(test, target_os = "android", target_arch = "wasm32"))]
 mod reminders;
+mod sheet_view;
 mod starter;
 mod state;
 mod ui;
