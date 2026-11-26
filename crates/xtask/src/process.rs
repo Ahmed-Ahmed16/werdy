@@ -1,9 +1,11 @@
 //! Running outside programs: cargo, dx, gh and the Android build tools.
 
+use std::env;
 use std::ffi::OsStr;
 use std::fmt;
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// One command in a list of steps, run from a folder under the workspace root.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +47,39 @@ pub fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// How one run of a step ended. `stderr` is what it printed there.
+pub struct Outcome {
+    pub success: bool,
+    pub stderr: String,
+}
+
+/// Windows error 5 means access was denied. Error 32 means another process
+/// is using the file.
+pub fn blocked_by_windows(stderr: &str) -> bool {
+    stderr.contains("(os error 5)") || stderr.contains("(os error 32)")
+}
+
 /// Runs the steps in order and stops at the first one that fails.
 pub fn run_all(steps: &[Step], dry_run: bool) -> Result<(), String> {
     let root = workspace_root();
+    run_all_with(steps, dry_run, cfg!(windows), |step| run_step(step, &root))
+}
+
+/// `run_all` with the way a step is run passed in, so tests can fake it.
+/// `windows` says whether to retry a step that Windows blocked.
+fn run_all_with(
+    steps: &[Step],
+    dry_run: bool,
+    windows: bool,
+    mut run: impl FnMut(&Step) -> Result<Outcome, String>,
+) -> Result<(), String> {
+    let mut run_attempt = |step: &Step| match run(step) {
+        Err(message) if windows && blocked_by_windows(&message) => Ok(Outcome {
+            success: false,
+            stderr: message,
+        }),
+        outcome => outcome,
+    };
     let total = steps.len();
     for (index, step) in steps.iter().enumerate() {
         let number = index + 1;
@@ -55,12 +87,21 @@ pub fn run_all(steps: &[Step], dry_run: bool) -> Result<(), String> {
         if dry_run {
             continue;
         }
-        let status = Command::new(step.program)
-            .args(&step.args)
-            .current_dir(root.join(step.dir))
-            .status()
-            .map_err(|error| format!("could not start {}: {error}", step.program))?;
-        if !status.success() {
+        let mut outcome = run_attempt(step)?;
+        if !outcome.success && windows && blocked_by_windows(&outcome.stderr) {
+            println!(
+                "Windows refused a file (os error 5 or 32). Access was denied or another \
+                 process is using the file. Retrying once."
+            );
+            outcome = run_attempt(step)?;
+            if !outcome.success && blocked_by_windows(&outcome.stderr) {
+                return Err(format!(
+                    "step {number} of {total} failed twice because Windows refused a file \
+                     (os error 5 or 32) while running {step}"
+                ));
+            }
+        }
+        if !outcome.success {
             return Err(format!("step {number} of {total} failed: {step}"));
         }
     }
@@ -70,6 +111,45 @@ pub fn run_all(steps: &[Step], dry_run: bool) -> Result<(), String> {
         println!("All {total} steps passed.");
     }
     Ok(())
+}
+
+/// Runs one step. Its stderr is passed on as it arrives and also kept.
+fn run_step(step: &Step, root: &Path) -> Result<Outcome, String> {
+    let mut command = Command::new(step.program);
+    command
+        .args(&step.args)
+        .current_dir(root.join(step.dir))
+        .stderr(Stdio::piped());
+    // Cargo drops its colors when stderr is a pipe; keep them in a terminal.
+    if io::stderr().is_terminal() && env::var_os("CARGO_TERM_COLOR").is_none() {
+        command.env("CARGO_TERM_COLOR", "always");
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("could not start {}: {error}", step.program))?;
+    let mut pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("could not read the output of {}", step.program))?;
+    let mut kept = Vec::new();
+    let mut buffer = [0u8; 4096];
+    while let Ok(count) = pipe.read(&mut buffer) {
+        if count == 0 {
+            break;
+        }
+        // A closed stderr must not stop the run; the step still has to finish.
+        let _ = io::stderr().write_all(&buffer[..count]);
+        kept.extend_from_slice(&buffer[..count]);
+    }
+    // If a read fails, closing the pipe keeps the child from blocking on a write.
+    drop(pipe);
+    let status = child
+        .wait()
+        .map_err(|error| format!("could not wait for {}: {error}", step.program))?;
+    Ok(Outcome {
+        success: status.success(),
+        stderr: String::from_utf8_lossy(&kept).into_owned(),
+    })
 }
 
 pub struct Captured {
@@ -108,5 +188,166 @@ where
         Ok(captured.stdout)
     } else {
         Err(format!("{name} failed: {}", captured.stderr.trim()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    const DENIED: &str = "error: could not execute process `x.exe`\n\nCaused by:\n  \
+        Access is denied. (os error 5)";
+    const IN_USE: &str = "The process cannot access the file because it is being used by \
+        another process. (os error 32)";
+    const LAUNCH_DENIED: &str = "could not start cargo: Access is denied. (os error 5)";
+
+    fn steps() -> Vec<Step> {
+        vec![Step::cargo(&["test"]), Step::cargo(&["fmt"])]
+    }
+
+    fn outcome(success: bool, stderr: &str) -> Result<Outcome, String> {
+        Ok(Outcome {
+            success,
+            stderr: stderr.to_string(),
+        })
+    }
+
+    #[test]
+    fn both_windows_block_codes_are_recognised() {
+        assert!(blocked_by_windows(DENIED));
+        assert!(blocked_by_windows(IN_USE));
+        assert!(!blocked_by_windows("error[E0308]: mismatched types"));
+        assert!(!blocked_by_windows("os error 50"));
+    }
+
+    #[test]
+    fn a_blocked_step_is_retried_once_and_can_pass() {
+        let runs = Cell::new(0);
+        let result = run_all_with(&steps(), false, true, |_| {
+            runs.set(runs.get() + 1);
+            // The first run of the first step is blocked; everything else passes.
+            if runs.get() == 1 {
+                outcome(false, DENIED)
+            } else {
+                outcome(true, "")
+            }
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(runs.get(), 3, "one retry plus two steps");
+    }
+
+    #[test]
+    fn a_step_blocked_twice_fails_and_says_why() {
+        let runs = Cell::new(0);
+        let error = run_all_with(&steps(), false, true, |_| {
+            runs.set(runs.get() + 1);
+            outcome(false, IN_USE)
+        })
+        .unwrap_err();
+        assert_eq!(runs.get(), 2, "retried once, not forever");
+        assert!(error.contains("step 1 of 2"));
+        assert!(error.contains("Windows refused"));
+    }
+
+    #[test]
+    fn a_blocked_launch_is_retried_and_can_pass() {
+        let runs = Cell::new(0);
+        let result = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            if runs.get() == 1 {
+                Err(LAUNCH_DENIED.to_string())
+            } else {
+                outcome(true, "")
+            }
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(runs.get(), 2);
+    }
+
+    #[test]
+    fn a_launch_blocked_twice_fails_and_says_why() {
+        let runs = Cell::new(0);
+        let error = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            Err(LAUNCH_DENIED.to_string())
+        })
+        .unwrap_err();
+        assert_eq!(runs.get(), 2);
+        assert!(error.contains("failed twice"));
+        assert!(error.contains("Windows refused"));
+    }
+
+    #[test]
+    fn another_launch_error_is_returned_without_retrying() {
+        let runs = Cell::new(0);
+        let message = "could not start cargo: File not found. (os error 2)";
+        let result = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            Err(message.to_string())
+        });
+        assert_eq!(result, Err(message.to_string()));
+        assert_eq!(runs.get(), 1);
+    }
+
+    #[test]
+    fn a_retry_that_fails_for_another_reason_is_a_plain_failure() {
+        let runs = Cell::new(0);
+        let error = run_all_with(&steps(), false, true, |_| {
+            runs.set(runs.get() + 1);
+            if runs.get() == 1 {
+                outcome(false, DENIED)
+            } else {
+                outcome(false, "error: test failed")
+            }
+        })
+        .unwrap_err();
+        assert!(!error.contains("Windows refused"));
+        assert!(error.contains("step 1 of 2 failed"));
+    }
+
+    #[test]
+    fn other_failures_are_not_retried() {
+        let runs = Cell::new(0);
+        let result = run_all_with(&steps(), false, true, |_| {
+            runs.set(runs.get() + 1);
+            outcome(false, "error: test failed")
+        });
+        assert!(result.is_err());
+        assert_eq!(runs.get(), 1);
+    }
+
+    #[test]
+    fn off_windows_nothing_is_retried() {
+        let runs = Cell::new(0);
+        let result = run_all_with(&steps(), false, false, |_| {
+            runs.set(runs.get() + 1);
+            outcome(false, DENIED)
+        });
+        assert!(result.is_err());
+        assert_eq!(runs.get(), 1);
+    }
+
+    #[test]
+    fn a_dry_run_runs_nothing() {
+        let result = run_all_with(&steps(), true, true, |_| panic!("must not run"));
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn run_step_reports_a_successful_cargo_command() {
+        let result = run_step(&Step::cargo(&["--version"]), &workspace_root()).unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn run_step_keeps_stderr_from_a_failed_cargo_command() {
+        let result = run_step(
+            &Step::cargo(&["--definitely-not-a-flag"]),
+            &workspace_root(),
+        )
+        .unwrap();
+        assert!(!result.success);
+        assert!(!result.stderr.trim().is_empty());
     }
 }
