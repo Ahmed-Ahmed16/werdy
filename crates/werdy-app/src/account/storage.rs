@@ -6,6 +6,8 @@ use werdy_store::{StoreError, StoreError::Backend};
 pub enum File {
     Session,
     Sync,
+    /// Which copy of the app on this device may sync right now.
+    Lease,
 }
 
 impl File {
@@ -14,6 +16,7 @@ impl File {
         match self {
             Self::Session => "session.json",
             Self::Sync => "sync.json",
+            Self::Lease => "sync-lease.json",
         }
     }
 }

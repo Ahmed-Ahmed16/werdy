@@ -1,8 +1,8 @@
-use super::{AccountStore, Checkpoint, config};
-use crate::state::AppState;
+use super::{AccountStore, Checkpoint, config, storage_error};
+use crate::state::{AppState, SaveStatus};
 use dioxus::prelude::*;
 use std::{rc::Rc, time::Duration};
-use werdy_store::{OwnerData, Store};
+use werdy_store::{OwnerData, StoreError};
 use werdy_sync::{Session, SupabaseAuth, SupabaseBackend, SyncError};
 
 #[derive(Clone)]
@@ -48,61 +48,36 @@ pub fn use_background(mut state: Signal<AppState>) {
         let store = handle.0.clone();
         async move {
             loop {
-                let flight =
-                    {
-                        let mut account = store.account.borrow_mut();
-                        if account.session.is_some()
-                            && !account.sharing_busy
-                            && account.schedule.start(elapsed_ms())
-                        {
-                            account.session.clone().zip(account.checkpoint.clone()).map(
-                                |(session, checkpoint)| (session, checkpoint, account.generation),
-                            )
-                        } else {
-                            None
-                        }
-                    };
-                if let Some((session, checkpoint, generation)) = flight {
+                let ready = {
+                    let mut account = store.account.borrow_mut();
+                    account.session.is_some()
+                        && !account.sharing_busy
+                        && account.schedule.start(elapsed_ms())
+                };
+                let flight = if ready { claim(&store) } else { None };
+                if let Some((_, checkpoint, generation)) = flight {
                     let store = store.clone();
                     let active = store.clone();
                     let task = spawn(async move {
-                        let outcome = attempt(&store, session, checkpoint, generation).await;
+                        let outcome = attempt(&store, checkpoint, generation).await;
                         if store.account.borrow().generation != generation {
+                            store.release_flight();
                             return;
                         }
                         let success = match outcome {
                             Ok(outcome) => {
-                                let latest = state.read().data.clone();
-                                let needs_save =
-                                    store.load().map(|saved| saved.as_ref() != Some(&latest));
+                                let mut state = state.write();
                                 let saved =
-                                    needs_save
-                                        .and_then(|changed| {
-                                            if changed { store.save(&latest) } else { Ok(()) }
-                                        })
-                                        .and_then(|()| match &outcome {
-                                            Attempt::Synced(completed) => store.complete(
-                                                completed,
-                                                generation,
-                                                crate::platform::change_time(),
-                                            ),
-                                            Attempt::Collision(collision) => {
-                                                store.recover_collision(collision, generation)
-                                            }
-                                        });
+                                    finish_attempt(&store, &mut state, &outcome, generation);
                                 match saved {
                                     Ok(Some(records)) => {
                                         if matches!(outcome, Attempt::Collision(_)) {
-                                            state.write().accept_sync(records);
+                                            state.accept_sync(records);
                                             store.account.borrow_mut().error =
                                                 Some(error_key(&SyncError::OperationReused));
                                             false
                                         } else {
-                                            apply_successful_sync(
-                                                &mut state.write(),
-                                                records,
-                                                &store,
-                                            );
+                                            apply_successful_sync(&mut state, records, &store);
                                             true
                                         }
                                     }
@@ -120,10 +95,14 @@ pub fn use_background(mut state: Signal<AppState>) {
                             }
                         };
                         let mut account = store.account.borrow_mut();
-                        if success {
-                            account.error = None;
+                        if account.generation == generation {
+                            if success {
+                                account.error = None;
+                            }
+                            account.schedule.finish(elapsed_ms(), success);
                         }
-                        account.schedule.finish(elapsed_ms(), success);
+                        drop(account);
+                        store.release_flight();
                     });
                     *active.active_task.borrow_mut() = Some(task);
                 }
@@ -135,6 +114,22 @@ pub fn use_background(mut state: Signal<AppState>) {
             }
         }
     });
+}
+
+/// Another copy of the app on this device may be syncing; this copy then
+/// tries again later instead of pushing the same queue at the same time.
+fn claim(store: &AccountStore) -> Option<super::Flight> {
+    let claimed = store.claim_flight(crate::platform::change_time());
+    let mut account = store.account.borrow_mut();
+    match claimed {
+        Ok(Some(flight)) => return Some(flight),
+        Ok(None) => {}
+        Err(_) => account.error = Some("account-storage-error"),
+    }
+    if account.session.is_some() {
+        account.schedule.finish(elapsed_ms(), false);
+    }
+    None
 }
 
 pub(super) fn apply_successful_sync(
@@ -152,30 +147,50 @@ pub(super) fn apply_successful_sync(
     state.accept_successful_sync(records, store, &held_deed_ids);
 }
 
-enum Attempt {
+pub(super) enum Attempt {
     Synced(Box<Checkpoint>),
     Collision(Box<werdy_sync::Collision>),
 }
 
+pub(super) fn finish_attempt(
+    store: &AccountStore,
+    state: &mut AppState,
+    outcome: &Attempt,
+    generation: u64,
+) -> Result<Option<OwnerData>, StoreError> {
+    if state.has_unsaved_changes() {
+        {
+            let mut account = store.account.borrow_mut();
+            store.reread_session(&mut account)?;
+            if account.generation != generation || account.session.is_none() {
+                return Ok(None);
+            }
+        }
+        state.save_to(store);
+        if state.save_status != SaveStatus::Saved {
+            return Err(storage_error());
+        }
+    }
+    match outcome {
+        Attempt::Synced(completed) => {
+            store.complete(completed, generation, crate::platform::change_time())
+        }
+        Attempt::Collision(collision) => store.recover_collision(collision, generation),
+    }
+}
+
 async fn attempt(
     store: &AccountStore,
-    mut session: Session,
     mut checkpoint: Checkpoint,
     generation: u64,
 ) -> Result<Attempt, SyncError> {
+    let mut session = store.current_session(generation)?;
     let auth = SupabaseAuth::new(config::SUPABASE_URL, config::SUPABASE_KEY)?;
-    // Retry saving a rotated token if the previous attempt hit a storage error.
-    store
-        .write_session(&session)
-        .map_err(|_| SyncError::Backend("account storage failed".into()))?;
     if session.needs_refresh(crate::platform::change_time() / 1000, false) {
         session = auth
             .refresh(&session, crate::platform::change_time() / 1000)
             .await?;
         save_refresh(store, &session, generation)?;
-    }
-    if store.account.borrow().generation != generation {
-        return Err(SyncError::Invalid("account changed".into()));
     }
     let mut backend = SupabaseBackend::new(
         config::SUPABASE_URL,
@@ -219,14 +234,20 @@ pub(crate) fn save_refresh(
     session: &Session,
     generation: u64,
 ) -> Result<(), SyncError> {
-    if store.account.borrow().generation != generation {
+    let mut account = store.account.borrow_mut();
+    if account.generation != generation
+        || !account
+            .session
+            .as_ref()
+            .is_some_and(|current| current.user_id == session.user_id)
+    {
         return Err(SyncError::Invalid("account changed".into()));
     }
     // Keep a rotated refresh token in memory even if saving it fails.
-    store.account.borrow_mut().session = Some(session.clone());
-    store
-        .write_session(session)
-        .map_err(|_| SyncError::Backend("account storage failed".into()))
+    account.session = Some(session.clone());
+    account.session_write_pending = true;
+    drop(account);
+    store.current_session(generation).map(|_| ())
 }
 
 pub fn error_key(error: &SyncError) -> &'static str {

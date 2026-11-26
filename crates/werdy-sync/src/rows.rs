@@ -326,8 +326,9 @@ pub(crate) fn project_with_outbox(
         .collect();
     overlay(&mut changes, engine, records);
     for pending in &engine.outbox {
-        changes.retain(|(row, _)| row.key() != pending.change.key());
-        changes.push((pending.change.clone(), 0));
+        let change = &pending.change;
+        changes.retain(|(row, _)| row.key() != change.key());
+        changes.push((change.clone(), local_change_time(change, engine, records)));
     }
     project_changes(engine, records, &changes)
 }
@@ -335,30 +336,30 @@ pub(crate) fn project_with_outbox(
 fn overlay(changes: &mut Vec<(Change, u64)>, engine: &Sync, records: &OwnerData) {
     for change in &engine.local_only {
         changes.retain(|(row, _)| row.key() != change.key());
-        let time = match change {
-            Change::Note { day, .. } => records
-                .note_revisions
-                .get(day)
-                .or_else(|| records.cleared_notes.get(day))
-                .copied()
-                .unwrap_or(0),
-            Change::Mark { id, day, .. } => engine
-                .bindings
-                .iter()
-                .find(|binding| &binding.remote == id)
-                .and_then(|binding| {
-                    let key = (binding.local, *day);
-                    records
-                        .mark_revisions
-                        .get(&key)
-                        .or_else(|| records.cleared_marks.get(&key))
-                })
-                .copied()
-                .unwrap_or(0),
-            _ => 0,
-        };
-        changes.push((change.clone(), time));
+        changes.push((change.clone(), local_change_time(change, engine, records)));
     }
+}
+
+fn local_change_time(change: &Change, engine: &Sync, records: &OwnerData) -> u64 {
+    let time = match change {
+        Change::Note { day, .. } => records
+            .note_revisions
+            .get(day)
+            .or_else(|| records.cleared_notes.get(day)),
+        Change::Mark { id, day, .. } => engine
+            .bindings
+            .iter()
+            .find(|binding| &binding.remote == id)
+            .and_then(|binding| {
+                let key = (binding.local, *day);
+                records
+                    .mark_revisions
+                    .get(&key)
+                    .or_else(|| records.cleared_marks.get(&key))
+            }),
+        _ => None,
+    };
+    time.copied().unwrap_or(0)
 }
 
 fn project_changes(

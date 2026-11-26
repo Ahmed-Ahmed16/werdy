@@ -532,8 +532,6 @@ impl Sync {
     }
 
     /// Local marks and clears captured but not yet acknowledged by the server.
-    /// After `finish_from` their saved time is zero, so callers comparing
-    /// marks must treat these as the newest.
     pub fn unsent_marks(&self) -> std::collections::BTreeSet<(DeedId, WerdyDay)> {
         self.outbox
             .iter()

@@ -566,12 +566,49 @@ fn checkpoint_recovers_edits_when_owner_file_write_failed() {
     let vault = Rc::new(storage::MemoryVault::default());
     let store = AccountStore::open(Rc::new(BrokenMirror), vault.clone(), true);
     let mut records = records();
+    assert!(store.save(&records).is_err());
     store.sign_in(session(), &records).unwrap();
     records = store.load().unwrap().unwrap();
     records.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
-    assert!(store.save(&records).is_err());
+    store.save(&records).unwrap();
     let reopened = AccountStore::open(Rc::new(BrokenMirror), vault, true);
     assert_eq!(reopened.load().unwrap().unwrap(), records);
+}
+
+#[test]
+fn saving_again_after_a_mirror_failure_keeps_one_new_deed() {
+    use crate::state::{EditorDraft, SaveStatus};
+    use werdy_store::DeedName;
+
+    let store = AccountStore::open(
+        Rc::new(BrokenMirror),
+        Rc::new(storage::MemoryVault::default()),
+        true,
+    );
+    store.sign_in(session(), &records()).unwrap();
+    let mut screen = AppState::start(&store, day(), vec![]);
+    let draft = EditorDraft {
+        name: "Reading".into(),
+        ..EditorDraft::default()
+    };
+    screen.save_deed(None, &draft).unwrap();
+    screen.save_to(&store);
+    let first_save_status = screen.save_status;
+    screen.save_to(&store);
+
+    let checkpoint = restore(store.vault.as_ref()).unwrap().1.unwrap();
+    let stored = from_json(&checkpoint.records).unwrap();
+    let name = DeedName::Text(draft.name);
+    assert_eq!(
+        stored
+            .names
+            .values()
+            .filter(|stored| **stored == name)
+            .count(),
+        1
+    );
+    assert_eq!(first_save_status, SaveStatus::Saved);
+    assert_eq!(screen.save_status, SaveStatus::Saved);
 }
 
 #[test]
@@ -794,4 +831,399 @@ fn collision_recovery_saves_new_install_and_edits_made_during_push() {
     assert_eq!(saved.records, to_json(&merged).unwrap());
     let completed = flight(&reopened, &mut backend);
     assert!(completed.engine.outbox().is_empty());
+}
+
+/// Two copies of the web app on one device: a browser tab and the home
+/// screen app share one storage.
+fn two_tabs() -> (AccountStore, AccountStore) {
+    let inner: Rc<dyn Store> = Rc::new(werdy_store::MemoryStore::default());
+    let vault: Rc<dyn Vault> = Rc::new(storage::MemoryVault::default());
+    let first = AccountStore::open(inner.clone(), vault.clone(), true);
+    first.sign_in(session(), &records()).unwrap();
+    let second = AccountStore::open(inner, vault, true);
+    (first, second)
+}
+
+fn sync_tab(tab: &AccountStore, backend: &mut FakeBackend, now: u64) -> OwnerData {
+    let (_, mut checkpoint, generation) = tab.claim_flight(now).unwrap().unwrap();
+    let mut records = from_json(&checkpoint.records).unwrap();
+    run(checkpoint.engine.sync(backend, &mut records, || 1000)).unwrap();
+    checkpoint.records = to_json(&records).unwrap();
+    let merged = tab.complete(&checkpoint, generation, now).unwrap().unwrap();
+    tab.release_flight();
+    merged
+}
+
+#[test]
+fn sharing_uses_the_session_another_tab_refreshed_without_overwriting_it() {
+    let (first, second) = two_tabs();
+    let (mut rotated, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+    runtime::save_refresh(&first, &rotated, generation).unwrap();
+
+    let used = second.current_session(0).unwrap();
+    let stored = restore(first.vault.as_ref()).unwrap().0.unwrap();
+    assert_eq!(stored.refresh_token, rotated.refresh_token);
+    assert_eq!(used.refresh_token, rotated.refresh_token);
+}
+
+#[test]
+fn a_tab_open_before_sign_in_saves_edits_to_the_checkpoint() {
+    for load_before_save in [true, false] {
+        let first = store();
+        let second = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+        assert!(!runtime::view(&second).signed_in);
+        first.sign_in(session(), &records()).unwrap();
+
+        let mut edited = if load_before_save {
+            second.load().unwrap().unwrap()
+        } else {
+            records()
+        };
+        let key = (DeedId(1), day());
+        edited.set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 1);
+        second.save(&edited).unwrap();
+
+        let checkpoint = restore(first.vault.as_ref()).unwrap().1.unwrap();
+        assert_eq!(from_json(&checkpoint.records).unwrap().marks, edited.marks);
+        let reopened = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+        assert_eq!(reopened.load().unwrap().unwrap().marks, edited.marks);
+        assert!(runtime::view(&second).signed_in);
+    }
+}
+
+#[test]
+fn stale_screen_keeps_a_server_clear_with_an_older_revision() {
+    let (first, second) = two_tabs();
+    let key = (DeedId(1), day());
+    let mut marked = first.load().unwrap().unwrap();
+    marked.set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 5000);
+    first.save(&marked).unwrap();
+    let mut stale = AppState::start(&second, day(), vec![]);
+    assert_eq!(stale.data.mark_revisions[&key], 5000);
+
+    let mut backend = FakeBackend::new(1000);
+    let mut cleared = sync_tab(&first, &mut backend, 1000);
+    cleared.set_mark(key.0, key.1, None, 6000);
+    first.save(&cleared).unwrap();
+    backend.set_time(2000);
+    let accepted = sync_tab(&first, &mut backend, 2000);
+    assert_eq!(accepted.cleared_marks[&key], 2000);
+    let stored = first.vault.read(File::Sync).unwrap();
+
+    stale.reload_from(&second);
+
+    assert_eq!(stale.data.marks.get(&key), None);
+    assert_eq!(stale.data.cleared_marks[&key], 2000);
+    assert_eq!(first.vault.read(File::Sync).unwrap(), stored);
+}
+
+#[test]
+fn an_unsaved_mark_wins_over_an_older_stored_clear() {
+    let (first, second) = two_tabs();
+    let key = (DeedId(1), day());
+    let mut screen = AppState::start(&second, day(), vec![]);
+    screen
+        .data
+        .set_mark(key.0, key.1, Some(MarkEntry::new(Mark::Done, day())), 5000);
+    let mut cleared = first.load().unwrap().unwrap();
+    cleared.set_mark(key.0, key.1, None, 2000);
+    first.save(&cleared).unwrap();
+
+    screen.reload_from(&second);
+
+    let saved = first.load().unwrap().unwrap();
+    assert_eq!(screen.data.marks[&key].mark, Mark::Done);
+    assert_eq!(saved.marks[&key].mark, Mark::Done);
+    assert_eq!(saved.mark_revisions[&key], 5000);
+}
+
+#[test]
+fn two_tabs_sharing_storage_never_reuse_an_operation_id() {
+    let (first, second) = two_tabs();
+    let mut edited = first.load().unwrap().unwrap();
+    edited.settings.theme = werdy_store::Theme::Dark;
+    first.save(&edited).unwrap();
+    let mut other = second.load().unwrap().unwrap();
+    assert_eq!(other.settings.theme, werdy_store::Theme::Dark);
+    other.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&other).unwrap();
+    let mut later = first.load().unwrap().unwrap();
+    assert_eq!(later.marks, other.marks);
+    later.settings.language = "en".into();
+    first.save(&later).unwrap();
+
+    let saved = AccountStore::open(first.inner.clone(), first.vault.clone(), true);
+    let outbox = saved.account.borrow().checkpoint.clone().unwrap();
+    let operations: std::collections::BTreeSet<u64> =
+        outbox.engine.outbox().iter().map(|p| p.operation).collect();
+    assert_eq!(operations.len(), outbox.engine.outbox().len());
+
+    let mut backend = FakeBackend::new(1000);
+    sync_tab(&second, &mut backend, 10_000);
+    let mut again = first.load().unwrap().unwrap();
+    again.settings.language = "ar".into();
+    first.save(&again).unwrap();
+    sync_tab(&first, &mut backend, 20_000);
+
+    let fresh = store();
+    fresh.sign_in(session(), &OwnerData::default()).unwrap();
+    let pulled = sync_tab(&fresh, &mut backend, 30_000);
+    assert_eq!(pulled.settings.theme, werdy_store::Theme::Dark);
+    assert_eq!(pulled.settings.language, "ar");
+    assert_eq!(pulled.marks, other.marks);
+}
+
+#[test]
+fn only_one_tab_runs_sync_until_it_releases_or_its_lease_runs_out() {
+    let (first, second) = two_tabs();
+    assert!(first.claim_flight(1_000).unwrap().is_some());
+    assert!(second.claim_flight(2_000).unwrap().is_none());
+    first.release_flight();
+    assert!(second.claim_flight(3_000).unwrap().is_some());
+    assert!(first.claim_flight(4_000).unwrap().is_none());
+    // A tab closed mid sync never releases; its lease runs out.
+    assert!(first.claim_flight(3_000 + LEASE_MS).unwrap().is_some());
+    // A clock moved backwards cannot keep a lease alive for years.
+    assert!(second.claim_flight(1_000).unwrap().is_some());
+}
+
+#[test]
+fn a_flight_uses_the_session_another_tab_refreshed() {
+    let (first, second) = two_tabs();
+    let mut rotated = session();
+    rotated.refresh_token = "rotated".into();
+    runtime::save_refresh(&first, &rotated, 1).unwrap();
+    let (session, _, _) = second.claim_flight(1_000).unwrap().unwrap();
+    assert_eq!(session.refresh_token, "rotated");
+}
+
+#[derive(Default)]
+struct SessionWriteFailingVault {
+    inner: storage::MemoryVault,
+    fail_next_session_write: std::cell::Cell<bool>,
+}
+
+impl Vault for SessionWriteFailingVault {
+    fn read(&self, file: File) -> Result<Option<String>, StoreError> {
+        self.inner.read(file)
+    }
+
+    fn write(&self, file: File, text: &str) -> Result<(), StoreError> {
+        if file == File::Session && self.fail_next_session_write.replace(false) {
+            return Err(storage_error());
+        }
+        self.inner.write(file, text)
+    }
+
+    fn remove(&self, file: File) -> Result<(), StoreError> {
+        self.inner.remove(file)
+    }
+}
+
+#[test]
+fn next_flight_retries_saving_a_rotated_refresh_token() {
+    let vault = Rc::new(SessionWriteFailingVault::default());
+    let store = AccountStore::open(
+        Rc::new(werdy_store::MemoryStore::default()),
+        vault.clone(),
+        true,
+    );
+    store.sign_in(session(), &records()).unwrap();
+    let (mut rotated, _, generation) = store.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+    vault.fail_next_session_write.set(true);
+    assert!(runtime::save_refresh(&store, &rotated, generation).is_err());
+    store.release_flight();
+    assert_eq!(
+        restore(vault.as_ref()).unwrap().0.unwrap().refresh_token,
+        session().refresh_token
+    );
+
+    let (retry, _, generation) = store.claim_flight(2_000).unwrap().unwrap();
+    assert_eq!(retry.refresh_token, rotated.refresh_token);
+    store.current_session(generation).unwrap();
+    assert_eq!(
+        restore(vault.as_ref()).unwrap().0.unwrap().refresh_token,
+        rotated.refresh_token
+    );
+    store.release_flight();
+
+    let other = AccountStore::open(store.inner.clone(), vault.clone(), true);
+    rotated.refresh_token = "rotated again".into();
+    runtime::save_refresh(&other, &rotated, 0).unwrap();
+    let (latest, _, _) = store.claim_flight(3_000).unwrap().unwrap();
+    assert_eq!(latest.refresh_token, rotated.refresh_token);
+}
+
+#[test]
+fn a_late_sync_in_one_tab_keeps_an_edit_saved_in_the_other() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let (_, mut checkpoint, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let mut edited = second.load().unwrap().unwrap();
+    edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&edited).unwrap();
+    let mut records = from_json(&checkpoint.records).unwrap();
+    run(checkpoint.engine.sync(&mut backend, &mut records, || 1000)).unwrap();
+    checkpoint.records = to_json(&records).unwrap();
+    let merged = first
+        .complete(&checkpoint, generation, 2_000)
+        .unwrap()
+        .unwrap();
+    assert_eq!(merged.marks, edited.marks);
+    assert_eq!(second.load().unwrap().unwrap().marks, edited.marks);
+}
+
+#[test]
+fn sync_completion_with_a_stale_screen_keeps_the_other_tabs_mark() {
+    let (first, second) = two_tabs();
+    let mut screen = crate::state::AppState::start(&first, day(), vec![]);
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let outcome = runtime::Attempt::Synced(Box::new(flight(&first, &mut backend)));
+
+    let mut edited = second.load().unwrap().unwrap();
+    edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&edited).unwrap();
+
+    runtime::finish_attempt(&first, &mut screen, &outcome, generation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.load().unwrap().unwrap().marks, edited.marks);
+    let account = first.account.borrow();
+    let checkpoint = account.checkpoint.as_ref().unwrap();
+    assert!(
+        !checkpoint
+            .engine
+            .outbox()
+            .iter()
+            .any(|pending| matches!(pending.change, werdy_sync::Change::Mark { entry: None, .. }))
+    );
+}
+
+#[test]
+fn sync_completion_saves_an_unsaved_screen_edit_made_during_the_request() {
+    let store = store();
+    store.sign_in(session(), &records()).unwrap();
+    let mut screen = crate::state::AppState::start(&store, day(), vec![]);
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = store.claim_flight(1_000).unwrap().unwrap();
+    let outcome = runtime::Attempt::Synced(Box::new(flight(&store, &mut backend)));
+
+    screen.tap(DeedId(1), crate::state::Tap::Done);
+    assert!(store.load().unwrap().unwrap().marks.is_empty());
+
+    let merged = runtime::finish_attempt(&store, &mut screen, &outcome, generation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(merged.marks[&(DeedId(1), day())].mark, Mark::Done);
+    assert_eq!(store.load().unwrap().unwrap().marks, merged.marks);
+}
+
+#[test]
+fn a_mark_cleared_during_a_sync_stays_cleared_when_a_stale_tab_reloads() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let mut marked = first.load().unwrap().unwrap();
+    marked.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    first.save(&marked).unwrap();
+    sync_tab(&first, &mut backend, 1_000);
+    let mut stale = crate::state::AppState::start(&second, day(), vec![]);
+    assert_eq!(stale.data.marks[&(DeedId(1), day())].mark, Mark::Done);
+
+    backend.set_time(2000);
+    let (_, _, generation) = first.claim_flight(2_000).unwrap().unwrap();
+    let completed = flight(&first, &mut backend);
+    let mut cleared = first.load().unwrap().unwrap();
+    cleared.set_mark(DeedId(1), day(), None, 3000);
+    first.save(&cleared).unwrap();
+    first
+        .complete(&completed, generation, 2_000)
+        .unwrap()
+        .unwrap();
+    first.release_flight();
+
+    stale.reload_from(&second);
+    assert!(!stale.data.marks.contains_key(&(DeedId(1), day())));
+    assert!(
+        !second
+            .load()
+            .unwrap()
+            .unwrap()
+            .marks
+            .contains_key(&(DeedId(1), day()))
+    );
+    let account = first.account.borrow();
+    let checkpoint = account.checkpoint.as_ref().unwrap();
+    assert!(!checkpoint.engine.outbox().iter().any(|pending| matches!(
+        pending.change,
+        werdy_sync::Change::Mark { entry: Some(_), .. }
+    )));
+}
+
+#[test]
+fn a_sign_out_in_another_tab_stops_the_next_sync_from_restoring_the_account() {
+    let inner: Rc<dyn Store> = Rc::new(werdy_store::MemoryStore::default());
+    let vault: Rc<dyn Vault> = Rc::new(storage::MemoryVault::default());
+    let first = AccountStore::open(inner.clone(), vault.clone(), true);
+    first.sign_in(session(), &records()).unwrap();
+    let second = AccountStore::open(inner.clone(), vault.clone(), true);
+
+    second.sign_out(&records()).unwrap();
+
+    assert!(first.claim_flight(1_000).unwrap().is_none());
+    assert!(first.account.borrow().session.is_none());
+    let reopened = AccountStore::open(inner, vault, true);
+    assert!(reopened.account.borrow().session.is_none());
+}
+
+#[test]
+fn a_sync_running_when_another_tab_signs_out_does_not_write_the_account_back() {
+    let (first, second) = two_tabs();
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let completed = flight(&first, &mut backend);
+
+    second.sign_out(&records()).unwrap();
+
+    assert!(
+        first
+            .complete(&completed, generation, 1_000)
+            .unwrap()
+            .is_none()
+    );
+    assert!(first.vault.read(File::Sync).unwrap().is_none());
+    assert!(first.vault.read(File::Session).unwrap().is_none());
+}
+
+#[test]
+fn a_refresh_after_another_tab_signs_out_does_not_restore_the_session() {
+    let (first, second) = two_tabs();
+    let (mut rotated, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    rotated.refresh_token = "rotated".into();
+
+    second.sign_out(&records()).unwrap();
+
+    let refresh = runtime::save_refresh(&first, &rotated, generation);
+    assert!(first.vault.read(File::Session).unwrap().is_none());
+    assert!(refresh.is_err());
+    assert!(first.account.borrow().session.is_none());
+}
+
+#[test]
+fn a_save_after_another_tab_signs_out_does_not_restore_the_checkpoint() {
+    let (first, second) = two_tabs();
+    let mut stale = first.load().unwrap().unwrap();
+    stale.settings.language = "ar".into();
+    second.sign_out(&records()).unwrap();
+
+    let save = first.save(&stale);
+
+    assert!(first.vault.read(File::Sync).unwrap().is_none());
+    assert!(save.is_err());
+    assert_eq!(
+        first.inner.load().unwrap().unwrap().settings.language,
+        records().settings.language
+    );
 }
