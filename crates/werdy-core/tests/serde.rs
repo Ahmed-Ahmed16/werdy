@@ -142,3 +142,27 @@ fn hijri_settings_and_range_are_checked_on_load() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn once_a_week_is_stored_as_a_plain_name() -> TestResult {
+    let json = serde_json::to_string(&Schedule::OnceAWeek)?;
+
+    assert_eq!(json, r#""once_a_week""#);
+    assert_eq!(
+        serde_json::from_str::<Schedule>(&json)?,
+        Schedule::OnceAWeek
+    );
+    Ok(())
+}
+
+#[test]
+fn when_it_comes_up_is_stored_as_a_plain_name() -> TestResult {
+    let json = serde_json::to_string(&Schedule::WhenItComesUp)?;
+
+    assert_eq!(json, r#""when_it_comes_up""#);
+    assert_eq!(
+        serde_json::from_str::<Schedule>(&json)?,
+        Schedule::WhenItComesUp
+    );
+    Ok(())
+}

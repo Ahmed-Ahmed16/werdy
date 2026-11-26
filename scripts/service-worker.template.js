@@ -1,6 +1,13 @@
 const CACHE_NAME = "werdy-__VERSION__";
 const APP_ROOT = "/werdy/";
 const PRECACHE = __PRECACHE__;
+// Fonts come from Google, so they cannot be in PRECACHE. They are cached on
+// first use, under a name that survives app updates.
+const FONT_CACHE = "fonts-v1";
+const FONT_ORIGINS = ["https://fonts.googleapis.com", "https://fonts.gstatic.com"];
+// A weak signal can keep a request open for a minute. After this long the
+// cached app opens instead.
+const NETWORK_TIMEOUT_MS = 3000;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -20,14 +27,22 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin ||
-      !url.pathname.startsWith(APP_ROOT)) {
+  if (request.method !== "GET") {
+    return;
+  }
+  if (FONT_ORIGINS.includes(url.origin)) {
+    event.respondWith(fontResponse(request));
+    return;
+  }
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(APP_ROOT)) {
     return;
   }
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match(APP_ROOT + "index.html"))
+      withTimeout(fetch(request), NETWORK_TIMEOUT_MS)
+        .catch(() => caches.match(APP_ROOT + "index.html"))
+        .then((response) => response || fetch(request))
     );
     return;
   }
@@ -36,6 +51,33 @@ self.addEventListener("fetch", (event) => {
     caches.match(request).then((cached) => cached || fetch(request))
   );
 });
+
+// Serves the cached font at once and refreshes it in the background.
+async function fontResponse(request) {
+  const cache = await caches.open(FONT_CACHE);
+  const cached = await cache.match(request);
+  const fresh = fetch(request).then(async (response) => {
+    if (response.ok || response.type === "opaque") {
+      await cache.put(request, response.clone()).catch(() => {});
+    }
+    return response;
+  });
+  if (cached) {
+    fresh.catch(() => {});
+    return cached;
+  }
+  return fresh;
+}
+
+function withTimeout(promise, milliseconds) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("network timeout")), milliseconds);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
 
 self.addEventListener("push", (event) => {
   let payload;
