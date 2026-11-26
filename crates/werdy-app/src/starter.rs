@@ -136,15 +136,20 @@ pub fn move_level_deeds_to_groups(
     today: werdy_core::WerdyDay,
     held_deed_ids: &BTreeSet<DeedId>,
 ) -> Vec<DeedId> {
+    // A held copy can have an earlier edit that still needs to fold into the kept deed.
+    let held_starter_keys: BTreeSet<_> = held_deed_ids
+        .iter()
+        .filter_map(|id| data.starter_keys.get(id))
+        .collect();
     let mut moved = Vec::new();
     for deed in &mut data.deeds {
-        // Held rows can hide a newer rule for this deed.
         if held_deed_ids.contains(&deed.id) || data.level_group_move_handled.contains(&deed.id) {
             continue;
         }
         let Some(group) = data
             .starter_keys
             .get(&deed.id)
+            .filter(|key| !held_starter_keys.contains(key))
             .and_then(|key| catalog.group_of(key))
         else {
             continue;
@@ -393,22 +398,26 @@ mod tests {
         }
 
         #[test]
-        fn held_deeds_stay_in_any_time_while_other_level_deeds_move() -> TestResult {
+        fn a_held_copy_defers_the_move_for_its_whole_starter_key() -> TestResult {
             let catalog = werdy_data::builtin()?;
             let (start, today) = days()?;
             let mut data = owner(start, Some("lv_parents"));
-            let held = BTreeSet::from([DeedId(1)]);
-            let other = data.next_deed_id();
+            let copy = DeedId(2);
+            let other = DeedId(3);
             data.last_deed_id = other.0;
-            data.deeds.push(Deed::new(other, start, rule("any_time")));
+            data.deeds.extend([
+                Deed::new(copy, start.next()?, rule("any_time")),
+                Deed::new(other, start, rule("any_time")),
+            ]);
+            data.starter_keys.insert(copy, "lv_parents".to_owned());
             data.starter_keys.insert(other, "lv_kinship".to_owned());
+            let parents_before_move = data.deeds[..2].to_vec();
 
-            let moved = move_level_deeds_to_groups(&mut data, &catalog, today, &held);
+            let moved = move_level_deeds_to_groups(&mut data, &catalog, today, &[copy].into());
 
             assert_eq!(moved, [other]);
-            assert_eq!(place_on(&data, today).as_deref(), Some("any_time"));
-            assert_eq!(data.deeds[0].rule_versions().count(), 1);
-            assert!(data.level_group_move_handled.is_disjoint(&held));
+            assert_eq!(data.deeds[..2], parents_before_move);
+            assert_eq!(data.level_group_move_handled, [other].into());
             Ok(())
         }
 
