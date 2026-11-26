@@ -346,7 +346,7 @@ fn slot_reminder_switch_keeps_native_checkbox_and_visible_states() {
     assert!(reminders.contains("label { class: \"reminder-switch\","));
     assert!(reminders.contains("r#type: \"checkbox\", checked: rule.is_some()"));
     assert!(reminders.contains("event.checked()"));
-    assert!(reminders.contains("span { {i18n.t(&format!(\"slot-{slot}\"))} }"));
+    assert!(reminders.contains("span { \"{name}\" }"));
     assert!(touch_sized(APP_CSS, ".reminder-switch"));
     for (selector, property, value) in [
         (

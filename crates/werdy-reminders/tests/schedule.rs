@@ -336,3 +336,28 @@ fn london_missing_summer_prayer_keeps_clock_reminder() {
         assert!(!plan.prayer_slots_skipped_no_location);
     }
 }
+
+#[test]
+fn a_group_clock_reminder_lists_its_due_deeds_at_the_chosen_time() {
+    let mut owner = owner("quran");
+    owner.settings.location = None;
+    clock(&mut owner, "quran", 20, 30);
+    let plan = schedule(&owner, now(8, 0), 1, |_, _| 180).unwrap();
+    assert_eq!(plan.notifications.len(), 1);
+    assert_eq!(plan.notifications[0].minute, 20 * 60 + 30);
+    assert_eq!(plan.notifications[0].deeds, vec![DeedId(1), DeedId(2)]);
+    assert_eq!(
+        plan.notifications[0].target,
+        werdy_reminders::Target::Slot(SlotKey::new("quran"))
+    );
+}
+
+#[test]
+fn a_prayer_slot_still_rejects_a_clock_reminder() {
+    let mut owner = owner("fajr");
+    clock(&mut owner, "fajr", 5, 0);
+    assert!(matches!(
+        schedule(&owner, now(0, 0), 1, |_, _| 180),
+        Err(werdy_reminders::Error::InvalidSlotRule(_))
+    ));
+}

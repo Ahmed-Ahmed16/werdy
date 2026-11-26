@@ -197,7 +197,7 @@ pub fn payload(
 fn notification_text(owner: &OwnerData, notice: &Notification, texts: &Texts) -> (String, String) {
     let language = Language::from_code(&owner.settings.language);
     let name = match &notice.target {
-        Target::Slot(slot) => texts.get(language, &format!("slot-{}", slot.0), &[]),
+        Target::Slot(slot) => texts.get(language, &crate::starter::place_name_key(&slot.0), &[]),
         Target::Deed(id) => deed_name(owner, *id, texts),
     };
     let mut names: Vec<_> = notice
