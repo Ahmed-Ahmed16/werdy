@@ -1576,6 +1576,25 @@ impl AppState {
         }
     }
 
+    /// Moves level deeds that still sit in any time into their groups, once
+    /// (decision 0045), and saves them as deed edits so sync sends them.
+    pub fn move_level_deeds_to_groups(&mut self, store: &dyn Store) {
+        if self.save_status == SaveStatus::LoadFailed {
+            return;
+        }
+        let Ok(catalog) = crate::editor_data::catalog() else {
+            return;
+        };
+        let moved = crate::starter::move_level_deeds_to_groups(&mut self.data, catalog, self.today);
+        if moved.is_empty() {
+            return;
+        }
+        for id in moved {
+            self.record_upsert(id);
+        }
+        self.save_to(store);
+    }
+
     fn backfill_setup_deed_ids(&mut self) {
         if self.data.first_run_complete
             || !self.data.first_run.setup_deed_ids.is_empty()
@@ -2413,6 +2432,49 @@ mod tests {
         let again = started(&store)?;
         assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
         assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn opening_moves_a_level_deed_into_its_group_and_saves_it_as_a_deed_edit() -> TestResult {
+        let store = MemoryStore::default();
+        let start = today()?.previous()?;
+        let mut data = five_prayers(start)?;
+        let id = data.next_deed_id();
+        data.last_deed_id = id.0;
+        data.deeds.push(werdy_core::Deed::new(
+            id,
+            start,
+            werdy_core::DeedRule {
+                schedule: werdy_core::Schedule::EveryDay,
+                target: None,
+                category: werdy_core::CategoryKey::new("family"),
+                slot: werdy_core::SlotKey::new("any_time"),
+            },
+        ));
+        data.names
+            .insert(id, werdy_store::DeedName::Key("deed-lv-parents".to_owned()));
+        data.starter_keys.insert(id, "lv_parents".to_owned());
+        store.save(&data)?;
+
+        let mut state = AppState::start(&store, today()?, slot_order());
+        state.move_level_deeds_to_groups(&store);
+        assert_eq!(state.save_status, SaveStatus::Saved);
+        let place = |state: &AppState, day| {
+            state
+                .data
+                .deeds
+                .iter()
+                .find(|deed| deed.id == id)
+                .and_then(|deed| deed.rule_on(day))
+                .map(|rule| rule.slot.0.clone())
+        };
+        let reloaded = AppState::start(&store, today()?, slot_order());
+        assert_eq!(
+            place(&reloaded, today()?).as_deref(),
+            Some("heart_and_character")
+        );
+        assert_eq!(place(&reloaded, start).as_deref(), Some("any_time"));
         Ok(())
     }
 
