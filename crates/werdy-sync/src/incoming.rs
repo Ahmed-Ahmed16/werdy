@@ -61,6 +61,7 @@ pub struct HeldRow {
 pub(crate) enum DeedDependency {
     Deed { id: DeedKey },
     Rule { id: DeedKey, from_day: WerdyDay },
+    Mark { id: DeedKey },
 }
 
 impl HeldRow {

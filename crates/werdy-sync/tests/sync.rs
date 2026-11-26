@@ -101,6 +101,71 @@ fn wire_rule(rows: &[serde_json::Value]) -> serde_json::Value {
 }
 
 #[test]
+fn held_deed_ids_cover_headers_rules_and_marks() {
+    let mut source = FakeBackend::new(1_000);
+    for install in ["rule_copy", "header_copy", "mark_copy", "readable_copy"] {
+        sync(
+            &mut Sync::new(install).unwrap(),
+            &mut source,
+            &mut history(install),
+        );
+    }
+    let batch = run(source.pull(0)).unwrap();
+    let cursor = batch.cursor;
+    let mut rows = serde_json::to_value(batch).unwrap()["changes"]
+        .as_array()
+        .unwrap()
+        .clone();
+    for (offset, (install, tag, pointer, unreadable)) in [
+        (
+            "rule_copy",
+            "Rule",
+            "/Rule/rule/schedule",
+            serde_json::json!("some_future_kind"),
+        ),
+        (
+            "header_copy",
+            "Deed",
+            "/Deed/row/name",
+            serde_json::json!({"FutureName": "name"}),
+        ),
+        (
+            "mark_copy",
+            "Mark",
+            "/Mark/entry",
+            serde_json::json!({"FutureEntry": {}}),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut change = rows
+            .iter()
+            .map(|row| &row["pending"]["change"])
+            .find(|change| change[tag]["id"]["install"] == install)
+            .unwrap()
+            .clone();
+        *change.pointer_mut(pointer).unwrap() = unreadable;
+        rows.push(wire_row(cursor + offset as u64 + 1, change));
+    }
+
+    let mut engine = Sync::new("reader").unwrap();
+    let mut records = OwnerData::default();
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(cursor + 3, rows)),
+        &mut records,
+    );
+    assert_eq!(records.deeds.len(), 4);
+    let expected = records
+        .deed_keys
+        .iter()
+        .filter_map(|(id, key)| (key.install != "readable_copy").then_some(*id))
+        .collect();
+    assert_eq!(engine.held_deed_ids(), expected);
+}
+
+#[test]
 fn unreadable_creation_rule_defers_deed_without_losing_readable_rows() {
     let mut rows = wire_history();
     let mut later = wire_rule(&rows);

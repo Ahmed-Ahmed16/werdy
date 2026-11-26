@@ -514,6 +514,23 @@ impl Sync {
         Ok(())
     }
 
+    /// Local deeds with a held header, rule or mark in the server stream.
+    pub fn held_deed_ids(&self) -> BTreeSet<DeedId> {
+        let held_keys: BTreeSet<_> = self
+            .held
+            .iter()
+            .filter_map(|row| match row.dependency.as_ref()? {
+                DeedDependency::Deed { id }
+                | DeedDependency::Rule { id, .. }
+                | DeedDependency::Mark { id } => Some(id),
+            })
+            .collect();
+        self.bindings
+            .iter()
+            .filter_map(|binding| held_keys.contains(&binding.remote).then_some(binding.local))
+            .collect()
+    }
+
     /// Local marks and clears captured but not yet acknowledged by the server.
     /// After `finish_from` their saved time is zero, so callers comparing
     /// marks must treat these as the newest.

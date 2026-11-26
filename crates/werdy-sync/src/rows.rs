@@ -377,7 +377,7 @@ fn project_changes(
             Some(DeedDependency::Rule { id, from_day }) => {
                 held_rules.insert((id.clone(), *from_day));
             }
-            None => {}
+            Some(DeedDependency::Mark { .. }) | None => {}
         }
     }
     for (change, _) in changes {
