@@ -62,14 +62,6 @@ impl Language {
             Self::English => "ltr",
         }
     }
-
-    /// Returns the other language, for the language switch.
-    pub fn other(self) -> Self {
-        match self {
-            Self::Arabic => Self::English,
-            Self::English => Self::Arabic,
-        }
-    }
 }
 
 /// Fluent files for one language, one per feature.
