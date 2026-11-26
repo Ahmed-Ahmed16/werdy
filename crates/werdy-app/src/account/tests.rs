@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use super::*;
+use crate::state::AppState;
 use std::{
     future::Future,
     pin::pin,
@@ -9,7 +10,7 @@ use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule as DeedSchedule, SlotKey,
     WerdyDay,
 };
-use werdy_sync::FakeBackend;
+use werdy_sync::{Backend, Change, FakeBackend};
 
 fn run<F: Future>(future: F) -> F::Output {
     match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
@@ -61,6 +62,144 @@ fn flight(store: &AccountStore, backend: &mut FakeBackend) -> Checkpoint {
     run(checkpoint.engine.sync(backend, &mut records, || 1000)).unwrap();
     checkpoint.records = to_json(&records).unwrap();
     checkpoint
+}
+
+fn legacy_level_sheet() -> OwnerData {
+    let rule = DeedRule {
+        schedule: DeedSchedule::EveryDay,
+        target: Some(werdy_core::Target::new(1, "times").unwrap()),
+        category: CategoryKey::new("family"),
+        slot: SlotKey::new("any_time"),
+    };
+    OwnerData {
+        deeds: vec![Deed::new(DeedId(1), day(), rule)],
+        last_deed_id: 1,
+        names: [(
+            DeedId(1),
+            werdy_store::DeedName::Key("deed-lv-parents".into()),
+        )]
+        .into(),
+        starter_keys: [(DeedId(1), "lv_parents".into())].into(),
+        ..OwnerData::default()
+    }
+}
+
+fn apply_flight(store: &AccountStore, backend: &mut FakeBackend, state: &mut AppState) {
+    let completed = flight(store, backend);
+    let records = store.complete(&completed, 1, 2000).unwrap().unwrap();
+    state.accept_successful_sync(records, store);
+}
+
+#[test]
+fn first_sync_moves_the_pulled_rule_and_queues_it_for_the_next_sync() {
+    let store = store();
+    let mut local = legacy_level_sheet();
+    local.deeds[0].archive(day().next().unwrap()).unwrap();
+    store.sign_in(session(), &local).unwrap();
+    let mut backend = FakeBackend::new(1000);
+    let today = day().next().unwrap().next().unwrap();
+    let mut phone = AppState::start(&store, today, crate::starter::slot_order());
+
+    let initial = flight(&store, &mut backend);
+    store.complete(&initial, 1, 1000).unwrap();
+    let mut other_engine = Sync::new("other").unwrap();
+    let mut other = OwnerData::default();
+    run(other_engine.sync(&mut backend, &mut other, || 1000)).unwrap();
+    let edit_day = today.previous().unwrap();
+    let mut edited = other.deeds[0].rule_on(today).unwrap().clone();
+    edited.target = Some(werdy_core::Target::new(9, "times").unwrap());
+    edited.category = CategoryKey::new("knowledge");
+    edited.schedule = DeedSchedule::Weekdays([werdy_core::Weekday::Friday].into());
+    other.deeds[0]
+        .change_rule(edit_day, edited.clone())
+        .unwrap();
+    run(other_engine.sync(&mut backend, &mut other, || 2000)).unwrap();
+
+    apply_flight(&store, &mut backend, &mut phone);
+
+    let mut grouped = edited.clone();
+    grouped.slot = SlotKey::new("heart_and_character");
+    assert_eq!(phone.data.deeds[0].rule_on(edit_day), Some(&edited));
+    assert_eq!(phone.data.deeds[0].rule_on(today), Some(&grouped));
+    assert!(phone.data.deeds[0].is_archived_on(today));
+    assert_eq!(store.load().unwrap().unwrap().deeds, phone.data.deeds);
+    assert!(store.account.borrow().checkpoint.as_ref().unwrap().engine.outbox().iter().any(
+        |pending| matches!(&pending.change, Change::Rule { from_day, .. } if *from_day == today)
+    ));
+    let later = legacy_level_sheet();
+    let new_id = other.next_deed_id();
+    other.last_deed_id = new_id.0;
+    other.deeds.push(Deed::new(
+        new_id,
+        day(),
+        later.deeds[0].rule_on(day()).unwrap().clone(),
+    ));
+    other
+        .names
+        .insert(new_id, werdy_store::DeedName::Key("deed-lv-kinship".into()));
+    other.starter_keys.insert(new_id, "lv_kinship".into());
+    run(other_engine.sync(&mut backend, &mut other, || 3000)).unwrap();
+    apply_flight(&store, &mut backend, &mut phone);
+    let new_deed = phone
+        .data
+        .deeds
+        .iter()
+        .find(|deed| {
+            phone
+                .data
+                .starter_keys
+                .get(&deed.id)
+                .is_some_and(|key| key == "lv_kinship")
+        })
+        .unwrap();
+    assert_eq!(new_deed.rule_on(today).unwrap().slot.0, "any_time");
+    run(other_engine.sync(&mut backend, &mut other, || 3000)).unwrap();
+    assert_eq!(other.deeds[0].rule_on(today), Some(&grouped));
+}
+
+#[test]
+fn first_sync_keeps_a_pulled_slot_and_a_later_move_back_to_any_time() {
+    let mut backend = FakeBackend::new(1000);
+    let mut other_engine = Sync::new("other").unwrap();
+    let today = day().next().unwrap().next().unwrap().next().unwrap();
+    let mut other = legacy_level_sheet();
+    run(other_engine.sync(&mut backend, &mut other, || 1000)).unwrap();
+    other_engine.remember_deed_keys(&mut other);
+    let stale = other.clone();
+    let mut rule = other.deeds[0].rule_on(today).unwrap().clone();
+    for (edit_day, slot) in [
+        (day().next().unwrap(), "heart_and_character"),
+        (today.previous().unwrap(), "any_time"),
+    ] {
+        rule.slot = SlotKey::new(slot);
+        other.deeds[0].change_rule(edit_day, rule.clone()).unwrap();
+        run(other_engine.sync(&mut backend, &mut other, || 1000)).unwrap();
+
+        let store = store();
+        store.sign_in(session(), &stale).unwrap();
+        let mut phone = AppState::start(&store, today, crate::starter::slot_order());
+        apply_flight(&store, &mut backend, &mut phone);
+        assert!(phone.data.level_group_move_handled.is_empty());
+        assert_eq!(phone.data.deeds[0].rule_on(today), Some(&rule));
+        assert_eq!(
+            phone.data.deeds[0].rule_versions().count(),
+            other.deeds[0].rule_versions().count()
+        );
+        assert!(
+            store
+                .account
+                .borrow()
+                .checkpoint
+                .as_ref()
+                .unwrap()
+                .engine
+                .outbox()
+                .is_empty()
+        );
+        let cursor = run(backend.pull(0)).unwrap().cursor;
+        apply_flight(&store, &mut backend, &mut phone);
+        assert!(run(backend.pull(cursor)).unwrap().changes.is_empty());
+    }
 }
 
 #[test]

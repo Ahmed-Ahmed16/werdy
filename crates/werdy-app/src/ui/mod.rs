@@ -23,8 +23,9 @@ mod summary;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use werdy_store::Theme;
+use werdy_store::{Store, Theme};
 
+use crate::account::AccountStore;
 use crate::i18n::{Language, Texts};
 use crate::state::{AppState, SaveStatus, Screen};
 use crate::{demo, platform, starter};
@@ -38,10 +39,7 @@ fn demo_today() -> Result<werdy_core::WerdyDay, String> {
     platform::today_with_settings(&settings).map_err(|error| error.to_string())
 }
 
-fn start_app_state(
-    mode: platform::DataMode,
-    store: &dyn werdy_store::Store,
-) -> Result<AppState, String> {
+fn start_app_state(mode: platform::DataMode, store: &AccountStore) -> Result<AppState, String> {
     let today = if mode == platform::DataMode::Demo {
         demo_today()?
     } else {
@@ -69,7 +67,7 @@ fn start_app_state(
     if seed_failed {
         state.save_status = SaveStatus::SaveFailed;
     }
-    if mode == platform::DataMode::Normal {
+    if mode == platform::DataMode::Normal && store.account.borrow().session.is_none() {
         state.move_level_deeds_to_groups(store);
     }
     state.show_welcome_on_open(store);
@@ -89,16 +87,83 @@ fn reset_demo(store: &dyn werdy_store::Store) -> Result<AppState, String> {
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::Mark;
+    use std::rc::Rc;
+    use werdy_core::{CategoryKey, Deed, DeedId, DeedRule, Mark, Schedule, SlotKey};
     use werdy_store::{MemoryStore, Store};
 
     use super::{reset_demo, start_app_state};
+    use crate::account::{AccountStore, storage::MemoryVault};
     use crate::platform::DataMode;
     use crate::state::Tap;
 
+    fn demo_store() -> AccountStore {
+        AccountStore::open(
+            Rc::new(MemoryStore::default()),
+            Rc::new(MemoryVault::default()),
+            false,
+        )
+    }
+
+    #[test]
+    fn opening_moves_legacy_level_deeds_only_for_local_owner_data()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let start = crate::platform::today()?.previous()?;
+        let records = werdy_store::OwnerData {
+            deeds: vec![Deed::new(
+                DeedId(1),
+                start,
+                DeedRule {
+                    schedule: Schedule::EveryDay,
+                    target: None,
+                    category: CategoryKey::new("family"),
+                    slot: SlotKey::new("any_time"),
+                },
+            )],
+            last_deed_id: 1,
+            names: [(
+                DeedId(1),
+                werdy_store::DeedName::Key("deed-lv-parents".into()),
+            )]
+            .into(),
+            starter_keys: [(DeedId(1), "lv_parents".into())].into(),
+            ..Default::default()
+        };
+        for (mode, signed_in, slot) in [
+            (DataMode::Normal, true, "any_time"),
+            (DataMode::Normal, false, "heart_and_character"),
+            (DataMode::Demo, false, "any_time"),
+        ] {
+            let inner = Rc::new(MemoryStore::default());
+            inner.save(&records)?;
+            let store = AccountStore::open(
+                inner,
+                Rc::new(MemoryVault::default()),
+                mode == DataMode::Normal,
+            );
+            if signed_in {
+                store.sign_in(
+                    werdy_sync::Session {
+                        access_token: "access".into(),
+                        refresh_token: "refresh".into(),
+                        expires_at: 5000,
+                        user_id: "00000000-0000-4000-8000-000000000023".into(),
+                        email: None,
+                    },
+                    &records,
+                )?;
+            }
+            let state = start_app_state(mode, &store)?;
+            let saved = store.load()?.ok_or("missing saved records")?;
+            assert_eq!(state.data.deeds, saved.deeds);
+            let rule = saved.deeds[0].rule_on(state.today).ok_or("missing rule")?;
+            assert_eq!(rule.slot.0, slot);
+        }
+        Ok(())
+    }
+
     #[test]
     fn demo_never_shows_or_records_whats_new() -> Result<(), Box<dyn std::error::Error>> {
-        let store = MemoryStore::default();
+        let store = demo_store();
         let state = start_app_state(DataMode::Demo, &store)?;
         assert!(state.whats_new.is_empty());
         assert_eq!(
@@ -110,7 +175,7 @@ mod tests {
     #[test]
     fn reset_demo_replaces_stale_tabs_without_restoring_marks_or_deleted_deeds()
     -> Result<(), Box<dyn std::error::Error>> {
-        let store = MemoryStore::default();
+        let store = demo_store();
         let mut first = start_app_state(DataMode::Demo, &store)?;
         let mut second = start_app_state(DataMode::Demo, &store)?;
         assert!(second.data == first.data);
@@ -139,7 +204,7 @@ mod tests {
 
     #[test]
     fn stale_demo_save_after_reset_keeps_fresh_seed() -> Result<(), Box<dyn std::error::Error>> {
-        let store = MemoryStore::default();
+        let store = demo_store();
         let mut stale = start_app_state(DataMode::Demo, &store)?;
         let deed_id = stale.data.deeds[0].id;
         stale.tap(deed_id, Tap::Done);
@@ -167,7 +232,7 @@ pub fn App() -> Element {
         let raw = platform::open_store(mode);
         let vault = crate::account::storage::open()
             .unwrap_or_else(|_| Rc::new(crate::account::storage::UnavailableVault));
-        Rc::new(crate::account::AccountStore::open(
+        Rc::new(AccountStore::open(
             raw,
             vault,
             mode == platform::DataMode::Normal,
@@ -175,15 +240,15 @@ pub fn App() -> Element {
     });
     use_context_provider(|| crate::account::runtime::AccountHandle(account_store.clone()));
     let account_enabled = account_store.enabled;
-    let store: Rc<dyn werdy_store::Store> = account_store;
     let initial = use_hook(|| {
-        start_app_state(mode, store.as_ref()).map(|mut state| {
+        start_app_state(mode, account_store.as_ref()).map(|mut state| {
             if !account_enabled && state.screen == Screen::FirstRunWatcher {
                 state.continue_first_run_watcher();
             }
             state
         })
     });
+    let store: Rc<dyn Store> = account_store;
     use_context_provider(|| texts.clone());
 
     rsx! {
