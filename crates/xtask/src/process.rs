@@ -53,9 +53,8 @@ pub struct Outcome {
     pub stderr: String,
 }
 
-/// Windows sometimes refuses a file that was only just written: antivirus or
-/// Smart App Control is scanning it. The two codes are "Access is denied"
-/// (5) and "used by another process" (32).
+/// Windows error 5 means access was denied. Error 32 means another process
+/// is using the file.
 pub fn blocked_by_windows(stderr: &str) -> bool {
     stderr.contains("(os error 5)") || stderr.contains("(os error 32)")
 }
@@ -74,6 +73,13 @@ fn run_all_with(
     windows: bool,
     mut run: impl FnMut(&Step) -> Result<Outcome, String>,
 ) -> Result<(), String> {
+    let mut run_attempt = |step: &Step| match run(step) {
+        Err(message) if windows && blocked_by_windows(&message) => Ok(Outcome {
+            success: false,
+            stderr: message,
+        }),
+        outcome => outcome,
+    };
     let total = steps.len();
     for (index, step) in steps.iter().enumerate() {
         let number = index + 1;
@@ -81,18 +87,17 @@ fn run_all_with(
         if dry_run {
             continue;
         }
-        let mut outcome = run(step)?;
+        let mut outcome = run_attempt(step)?;
         if !outcome.success && windows && blocked_by_windows(&outcome.stderr) {
             println!(
-                "Windows blocked a new file (os error 5 or 32). Antivirus or Smart App \
-                 Control is probably scanning it. Retrying once."
+                "Windows refused a file (os error 5 or 32). Access was denied or another \
+                 process is using the file. Retrying once."
             );
-            outcome = run(step)?;
+            outcome = run_attempt(step)?;
             if !outcome.success && blocked_by_windows(&outcome.stderr) {
                 return Err(format!(
-                    "step {number} of {total} failed twice because Windows blocked a new \
-                     file: {step}. Run it again, or exclude this repo's target folder from \
-                     the scanner."
+                    "step {number} of {total} failed twice because Windows refused a file \
+                     (os error 5 or 32) while running {step}"
                 ));
             }
         }
@@ -136,6 +141,8 @@ fn run_step(step: &Step, root: &Path) -> Result<Outcome, String> {
         let _ = io::stderr().write_all(&buffer[..count]);
         kept.extend_from_slice(&buffer[..count]);
     }
+    // If a read fails, closing the pipe keeps the child from blocking on a write.
+    drop(pipe);
     let status = child
         .wait()
         .map_err(|error| format!("could not wait for {}: {error}", step.program))?;
@@ -193,6 +200,7 @@ mod tests {
         Access is denied. (os error 5)";
     const IN_USE: &str = "The process cannot access the file because it is being used by \
         another process. (os error 32)";
+    const LAUNCH_DENIED: &str = "could not start cargo: Access is denied. (os error 5)";
 
     fn steps() -> Vec<Step> {
         vec![Step::cargo(&["test"]), Step::cargo(&["fmt"])]
@@ -239,7 +247,47 @@ mod tests {
         .unwrap_err();
         assert_eq!(runs.get(), 2, "retried once, not forever");
         assert!(error.contains("step 1 of 2"));
-        assert!(error.contains("Windows blocked"));
+        assert!(error.contains("Windows refused"));
+    }
+
+    #[test]
+    fn a_blocked_launch_is_retried_and_can_pass() {
+        let runs = Cell::new(0);
+        let result = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            if runs.get() == 1 {
+                Err(LAUNCH_DENIED.to_string())
+            } else {
+                outcome(true, "")
+            }
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(runs.get(), 2);
+    }
+
+    #[test]
+    fn a_launch_blocked_twice_fails_and_says_why() {
+        let runs = Cell::new(0);
+        let error = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            Err(LAUNCH_DENIED.to_string())
+        })
+        .unwrap_err();
+        assert_eq!(runs.get(), 2);
+        assert!(error.contains("failed twice"));
+        assert!(error.contains("Windows refused"));
+    }
+
+    #[test]
+    fn another_launch_error_is_returned_without_retrying() {
+        let runs = Cell::new(0);
+        let message = "could not start cargo: File not found. (os error 2)";
+        let result = run_all_with(&[Step::cargo(&["test"])], false, true, |_| {
+            runs.set(runs.get() + 1);
+            Err(message.to_string())
+        });
+        assert_eq!(result, Err(message.to_string()));
+        assert_eq!(runs.get(), 1);
     }
 
     #[test]
@@ -254,7 +302,7 @@ mod tests {
             }
         })
         .unwrap_err();
-        assert!(!error.contains("Windows blocked"));
+        assert!(!error.contains("Windows refused"));
         assert!(error.contains("step 1 of 2 failed"));
     }
 
@@ -284,5 +332,22 @@ mod tests {
     fn a_dry_run_runs_nothing() {
         let result = run_all_with(&steps(), true, true, |_| panic!("must not run"));
         assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn run_step_reports_a_successful_cargo_command() {
+        let result = run_step(&Step::cargo(&["--version"]), &workspace_root()).unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn run_step_keeps_stderr_from_a_failed_cargo_command() {
+        let result = run_step(
+            &Step::cargo(&["--definitely-not-a-flag"]),
+            &workspace_root(),
+        )
+        .unwrap();
+        assert!(!result.success);
+        assert!(!result.stderr.trim().is_empty());
     }
 }

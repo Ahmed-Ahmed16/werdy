@@ -11,8 +11,8 @@ cargo xtask <job>
       Run the CI gates locally: fmt, clippy, tests, wasm clippy.
       --android also runs the Android clippy and the debug APK build.
       --dry-run prints the commands without running them.
-      On Windows a step that fails with os error 5 or 32 (the scanner
-      blocked a new file) is run once more.
+      On Windows, a step that fails with os error 5 (access denied)
+      or 32 (file in use by another process) is run once more.
 
   apk inspect <file.apk>
       Print package, version, SDK levels, CPU types and signer.
