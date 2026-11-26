@@ -847,6 +847,10 @@ fn level_deeds_sit_in_the_groups_of_decision_0045() {
             "lv_friday_kahf",
             "lv_friday_salawat",
             "lv_friday_salawat_100",
+            // The advanced weekly box came with 0047, after 0045 named its
+            // groups, so it stays in any time.
+            "lv_visiting_graves",
+            "lv_weekly_fitra",
         ])
     );
     let in_groups = catalog

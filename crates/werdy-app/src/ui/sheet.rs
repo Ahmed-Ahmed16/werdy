@@ -29,7 +29,7 @@ pub fn Sheet() -> Element {
             app.summary().open,
         )
     };
-    let mut choices = use_signal(|| FoldChoices::new(today));
+    let mut choices = use_context::<Signal<FoldChoices>>();
     use_effect(move || {
         let today = state.read().today;
         if !choices.peek().is_for(today) {
@@ -272,6 +272,13 @@ fn unmarked_notice(shown_slots: usize, due_slots: usize) -> &'static str {
     }
 }
 
+/// Holds the sheet's fold choices above the sheet, so leaving the sheet and
+/// coming back the same werdy day keeps the folds set by hand (decision 0046).
+/// Call it once in the component that holds the app state.
+pub(super) fn provide_fold_choices(today: WerdyDay) -> Signal<FoldChoices> {
+    use_context_provider(|| Signal::new(FoldChoices::new(today)))
+}
+
 fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool {
     is_today && !welcome && !milestone
 }
@@ -419,6 +426,51 @@ fn DeedRow(row: SheetRow) -> Element {
 #[cfg(test)]
 mod tests {
     use super::{should_scroll_to_slot, unmarked_notice};
+
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::panic)]
+    fn fold_choices_live_above_the_sheet_so_a_new_sheet_keeps_them() {
+        use dioxus::prelude::*;
+        use werdy_core::{SlotKey, WerdyDay};
+
+        use crate::sheet_view::FoldChoices;
+
+        fn day() -> WerdyDay {
+            WerdyDay::new(2026, 11, 26).unwrap()
+        }
+        // The first sheet folds fajr by hand; a sheet drawn after it must
+        // still see that choice, as when the owner leaves and comes back.
+        #[component]
+        fn FirstSheet() -> Element {
+            let mut choices = use_context::<Signal<FoldChoices>>();
+            use_hook(move || {
+                choices
+                    .write()
+                    .set(day(), day(), [&SlotKey::new("fajr")], false);
+            });
+            rsx! {}
+        }
+        #[component]
+        fn LaterSheet() -> Element {
+            let choices = use_context::<Signal<FoldChoices>>();
+            use_hook(move || {
+                let open = choices
+                    .peek()
+                    .open(day(), day(), &SlotKey::new("fajr"), false);
+                assert!(!open, "the fold set by hand was lost");
+            });
+            rsx! {}
+        }
+        fn root() -> Element {
+            super::provide_fold_choices(day());
+            rsx! {
+                FirstSheet {}
+                LaterSheet {}
+            }
+        }
+        let mut dom = VirtualDom::new(root);
+        dom.rebuild_in_place();
+    }
 
     #[test]
     fn unmarked_notice_distinguishes_no_due_deeds_from_all_marked() {

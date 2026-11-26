@@ -282,6 +282,7 @@ fn Shell(initial: AppState, store: StoreHandle, mode: platform::DataMode) -> Ele
     use_context_provider(|| context::Actions::new(state, store));
     use_context_provider(|| state);
     use_context_provider(|| clock_slot);
+    sheet::provide_fold_choices(state.peek().today);
     let sharing = sharing::use_sharing();
 
     let settings = &state.read().data.settings;
