@@ -412,7 +412,7 @@ pub struct AppState {
     pub today: WerdyDay,
     /// The day on screen. Never after today.
     pub viewing: WerdyDay,
-    /// Time slot order from the data file.
+    /// Place order from the data file: time slots, then groups, then any time.
     pub slot_order: Vec<SlotKey>,
     /// Save state shown in a banner when something went wrong.
     pub save_status: SaveStatus,
@@ -2413,6 +2413,36 @@ mod tests {
         let again = started(&store)?;
         assert_eq!(again.data.settings.calendar.offset_on(yesterday), original);
         assert_eq!(again.data.settings.calendar.offset_on(today()?).days(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn a_custom_deed_in_a_group_sits_after_the_slots_and_before_any_time() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        for place in ["any_time", "dua", "night", "quran"] {
+            let draft = EditorDraft {
+                name: place.to_owned(),
+                slot: werdy_core::SlotKey::new(place),
+                ..EditorDraft::default()
+            };
+            state.save_deed(None, &draft)?;
+        }
+        state.save_to(&store);
+        let order = |state: &AppState| -> Vec<String> {
+            state
+                .sheet()
+                .slots
+                .into_iter()
+                .map(|slot| slot.slot.0)
+                .collect()
+        };
+        let expected = [
+            "fajr", "dhuhr", "asr", "maghrib", "isha", "night", "quran", "dua", "any_time",
+        ];
+        assert_eq!(order(&state), expected);
+        let resumed = AppState::start(&store, today()?, slot_order());
+        assert_eq!(order(&resumed), expected);
         Ok(())
     }
 
