@@ -624,6 +624,7 @@ fn WatchedContent(view: WatchView, language: String, today: werdy_core::WerdyDay
     use_context_provider(|| state);
     use_context_provider(|| Actions::read_only(state, store));
     use_context_provider(|| ReadOnly(true));
+    super::sheet::provide_fold_choices(today);
     let cursor = view.cursor();
     use_effect(use_reactive(
         (&view, &language, &today),
