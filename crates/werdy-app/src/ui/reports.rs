@@ -601,12 +601,12 @@ fn RankedBlock(report: Rc<Report>) -> Element {
     }
 }
 
-/// The five prayers use the first congregation deed due each day, or the
-/// on time deed when none is due (decision 0049). The last days of the period
-/// show separate dots for recorded X marks and unmarked prayers (#192).
-/// Missed counts include unmarked misses and marked misses on the on time
-/// deed. A prayer marked as prayed alone counts separately. Each row shows
-/// the percent over the shown days.
+/// The five prayers (decision 0049): a dot per day for the last days of the
+/// period, and the percent over those shown days only. Each day shows the
+/// first congregation deed due that day, else the on time deed. Unmarked
+/// prayers and recorded X marks draw differently (#192). Missed counts
+/// include unmarked days and X marks on the on time deed; an X on a
+/// congregation day means prayed alone and is not counted as missed.
 /// Hidden when the owner has no prayer deed of either kind.
 #[component]
 fn PrayersBlock(report: Rc<Report>) -> Element {
