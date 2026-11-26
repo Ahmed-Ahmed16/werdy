@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.3.0",
+      "notes": [
+        "whats-new-0-3-0-groups",
+        "whats-new-0-3-0-schedules",
+        "whats-new-0-3-0-hours",
+        "whats-new-0-3-0-prayers",
+        "whats-new-0-3-0-support",
+        "whats-new-0-3-0-sheet",
+        "whats-new-0-3-0-late",
+        "whats-new-0-3-0-offline"
+      ]
+    },
+    {
       "version": "0.2.0",
       "notes": [
         "whats-new-0-2-0-sheet",
