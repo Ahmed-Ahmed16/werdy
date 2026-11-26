@@ -13,7 +13,7 @@ use werdy_store::DeedName;
 
 use super::context::{I18n, use_actions, use_i18n};
 use super::icons::{CheckIcon, ChevronBack, ChevronForward, CrossIcon, HalfIcon};
-use crate::starter::fard_prayer_ids;
+use crate::starter::fard_prayer_sources;
 use crate::state::{AppState, Screen};
 
 const PERIODS: [(Period, &str); 5] = [
@@ -600,16 +600,20 @@ fn RankedBlock(report: Rc<Report>) -> Element {
     }
 }
 
-/// The five fard prayers (decision 0041): a dot per day for the last days of
-/// the period, and the period percent. Hidden when the owner has none of them.
+/// The five prayers (decision 0049): a dot per day for the last days of the
+/// period, and the percent over those shown days only. Each day shows the
+/// first congregation deed due that day, else the on time deed. Hidden when
+/// the owner has no prayer deed of either kind.
 #[component]
 fn PrayersBlock(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
     let state = use_context::<Signal<AppState>>();
-    let prayers = fard_prayer_ids(&state.read().data);
+    let prayers = fard_prayer_sources(&state.read().data);
     let start = report.days.len().saturating_sub(PRAYER_GRID_DAYS);
     let days = report.days.get(start..).unwrap_or_default();
-    let grid = prayer_grid(&report, &prayers, days);
+    let Ok(grid) = prayer_grid(&report, &prayers, days) else {
+        return rsx! {};
+    };
     if grid.is_empty() {
         return rsx! {};
     }
@@ -622,10 +626,10 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
             h2 { class: "report-block-title", {i18n.t("reports-prayers")} }
             if let Some(range) = range { p { class: "report-muted", "{range}" } }
             for row in grid {
-                div { class: "report-prayer-row", key: "{row.deed_id.0}",
+                div { class: "report-prayer-row", key: "{row.prayer.0}",
                     div { class: "report-row-head",
-                        span { class: "report-row-name", {deed_name(&state.read(), &i18n, row.deed_id)} }
-                        if let Some(percent) = report.per_deed.get(&row.deed_id).and_then(|score| score.percent) {
+                        span { class: "report-row-name", {i18n.t(&format!("slot-{}", row.prayer.0))} }
+                        if let Some(percent) = row.score.percent {
                             strong { {percent_text(&i18n, percent)} }
                         }
                     }
@@ -643,6 +647,7 @@ fn PrayersBlock(report: Rc<Report>) -> Element {
 #[component]
 fn PrayerDot(cell: PrayerDay) -> Element {
     let i18n = use_i18n();
+    let state = use_context::<Signal<AppState>>();
     let (kind, key) = match cell.dot {
         DayDot::Done => ("done", "reports-history-done"),
         DayDot::Partial => ("partial", "reports-history-partial"),
@@ -656,6 +661,9 @@ fn PrayerDot(cell: PrayerDay) -> Element {
             ("mark", FluentValue::from(i18n.t(key))),
         ],
     );
+    if let Some(deed_id) = cell.deed_id {
+        label = detail_label(&i18n, &label, &deed_name(&state.read(), &i18n, deed_id));
+    }
     if cell.noted {
         label = detail_label(&i18n, &label, &i18n.t("reports-note"));
     }
