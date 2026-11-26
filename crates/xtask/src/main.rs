@@ -32,7 +32,7 @@ fn run(command: Command) -> Result<(), String> {
         }
         Command::Gates { android, dry_run } => gates::run(android, dry_run),
         Command::ApkInspect { path } => apk::inspect(&path),
-        Command::PrComments { number, all, full } => pr::comments(number, all, full),
+        Command::PrComments { number, options } => pr::comments(number, options),
         Command::PrWaitReview {
             number,
             timeout_mins,

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_core::{SheetRow, SheetSlot, SlotKey, WerdyDay};
+use werdy_core::{RowTag, SheetRow, SheetSlot, SlotKey, WerdyDay};
 use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
@@ -233,11 +233,20 @@ fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool
     is_today && !welcome && !milestone
 }
 
-/// Marked deeds and all deeds in a slot. A miss counts as marked: the person
-/// has dealt with it.
+/// Text key for a row's quiet schedule tag.
+fn row_tag_key(tag: RowTag) -> &'static str {
+    match tag {
+        RowTag::ThisWeek => "sheet-this-week",
+        RowTag::WhenItComesUp => "sheet-when-it-comes-up",
+    }
+}
+
+/// Marked deeds and all counted deeds in a slot. A miss counts as marked: the
+/// person has dealt with it. An unmarked when it comes up deed is not counted.
 fn slot_progress(rows: &[SheetRow]) -> (usize, usize) {
     let marked = rows.iter().filter(|row| row.mark.is_some()).count();
-    (marked, rows.len())
+    let counted = rows.iter().filter(|row| row.counts_in_section()).count();
+    (marked, counted)
 }
 
 /// A slot folds once every deed has a mark. A hand choice for that day wins.
@@ -367,6 +376,9 @@ fn DeedRow(row: SheetRow) -> Element {
                 if let Some(target) = target {
                     CountTag { deed_id, mark, target }
                 }
+                if let Some(tag) = row.tag {
+                    span { class: "schedule-tag", {i18n.t(row_tag_key(tag))} }
+                }
                 if row.added_later {
                     span {
                         class: "late-sign",
@@ -390,7 +402,7 @@ fn DeedRow(row: SheetRow) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::{DeedId, Mark, SheetRow, SlotKey};
+    use werdy_core::{DeedId, Mark, RowTag, SheetRow, SlotKey};
 
     use super::{
         fold_all_opens, nearest_slot, should_scroll_to_slot, slot_open, slot_progress,
@@ -424,6 +436,7 @@ mod tests {
             mark,
             added_later: false,
             target: None,
+            tag: None,
         }
     }
 
@@ -439,6 +452,20 @@ mod tests {
             row(6, Some(Mark::Count(120))),
         ];
         assert_eq!(slot_progress(&rows), (5, 6));
+    }
+
+    #[test]
+    fn slot_progress_leaves_out_unmarked_when_it_comes_up_deeds() {
+        let comes_up = |id, mark| SheetRow {
+            tag: Some(RowTag::WhenItComesUp),
+            ..row(id, mark)
+        };
+        let rows = [
+            row(1, Some(Mark::Done)),
+            comes_up(2, None),
+            comes_up(3, Some(Mark::Missed)),
+        ];
+        assert_eq!(slot_progress(&rows), (2, 2));
     }
 
     #[test]
