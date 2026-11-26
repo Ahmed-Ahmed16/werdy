@@ -1,5 +1,7 @@
 //! Turns the words after `cargo xtask` into a command. No side effects.
 
+use crate::pr::CommentOptions;
+
 pub const DEFAULT_TIMEOUT_MINS: u64 = 20;
 
 pub const HELP: &str = "\
@@ -9,11 +11,14 @@ cargo xtask <job>
       Run the CI gates locally: fmt, clippy, tests, wasm clippy.
       --android also runs the Android clippy and the debug APK build.
       --dry-run prints the commands without running them.
+      On Windows, a step that fails with os error 5 (access denied)
+      or 32 (file in use by another process) is run once more.
 
   apk inspect <file.apk>
       Print package, version, SDK levels, CPU types and signer.
       Exits with an error when phones would refuse the APK, when the
-      signature does not verify, or when it carries the debug key.
+      signature does not verify, or when it is not signed with the
+      release key (the debug key, or any other key).
 
   pr comments <number> [--all] [--full]
       Print review threads, unresolved first. --all adds resolved
@@ -34,11 +39,24 @@ cargo xtask <job>
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
-    Gates { android: bool, dry_run: bool },
-    ApkInspect { path: String },
-    PrComments { number: u32, all: bool, full: bool },
-    PrWaitReview { number: u32, timeout_mins: u64 },
-    ReleaseCheckTag { tag: String },
+    Gates {
+        android: bool,
+        dry_run: bool,
+    },
+    ApkInspect {
+        path: String,
+    },
+    PrComments {
+        number: u32,
+        options: CommentOptions,
+    },
+    PrWaitReview {
+        number: u32,
+        timeout_mins: u64,
+    },
+    ReleaseCheckTag {
+        tag: String,
+    },
 }
 
 pub fn parse(args: &[String]) -> Result<Command, String> {
@@ -59,8 +77,10 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             check_flags(flags, &["--all", "--full"])?;
             Ok(Command::PrComments {
                 number: pr_number(number)?,
-                all: flags.contains(&"--all"),
-                full: flags.contains(&"--full"),
+                options: CommentOptions {
+                    all: flags.contains(&"--all"),
+                    full: flags.contains(&"--full"),
+                },
             })
         }
         ["pr", "wait-review", number] => Ok(Command::PrWaitReview {
@@ -136,8 +156,20 @@ mod tests {
             parse_words("pr comments #82 --all"),
             Ok(Command::PrComments {
                 number: 82,
-                all: true,
-                full: false
+                options: CommentOptions {
+                    all: true,
+                    full: false
+                }
+            })
+        );
+        assert_eq!(
+            parse_words("pr comments 82 --full --all"),
+            Ok(Command::PrComments {
+                number: 82,
+                options: CommentOptions {
+                    all: true,
+                    full: true
+                }
             })
         );
     }

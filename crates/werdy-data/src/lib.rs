@@ -36,6 +36,22 @@ pub struct Catalog {
     pub deeds: Vec<Deed>,
     /// The starter sets, in the order they are offered.
     pub sets: Vec<StarterSet>,
+    /// The five fard prayers in day order, for the reports block.
+    #[serde(default)]
+    pub fard_prayers: Vec<FardPrayer>,
+}
+
+/// Which deeds mark one fard prayer (decisions 0041 and 0048).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct FardPrayer {
+    /// The prayer's time slot, which also names it.
+    pub slot: String,
+    /// The on time deed key.
+    pub on_time: String,
+    /// Congregation deed keys, tried in this order before the on time deed.
+    #[serde(default)]
+    pub congregation: Vec<String>,
 }
 
 /// A target unit such as pages or times.
@@ -81,6 +97,11 @@ pub enum Schedule {
     Weekdays(Vec<Weekday>),
     /// Due inside a Hijri range. Written as `{ hijri = "ramadan" }`.
     Hijri(String),
+    /// Due once in each Saturday to Friday week, on the day it is marked.
+    /// Written as `"once_a_week"`.
+    OnceAWeek,
+    /// Due only on a day it is marked. Written as `"when_it_comes_up"`.
+    WhenItComesUp,
 }
 
 /// Day of the week, written in lower case in the file.
@@ -249,6 +270,18 @@ pub enum Error {
     LevelOfferedAsExtra { level: String, set: String },
     /// A level offers the same set twice.
     DuplicateOffer { level: String, set: String },
+    /// A fard prayer uses a slot that is not in the known list.
+    UnknownPrayerSlot {
+        /// The unknown slot.
+        slot: String,
+    },
+    /// A fard prayer names a deed key that is not defined.
+    UnknownPrayerDeed {
+        /// The prayer's slot.
+        slot: String,
+        /// The unknown deed key.
+        deed: String,
+    },
     /// A name key has no message in one locale file.
     MissingName {
         /// The locale, such as "ar" or "en".
@@ -296,6 +329,10 @@ impl fmt::Display for Error {
             }
             Self::DuplicateOffer { level, set } => {
                 write!(f, "level {level} offers set {set} twice")
+            }
+            Self::UnknownPrayerSlot { slot } => write!(f, "fard prayer uses unknown slot {slot}"),
+            Self::UnknownPrayerDeed { slot, deed } => {
+                write!(f, "fard prayer {slot} names unknown deed {deed}")
             }
             Self::MissingName { locale, name } => write!(f, "locale {locale} has no {name}"),
         }
@@ -403,6 +440,16 @@ fn check_keys(catalog: &Catalog) -> Result<(), Error> {
     unique("unit", catalog.units.iter().map(|unit| unit.key.as_str()))?;
     unique("deed", catalog.deeds.iter().map(|deed| deed.key.as_str()))?;
     unique("set", catalog.sets.iter().map(|set| set.key.as_str()))?;
+    unique(
+        "fard prayer",
+        catalog
+            .fard_prayers
+            .iter()
+            .map(|prayer| prayer.slot.as_str()),
+    )?;
+    for prayer in &catalog.fard_prayers {
+        check_prayer(catalog, prayer)?;
+    }
 
     let mut level_orders = BTreeSet::new();
     for level in catalog.sets.iter().filter_map(|set| set.level.as_ref()) {
@@ -538,7 +585,7 @@ fn check_deed(catalog: &Catalog, deed: &Deed) -> Result<(), Error> {
                 range: range.clone(),
             });
         }
-        Schedule::Hijri(_) => {}
+        Schedule::Hijri(_) | Schedule::OnceAWeek | Schedule::WhenItComesUp => {}
     }
     if let Some(target) = &deed.target {
         if target.amount == 0 {
@@ -552,6 +599,22 @@ fn check_deed(catalog: &Catalog, deed: &Deed) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+fn check_prayer(catalog: &Catalog, prayer: &FardPrayer) -> Result<(), Error> {
+    if !catalog.slots.contains(&prayer.slot) {
+        return Err(Error::UnknownPrayerSlot {
+            slot: prayer.slot.clone(),
+        });
+    }
+    let deeds = std::iter::once(&prayer.on_time).chain(&prayer.congregation);
+    match deeds.into_iter().find(|key| catalog.deed(key).is_none()) {
+        Some(key) => Err(Error::UnknownPrayerDeed {
+            slot: prayer.slot.clone(),
+            deed: key.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
 fn check_set(catalog: &Catalog, set: &StarterSet) -> Result<(), Error> {

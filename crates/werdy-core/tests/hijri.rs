@@ -51,7 +51,7 @@ fn due_days(
     Ok(days
         .iter()
         .copied()
-        .filter(|day| deed.is_due_on(*day, calendar))
+        .filter(|day| deed.is_due_on(*day, calendar, &werdy_core::Marks::new()))
         .collect())
 }
 
@@ -210,8 +210,12 @@ fn offset_history_preserves_finished_scores_at_ramadan_boundary() -> Result<(), 
     let marks = BTreeMap::from([((DeedId(1), boundary), MarkEntry::new(Mark::Done, boundary))]);
     let notes = BTreeMap::new();
     let mut calendar = offset(1)?;
-    assert!(!deeds[0].is_due_on(boundary, &CalendarSettings::default()));
-    assert!(deeds[0].is_due_on(boundary, &calendar));
+    assert!(!deeds[0].is_due_on(
+        boundary,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
+    assert!(deeds[0].is_due_on(boundary, &calendar, &werdy_core::Marks::new()));
 
     let before = score(
         &OwnerRecords {
@@ -238,7 +242,7 @@ fn offset_history_preserves_finished_scores_at_ramadan_boundary() -> Result<(), 
     calendar.change_offset(next, HijriOffset::new(-1)?)?;
     assert_eq!(calendar.offset_on(boundary).days(), 1);
     assert_eq!(calendar.offset_on(next).days(), -1);
-    assert!(!deeds[0].is_due_on(next, &calendar));
+    assert!(!deeds[0].is_due_on(next, &calendar, &werdy_core::Marks::new()));
     let records = OwnerRecords {
         deeds: &deeds,
         marks: &marks,

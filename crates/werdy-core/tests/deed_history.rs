@@ -98,9 +98,21 @@ fn archived_deed_is_not_due_from_archive_day() -> Result<(), Error> {
     let mut deed = Deed::new(DeedId(1), day(21)?, daily());
     deed.archive(day(24)?)?;
 
-    assert!(deed.is_due_on(day(23)?, &CalendarSettings::default()));
-    assert!(!deed.is_due_on(day(24)?, &CalendarSettings::default()));
-    assert!(!deed.is_due_on(day(25)?, &CalendarSettings::default()));
+    assert!(deed.is_due_on(
+        day(23)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
+    assert!(!deed.is_due_on(
+        day(24)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
+    assert!(!deed.is_due_on(
+        day(25)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
     Ok(())
 }
 
@@ -113,7 +125,11 @@ fn rule_change_before_creation_is_an_error() -> Result<(), Error> {
         Err(Error::RuleBeforeCreation)
     );
     assert_eq!(deed.rule_on(day(23)?), None);
-    assert!(!deed.is_due_on(day(23)?, &CalendarSettings::default()));
+    assert!(!deed.is_due_on(
+        day(23)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
     Ok(())
 }
 
@@ -134,7 +150,11 @@ fn rule_change_before_latest_version_is_an_error() -> Result<(), Error> {
         deed.change_rule(day(23)?, daily()),
         Err(Error::RuleBeforeLatest)
     );
-    assert!(!deed.is_due_on(day(24)?, &CalendarSettings::default()));
+    assert!(!deed.is_due_on(
+        day(24)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
     Ok(())
 }
 
@@ -153,7 +173,11 @@ fn same_day_rule_change_replaces_latest_rule() -> Result<(), Error> {
     deed.change_rule(day(24)?, daily())?;
 
     assert_eq!(deed.rule_on(day(24)?), Some(&daily()));
-    assert!(deed.is_due_on(day(24)?, &CalendarSettings::default()));
+    assert!(deed.is_due_on(
+        day(24)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
     Ok(())
 }
 
@@ -191,7 +215,11 @@ fn restoring_keeps_the_archive_gap_and_allows_another_archive() -> Result<(), Er
         (26, true),
         (27, false),
     ] {
-        assert_eq!(deed.is_due_on(day(date)?, &calendar), due, "day {date}");
+        assert_eq!(
+            deed.is_due_on(day(date)?, &calendar, &werdy_core::Marks::new()),
+            due,
+            "day {date}"
+        );
     }
     assert_eq!(werdy_core::active_deed_count(&[deed.clone()], day(25)?), 1);
     assert_eq!(
@@ -207,7 +235,11 @@ fn same_day_restore_makes_deed_due_without_creating_a_gap() -> Result<(), Error>
     let mut deed = Deed::new(DeedId(1), day(21)?, daily());
     deed.archive(day(24)?)?;
     deed.restore(day(24)?)?;
-    assert!(deed.is_due_on(day(24)?, &CalendarSettings::default()));
+    assert!(deed.is_due_on(
+        day(24)?,
+        &CalendarSettings::default(),
+        &werdy_core::Marks::new()
+    ));
     assert_eq!(werdy_core::active_deed_count(&[deed], day(24)?), 1);
     Ok(())
 }
