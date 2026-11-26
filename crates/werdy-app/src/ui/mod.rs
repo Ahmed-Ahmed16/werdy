@@ -20,7 +20,7 @@ mod sharing;
 mod sheet;
 mod summary;
 
-use std::rc::Rc;
+use std::{collections::BTreeSet, rc::Rc};
 
 use dioxus::prelude::*;
 use werdy_store::{Store, Theme};
@@ -68,7 +68,7 @@ fn start_app_state(mode: platform::DataMode, store: &AccountStore) -> Result<App
         state.save_status = SaveStatus::SaveFailed;
     }
     if mode == platform::DataMode::Normal && store.account.borrow().session.is_none() {
-        state.move_level_deeds_to_groups(store);
+        state.move_level_deeds_to_groups(store, &BTreeSet::new());
     }
     state.show_welcome_on_open(store);
     if mode == platform::DataMode::Normal {

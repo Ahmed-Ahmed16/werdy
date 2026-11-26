@@ -77,7 +77,7 @@ pub fn use_background(mut state: Signal<AppState>) {
                                                 Some(error_key(&SyncError::OperationReused));
                                             false
                                         } else {
-                                            state.accept_successful_sync(records, store.as_ref());
+                                            apply_successful_sync(&mut state, records, &store);
                                             true
                                         }
                                     }
@@ -130,6 +130,21 @@ fn claim(store: &AccountStore) -> Option<super::Flight> {
         account.schedule.finish(elapsed_ms(), false);
     }
     None
+}
+
+pub(super) fn apply_successful_sync(
+    state: &mut AppState,
+    records: OwnerData,
+    store: &AccountStore,
+) {
+    let held_deed_ids = store
+        .account
+        .borrow()
+        .checkpoint
+        .as_ref()
+        .map(|checkpoint| checkpoint.engine.held_deed_ids())
+        .unwrap_or_default();
+    state.accept_successful_sync(records, store, &held_deed_ids);
 }
 
 pub(super) enum Attempt {

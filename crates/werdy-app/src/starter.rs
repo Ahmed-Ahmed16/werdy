@@ -134,15 +134,22 @@ pub fn move_level_deeds_to_groups(
     data: &mut OwnerData,
     catalog: &Catalog,
     today: werdy_core::WerdyDay,
+    held_deed_ids: &BTreeSet<DeedId>,
 ) -> Vec<DeedId> {
+    // A held copy can have an earlier edit that still needs to fold into the kept deed.
+    let held_starter_keys: BTreeSet<_> = held_deed_ids
+        .iter()
+        .filter_map(|id| data.starter_keys.get(id))
+        .collect();
     let mut moved = Vec::new();
     for deed in &mut data.deeds {
-        if data.level_group_move_handled.contains(&deed.id) {
+        if held_deed_ids.contains(&deed.id) || data.level_group_move_handled.contains(&deed.id) {
             continue;
         }
         let Some(group) = data
             .starter_keys
             .get(&deed.id)
+            .filter(|key| !held_starter_keys.contains(key))
             .and_then(|key| catalog.group_of(key))
         else {
             continue;
@@ -354,6 +361,7 @@ mod tests {
 
     mod move_to_groups {
         use super::super::move_level_deeds_to_groups;
+        use std::collections::BTreeSet;
         use werdy_core::{CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, WerdyDay};
         use werdy_store::OwnerData;
 
@@ -390,11 +398,35 @@ mod tests {
         }
 
         #[test]
+        fn a_held_copy_defers_the_move_for_its_whole_starter_key() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut data = owner(start, Some("lv_parents"));
+            let copy = DeedId(2);
+            let other = DeedId(3);
+            data.last_deed_id = other.0;
+            data.deeds.extend([
+                Deed::new(copy, start.next()?, rule("any_time")),
+                Deed::new(other, start, rule("any_time")),
+            ]);
+            data.starter_keys.insert(copy, "lv_parents".to_owned());
+            data.starter_keys.insert(other, "lv_kinship".to_owned());
+            let parents_before_move = data.deeds[..2].to_vec();
+
+            let moved = move_level_deeds_to_groups(&mut data, &catalog, today, &[copy].into());
+
+            assert_eq!(moved, [other]);
+            assert_eq!(data.deeds[..2], parents_before_move);
+            assert_eq!(data.level_group_move_handled, [other].into());
+            Ok(())
+        }
+
+        #[test]
         fn a_level_deed_in_any_time_moves_to_its_group_from_today() -> TestResult {
             let catalog = werdy_data::builtin()?;
             let (start, today) = days()?;
             let mut data = owner(start, Some("lv_parents"));
-            let moved = move_level_deeds_to_groups(&mut data, &catalog, today);
+            let moved = move_level_deeds_to_groups(&mut data, &catalog, today, &BTreeSet::new());
             assert_eq!(moved, [DeedId(1)]);
             assert_eq!(
                 place_on(&data, today).as_deref(),
@@ -413,10 +445,13 @@ mod tests {
             let catalog = werdy_data::builtin()?;
             let (start, today) = days()?;
             let mut data = owner(start, Some("lv_parents"));
-            move_level_deeds_to_groups(&mut data, &catalog, today);
+            let held = BTreeSet::new();
+            move_level_deeds_to_groups(&mut data, &catalog, today, &held);
             let after_first = data.clone();
-            assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
-            assert!(move_level_deeds_to_groups(&mut data, &catalog, today.next()?).is_empty());
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today, &held).is_empty());
+            assert!(
+                move_level_deeds_to_groups(&mut data, &catalog, today.next()?, &held).is_empty()
+            );
             assert_eq!(data, after_first);
             assert_eq!(data.deeds[0].rule_versions().count(), 2);
             Ok(())
@@ -427,14 +462,15 @@ mod tests {
             let catalog = werdy_data::builtin()?;
             let (start, today) = days()?;
             let mut data = owner(start, Some("lv_parents"));
+            let held = BTreeSet::new();
             assert_eq!(
-                move_level_deeds_to_groups(&mut data, &catalog, today),
+                move_level_deeds_to_groups(&mut data, &catalog, today, &held),
                 [DeedId(1)]
             );
             data.deeds[0].change_rule(today, rule("any_time"))?;
             let after_edit = data.clone();
 
-            assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today, &held).is_empty());
             assert_eq!(data, after_edit);
             Ok(())
         }
@@ -449,7 +485,10 @@ mod tests {
             back.deeds[0].change_rule(today, rule("any_time"))?;
             for mut data in [elsewhere, back] {
                 let before = data.clone();
-                assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+                assert!(
+                    move_level_deeds_to_groups(&mut data, &catalog, today, &BTreeSet::new())
+                        .is_empty()
+                );
                 assert_eq!(data, before);
             }
             Ok(())
@@ -462,7 +501,10 @@ mod tests {
             for key in [None, Some("lv_general_istighfar"), Some("no_such_key")] {
                 let mut data = owner(start, key);
                 let before = data.clone();
-                assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+                assert!(
+                    move_level_deeds_to_groups(&mut data, &catalog, today, &BTreeSet::new())
+                        .is_empty()
+                );
                 assert_eq!(data, before, "{key:?}");
             }
             Ok(())
