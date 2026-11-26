@@ -1921,6 +1921,34 @@ deeds = [
     "lv_weekly_fitra",
 ]
 
+# The five fard prayers in day order, for the reports block (ADR 0049).
+# Each day uses the first congregation deed due that day, else the on time
+# deed. Every key must be a deed above.
+[[fard_prayers]]
+slot = "fajr"
+on_time = "fajr_on_time"
+congregation = ["lv_fajr_congregation", "fajr_congregation"]
+
+[[fard_prayers]]
+slot = "dhuhr"
+on_time = "dhuhr_on_time"
+congregation = ["lv_dhuhr_congregation", "dhuhr_congregation"]
+
+[[fard_prayers]]
+slot = "asr"
+on_time = "asr_on_time"
+congregation = ["lv_asr_congregation", "asr_congregation"]
+
+[[fard_prayers]]
+slot = "maghrib"
+on_time = "maghrib_on_time"
+congregation = ["lv_maghrib_congregation", "maghrib_congregation"]
+
+[[fard_prayers]]
+slot = "isha"
+on_time = "isha_on_time"
+congregation = ["lv_isha_congregation", "isha_congregation"]
+
 [[sets]]
 key = "five_prayers"
 name = "set-five-prayers"

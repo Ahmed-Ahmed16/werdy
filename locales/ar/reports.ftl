@@ -75,6 +75,7 @@ reports-detail-label = { $base } · { $detail }
 reports-history-done = تم
 reports-history-partial = جزئي
 reports-history-missed = فائت
+reports-history-unmarked = لم تُسجَّل
 reports-note = ملاحظة اليوم
 reports-note-sign = ✎
 reports-late-sign = *
@@ -100,5 +101,18 @@ reports-ranked = الأقوى والأضعف
 reports-weakest = يحتاج اهتمامًا
 reports-strongest = الأقوى
 reports-none-weak = أتممت كل عمل مستحق كاملًا.
-reports-prayers = الصلوات في وقتها
+reports-prayers = الصلوات الخمس
+reports-prayers-missed-total =
+    { $count ->
+        [one] صلاة واحدة فاتت أو لم تُسجَّل في هذه الأيام
+        [two] صلاتان فاتتا أو لم تُسجَّلا في هذه الأيام
+        [few] { $count } صلوات فاتت أو لم تُسجَّل في هذه الأيام
+       *[other] { $count } صلاة فاتت أو لم تُسجَّل في هذه الأيام
+    }
+reports-prayer-missed = فاتت { $count }
+reports-prayer-none-missed = لم تفت صلاة
+reports-prayer-first = الجماعة الأولى
+reports-prayer-later = جماعة غير الأولى
+reports-prayer-alone = صليت منفردًا
 reports-history-not-due = غير مستحق
+reports-legend-sign = ملاحظة أو تسجيل متأخر
