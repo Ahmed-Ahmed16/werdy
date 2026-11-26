@@ -116,10 +116,9 @@ pub fn place_name_key(place: &str) -> String {
 }
 
 /// Moves each level deed that has always sat in any time to its group
-/// (decision 0045), as a rule change from today; past days keep any time
-/// (0020). The saved starter key (0041) finds the group. A deed whose rules
-/// ever named another place was placed by the owner and is left alone, so
-/// running this again changes nothing. Returns the moved deeds.
+/// (decision 0045). Past days keep any time (0020). Leave deeds with a
+/// saved move marker or another place in their rule history alone.
+/// Returns the moved deeds.
 pub fn move_level_deeds_to_groups(
     data: &mut OwnerData,
     catalog: &Catalog,
@@ -127,6 +126,9 @@ pub fn move_level_deeds_to_groups(
 ) -> Vec<DeedId> {
     let mut moved = Vec::new();
     for deed in &mut data.deeds {
+        if data.level_group_move_handled.contains(&deed.id) {
+            continue;
+        }
         let Some(group) = data
             .starter_keys
             .get(&deed.id)
@@ -142,6 +144,7 @@ pub fn move_level_deeds_to_groups(
         };
         rule.slot = SlotKey::new(group);
         if deed.change_rule(today, rule).is_ok() {
+            data.level_group_move_handled.insert(deed.id);
             moved.push(deed.id);
         }
     }
@@ -366,6 +369,23 @@ mod tests {
             assert!(move_level_deeds_to_groups(&mut data, &catalog, today.next()?).is_empty());
             assert_eq!(data, after_first);
             assert_eq!(data.deeds[0].rule_versions().count(), 2);
+            Ok(())
+        }
+
+        #[test]
+        fn moving_back_to_any_time_on_the_same_day_is_preserved() -> TestResult {
+            let catalog = werdy_data::builtin()?;
+            let (start, today) = days()?;
+            let mut data = owner(start, Some("lv_parents"));
+            assert_eq!(
+                move_level_deeds_to_groups(&mut data, &catalog, today),
+                [DeedId(1)]
+            );
+            data.deeds[0].change_rule(today, rule("any_time"))?;
+            let after_edit = data.clone();
+
+            assert!(move_level_deeds_to_groups(&mut data, &catalog, today).is_empty());
+            assert_eq!(data, after_edit);
             Ok(())
         }
 
