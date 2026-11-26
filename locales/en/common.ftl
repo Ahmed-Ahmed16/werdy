@@ -14,8 +14,6 @@ nav-settings = Settings
 nav-coming-later = Coming later
 nav-label = Navigation
 
-language-switch = العربية
-
 weekday-monday = Monday
 weekday-tuesday = Tuesday
 weekday-wednesday = Wednesday

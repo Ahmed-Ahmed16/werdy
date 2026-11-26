@@ -190,6 +190,7 @@ pub fn Sheet() -> Element {
             }
             if !sections.is_empty() {
                 nav { class: "slot-strip", aria_label: i18n.t("sheet-slots"),
+                    onmounted: move |_| observe_strip_height(),
                     for (section, open) in sections.iter().zip(opens.iter().copied()) {
                         SlotChip {
                             key: "{section.slot.slot.0}",
@@ -235,6 +236,28 @@ pub fn Sheet() -> Element {
             }
         }
     }
+}
+
+fn observe_strip_height() {
+    // Sticky headings and scroll targets both need the height after chips wrap.
+    let _ = document::eval(
+        r#"
+        const strip = document.querySelector(".slot-strip");
+        if (strip) {
+            const sheet = strip.parentElement;
+            const update = () => sheet.style.setProperty("--strip-block", `${strip.offsetHeight}px`);
+            update();
+            const observer = new ResizeObserver(() => {
+                if (strip.isConnected) {
+                    update();
+                } else {
+                    observer.disconnect();
+                }
+            });
+            observer.observe(strip);
+        }
+        "#,
+    );
 }
 
 /// Text key for the notice above a sheet filtered to open deeds. A day with
@@ -368,31 +391,33 @@ fn DeedRow(row: SheetRow) -> Element {
     let target = row.target.as_ref().map(|target| target.amount());
 
     rsx! {
-        li { class: "deed-row",
-            div { class: "deed-identity",
-                span { class: "deed-name", "{name}" }
-                if let Some(target) = target {
-                    CountTag { deed_id, mark, target }
-                }
-                if let Some(tag) = row.tag {
-                    span { class: "schedule-tag", {i18n.t(row_tag_key(tag))} }
-                }
-                if row.added_later {
-                    span {
-                        class: "late-sign",
-                        aria_label: i18n.t("mark-added-later"),
-                        {i18n.t("mark-added-later")}
+        li {
+            div { class: "deed-row", role: "group", aria_labelledby: "deed-name-{deed_id.0}",
+                div { class: "deed-identity",
+                    span { class: "deed-name", id: "deed-name-{deed_id.0}", "{name}" }
+                    if let Some(target) = target {
+                        CountTag { deed_id, mark, target }
+                    }
+                    if let Some(tag) = row.tag {
+                        span { class: "schedule-tag", {i18n.t(row_tag_key(tag))} }
+                    }
+                    if row.added_later {
+                        span {
+                            class: "late-sign",
+                            aria_label: i18n.t("mark-added-later"),
+                            {i18n.t("mark-added-later")}
+                        }
                     }
                 }
-            }
-            div { class: "deed-controls",
-                MarkButton { deed_id, tap: Tap::Done, mark, target }
-                if let Some(target) = target {
-                    CountEntry { deed_id, mark, target }
-                } else {
-                    MarkButton { deed_id, tap: Tap::Partial, mark, target: None }
+                div { class: "deed-controls", dir: "ltr",
+                    MarkButton { deed_id, tap: Tap::Missed, mark, target }
+                    if let Some(target) = target {
+                        CountEntry { deed_id, mark, target }
+                    } else {
+                        MarkButton { deed_id, tap: Tap::Partial, mark, target: None }
+                    }
+                    MarkButton { deed_id, tap: Tap::Done, mark, target }
                 }
-                MarkButton { deed_id, tap: Tap::Missed, mark, target }
             }
         }
     }
