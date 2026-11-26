@@ -6,6 +6,8 @@ use werdy_data::{Error, Schedule, builtin, load, parse};
 /// A small valid file. Tests break one part of it at a time.
 const SMALL: &str = r#"
 slots = ["fajr", "night"]
+groups = ["dua"]
+sheet_order = ["fajr", "night", "dua"]
 categories = ["prayer", "adhkar"]
 hijri_ranges = ["ramadan"]
 
@@ -51,7 +53,16 @@ fn every_set_uses_only_known_keys() {
     let catalog = builtin().expect("the shipped starter sets load");
     for set in &catalog.sets {
         for deed in catalog.deeds_in(set) {
-            assert!(catalog.slots.contains(&deed.slot), "{}", deed.key);
+            let place = deed.place();
+            assert!(
+                catalog
+                    .slots
+                    .iter()
+                    .chain(&catalog.groups)
+                    .any(|key| key == place),
+                "{}",
+                deed.key
+            );
             assert!(catalog.categories.contains(&deed.category), "{}", deed.key);
             if let Schedule::Hijri(range) = &deed.schedule {
                 assert!(catalog.hijri_ranges.contains(range), "{}", deed.key);
@@ -373,7 +384,7 @@ fn five_prayers_set_has_five_deeds_one_per_prayer_slot() {
     let set = catalog.set("five_prayers").expect("set exists");
     let deeds = catalog.deeds_in(set);
     assert_eq!(deeds.len(), 5);
-    let slots: Vec<&str> = deeds.iter().map(|deed| deed.slot.as_str()).collect();
+    let slots: Vec<&str> = deeds.iter().map(|deed| deed.place()).collect();
     assert_eq!(slots, ["fajr", "dhuhr", "asr", "maghrib", "isha"]);
     for deed in deeds {
         assert_eq!(deed.category, "prayer");
@@ -530,4 +541,240 @@ fn counted_level_deeds_carry_a_times_target() {
             "{key}"
         );
     }
+}
+
+/// SMALL with one more deed that sits in the dua group.
+fn small_with_group_deed(place: &str) -> String {
+    SMALL.replace(
+        "[[sets]]",
+        &format!(
+            "[[deeds]]
+key = \"dua_self\"
+name = \"deed-dua-self\"
+{place}
+category = \"adhkar\"
+schedule = \"every_day\"
+
+[[sets]]"
+        ),
+    )
+}
+
+#[test]
+fn a_deed_sits_in_one_place_a_slot_or_a_group() {
+    let catalog = parse(&small_with_group_deed("group = \"dua\"")).expect("a group deed parses");
+    let deed = catalog.deed("dua_self").expect("deed exists");
+    assert_eq!(deed.place(), "dua");
+    assert_eq!(
+        catalog.deed("qiyam").map(|deed| deed.place()),
+        Some("night")
+    );
+
+    assert_eq!(
+        parse(&small_with_group_deed("group = \"quran\"")),
+        Err(Error::UnknownGroup {
+            deed: "dua_self".into(),
+            group: "quran".into()
+        })
+    );
+    assert_eq!(
+        parse(&small_with_group_deed(
+            "slot = \"night\"
+group = \"dua\""
+        )),
+        Err(Error::NotOnePlace {
+            deed: "dua_self".into()
+        })
+    );
+    assert_eq!(
+        parse(&small_with_group_deed("")),
+        Err(Error::NotOnePlace {
+            deed: "dua_self".into()
+        })
+    );
+}
+
+#[test]
+fn a_group_key_may_not_repeat_a_slot_key() {
+    let clash = SMALL
+        .replace("groups = [\"dua\"]", "groups = [\"night\"]")
+        .replace("\"night\", \"dua\"]", "\"night\", \"night\"]");
+    assert_eq!(
+        parse(&clash),
+        Err(Error::DuplicateKey {
+            kind: "place",
+            key: "night".into()
+        })
+    );
+}
+
+#[test]
+fn the_sheet_order_lists_every_slot_and_group_once() {
+    let catalog = parse(SMALL).expect("small file parses");
+    assert_eq!(catalog.sheet_order, ["fajr", "night", "dua"]);
+    for (order, key) in [
+        ("[\"fajr\", \"dua\"]", "night"),
+        ("[\"fajr\", \"night\", \"dua\", \"dawn\"]", "dawn"),
+        ("[\"fajr\", \"night\", \"dua\", \"fajr\"]", "fajr"),
+    ] {
+        let changed = SMALL.replace("[\"fajr\", \"night\", \"dua\"]", order);
+        assert_eq!(
+            parse(&changed),
+            Err(Error::SheetOrder { key: key.into() }),
+            "{order}"
+        );
+    }
+}
+
+#[test]
+fn the_sheet_shows_slots_then_the_six_groups_then_any_time() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    assert_eq!(
+        catalog.groups,
+        [
+            "situational_adhkar",
+            "quran",
+            "dua",
+            "heart_and_character",
+            "knowledge",
+            "self_review"
+        ]
+    );
+    assert_eq!(
+        catalog.sheet_order,
+        [
+            "fajr",
+            "morning",
+            "dhuhr",
+            "asr",
+            "maghrib",
+            "isha",
+            "night",
+            "situational_adhkar",
+            "quran",
+            "dua",
+            "heart_and_character",
+            "knowledge",
+            "self_review",
+            "any_time"
+        ]
+    );
+}
+
+/// The level deeds that decision 0045 puts in each group.
+const LEVEL_GROUPS: [(&str, &[&str]); 6] = [
+    (
+        "situational_adhkar",
+        &[
+            "lv_waking_adhkar",
+            "lv_toilet_adhkar",
+            "lv_dressing_adhkar",
+            "lv_wudu_adhkar",
+            "lv_home_adhkar",
+            "lv_mosque_adhkar",
+            "lv_mosque_enter_leave_adhkar",
+            "lv_walking_to_mosque_adhkar",
+            "lv_food_adhkar",
+            "lv_riding_adhkar",
+            "lv_sleep_adhkar",
+            "lv_istighfar_100",
+            "lv_gathering_istighfar",
+            "lv_gathering_kaffara",
+        ],
+    ),
+    (
+        "quran",
+        &[
+            "lv_memorise_half_page",
+            "lv_read_six_quarters",
+            "lv_memorise_page",
+            "lv_read_juz",
+            "lv_recite_reflect",
+            "lv_review_memorise",
+        ],
+    ),
+    (
+        "dua",
+        &[
+            "lv_dua_self",
+            "lv_dua_teachers",
+            "lv_dua_brothers",
+            "lv_dua_muslims",
+        ],
+    ),
+    (
+        "heart_and_character",
+        &[
+            "lv_tongue",
+            "lv_gaze",
+            "lv_heart",
+            "lv_parents",
+            "lv_kinship",
+            "lv_rights",
+            "lv_dawah",
+        ],
+    ),
+    (
+        "knowledge",
+        &[
+            "lv_attend_lessons",
+            "lv_review_lessons",
+            "lv_worldly_knowledge",
+            "lv_attend_sharia",
+            "lv_review_sharia",
+        ],
+    ),
+    ("self_review", &["lv_self_review", "lv_repentance"]),
+];
+
+#[test]
+fn level_deeds_sit_in_the_groups_of_decision_0045() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    for (group, keys) in LEVEL_GROUPS {
+        for key in keys {
+            assert_eq!(catalog.group_of(key), Some(group), "{key}");
+        }
+    }
+    let grouped: BTreeSet<&str> = LEVEL_GROUPS
+        .iter()
+        .flat_map(|(_, keys)| keys.iter().copied())
+        .collect();
+    let any_time: BTreeSet<&str> = catalog
+        .deeds
+        .iter()
+        .filter(|deed| deed.key.starts_with("lv_") && deed.place() == "any_time")
+        .map(|deed| deed.key.as_str())
+        .collect();
+    assert_eq!(
+        any_time,
+        BTreeSet::from([
+            "lv_fasting_monday_thursday",
+            "lv_fasting",
+            "lv_general_istighfar",
+            "lv_salawat",
+            "lv_charity",
+            "lv_istikhara",
+            "lv_hajah",
+            "lv_keep_wudu",
+            "lv_wudu_before_sleep",
+            "lv_study_or_work",
+            "lv_friday_kahf",
+            "lv_friday_salawat",
+            "lv_friday_salawat_100",
+        ])
+    );
+    let in_groups = catalog
+        .deeds
+        .iter()
+        .filter(|deed| catalog.group_of(&deed.key).is_some())
+        .count();
+    assert_eq!(in_groups, grouped.len());
+}
+
+#[test]
+fn group_of_is_none_for_slot_deeds_and_unknown_keys() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    assert_eq!(catalog.group_of("lv_general_istighfar"), None);
+    assert_eq!(catalog.group_of("lv_witr"), None);
+    assert_eq!(catalog.group_of("no_such_deed"), None);
 }

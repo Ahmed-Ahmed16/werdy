@@ -101,11 +101,11 @@ pub fn LevelStep() -> Element {
                                 }, {i18n.t(if expanded { "first-run-level-hide" } else { "first-run-level-show" })} }
                                 if expanded {
                                     div { class: "level-deeds",
-                                        for slot in &catalog.slots {
-                                            { let in_slot = deeds.iter().filter(|deed| deed.slot == *slot).collect::<Vec<_>>();
+                                        for slot in &catalog.sheet_order {
+                                            { let in_slot = deeds.iter().filter(|deed| deed.place() == slot.as_str()).collect::<Vec<_>>();
                                               if in_slot.is_empty() { rsx! {} } else { rsx! {
                                                 section { class: "level-slot", key: "{slot}",
-                                                    h3 { {i18n.t(&format!("slot-{slot}"))} }
+                                                    h3 { {i18n.t(&crate::starter::place_name_key(slot))} }
                                                     ul { for deed in in_slot { li { key: "{deed.key}", {i18n.t(&deed.name)} } } }
                                                 }
                                               } }

@@ -8,7 +8,8 @@
 # not even the level sheets' points.
 #
 # How to edit:
-# * Each deed is written once under [[deeds]]. A set lists deed keys.
+# * Each deed is written once under [[deeds]] with either a slot or a group.
+#   A set lists deed keys.
 #   Two sets that share a deed list the same key, so the deed is added once.
 # * "name" is a Fluent key. Add it to locales/ar/starter-sets.ftl and
 #   locales/en/starter-sets.ftl, or the tests fail.
@@ -20,8 +21,38 @@
 #   { hijri = "ramadan" }. Hijri range keys must be in hijri_ranges.
 # * A target is optional: { amount = 20, unit = "pages" }.
 
-# Time slots in sheet order (ADR 0007).
+# Time slots in day order (ADR 0007).
 slots = ["fajr", "morning", "dhuhr", "asr", "maghrib", "isha", "night", "any_time"]
+
+# Groups for deeds tied to a kind of deed rather than a time (ADR 0045).
+# A deed sits in one place: it has either a slot or a group.
+groups = [
+    "situational_adhkar",
+    "quran",
+    "dua",
+    "heart_and_character",
+    "knowledge",
+    "self_review",
+]
+
+# The sheet shows the time slots, then the groups, then any time (ADR 0045).
+# List every slot and group here once.
+sheet_order = [
+    "fajr",
+    "morning",
+    "dhuhr",
+    "asr",
+    "maghrib",
+    "isha",
+    "night",
+    "situational_adhkar",
+    "quran",
+    "dua",
+    "heart_and_character",
+    "knowledge",
+    "self_review",
+    "any_time",
+]
 
 # The fixed v1 categories (ADR 0007).
 categories = [
@@ -1183,42 +1214,42 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_memorise_half_page"
 name = "deed-lv-memorise-half-page"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_read_six_quarters"
 name = "deed-lv-read-six-quarters"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_memorise_page"
 name = "deed-lv-memorise-page"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_read_juz"
 name = "deed-lv-read-juz"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_recite_reflect"
 name = "deed-lv-recite-reflect"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_review_memorise"
 name = "deed-lv-review-memorise"
-slot = "any_time"
+group = "quran"
 category = "quran"
 schedule = "every_day"
 
@@ -1227,28 +1258,28 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_dua_self"
 name = "deed-lv-dua-self"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_teachers"
 name = "deed-lv-dua-teachers"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_brothers"
 name = "deed-lv-dua-brothers"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dua_muslims"
 name = "deed-lv-dua-muslims"
-slot = "any_time"
+group = "dua"
 category = "adhkar"
 schedule = "every_day"
 
@@ -1274,84 +1305,84 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_waking_adhkar"
 name = "deed-lv-waking-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_toilet_adhkar"
 name = "deed-lv-toilet-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_dressing_adhkar"
 name = "deed-lv-dressing-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_wudu_adhkar"
 name = "deed-lv-wudu-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_home_adhkar"
 name = "deed-lv-home-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_mosque_adhkar"
 name = "deed-lv-mosque-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_mosque_enter_leave_adhkar"
 name = "deed-lv-mosque-enter-leave-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_walking_to_mosque_adhkar"
 name = "deed-lv-walking-to-mosque-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_food_adhkar"
 name = "deed-lv-food-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_riding_adhkar"
 name = "deed-lv-riding-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_sleep_adhkar"
 name = "deed-lv-sleep-adhkar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_istighfar_100"
 name = "deed-lv-istighfar-100"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 target = { amount = 100, unit = "times" }
@@ -1359,14 +1390,14 @@ target = { amount = 100, unit = "times" }
 [[deeds]]
 key = "lv_gathering_istighfar"
 name = "deed-lv-gathering-istighfar"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_gathering_kaffara"
 name = "deed-lv-gathering-kaffara"
-slot = "any_time"
+group = "situational_adhkar"
 category = "adhkar"
 schedule = "every_day"
 
@@ -1389,21 +1420,21 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_attend_lessons"
 name = "deed-lv-attend-lessons"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = { weekdays = ["saturday", "thursday"] }
 
 [[deeds]]
 key = "lv_review_lessons"
 name = "deed-lv-review-lessons"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_parents"
 name = "deed-lv-parents"
-slot = "any_time"
+group = "heart_and_character"
 category = "family"
 schedule = "every_day"
 
@@ -1417,42 +1448,42 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_dawah"
 name = "deed-lv-dawah"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_kinship"
 name = "deed-lv-kinship"
-slot = "any_time"
+group = "heart_and_character"
 category = "family"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_rights"
 name = "deed-lv-rights"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_tongue"
 name = "deed-lv-tongue"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_gaze"
 name = "deed-lv-gaze"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_heart"
 name = "deed-lv-heart"
-slot = "any_time"
+group = "heart_and_character"
 category = "other"
 schedule = "every_day"
 
@@ -1494,35 +1525,35 @@ schedule = "every_day"
 [[deeds]]
 key = "lv_worldly_knowledge"
 name = "deed-lv-worldly-knowledge"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_attend_sharia"
 name = "deed-lv-attend-sharia"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_review_sharia"
 name = "deed-lv-review-sharia"
-slot = "any_time"
+group = "knowledge"
 category = "study"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_self_review"
 name = "deed-lv-self-review"
-slot = "any_time"
+group = "self_review"
 category = "other"
 schedule = "every_day"
 
 [[deeds]]
 key = "lv_repentance"
 name = "deed-lv-repentance"
-slot = "any_time"
+group = "self_review"
 category = "other"
 schedule = "every_day"
 
