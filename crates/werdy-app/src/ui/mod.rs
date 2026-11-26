@@ -69,6 +69,9 @@ fn start_app_state(
     if seed_failed {
         state.save_status = SaveStatus::SaveFailed;
     }
+    if mode == platform::DataMode::Normal {
+        state.move_level_deeds_to_groups(store);
+    }
     state.show_welcome_on_open(store);
     if mode == platform::DataMode::Normal {
         state.show_whats_new_on_open(store);
