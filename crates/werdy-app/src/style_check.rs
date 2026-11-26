@@ -282,7 +282,7 @@ fn interactive_controls_keep_touch_size_and_visible_focus() {
 
 #[test]
 fn sheet_controls_keep_a_44px_tap_area_around_a_smaller_face() {
-    assert!(TOKENS_CSS.contains("--mark-touch: max(44px, 2.75rem);"));
+    assert!(TOKENS_CSS.contains("--mark-touch: max(44px, min(2.75rem, 25vw));"));
     assert!(TOKENS_CSS.contains("--mark-face: 2rem;"));
     for selector in [".mark-button", ".slot-chip"] {
         assert!(
@@ -304,6 +304,13 @@ fn sheet_controls_keep_a_44px_tap_area_around_a_smaller_face() {
     assert!(!APP_CSS.contains(".mark-button::before"));
     let face = rule_body(APP_CSS, ".mark-face").expect("rule");
     assert!(has_declaration(face, "block-size", "var(--mark-face)"));
+    let count_face = rule_body(APP_CSS, ".count-face").expect("rule");
+    assert!(has_declaration(count_face, "block-size", "auto"));
+    assert!(has_declaration(
+        count_face,
+        "min-block-size",
+        "var(--mark-face)"
+    ));
 }
 
 #[test]

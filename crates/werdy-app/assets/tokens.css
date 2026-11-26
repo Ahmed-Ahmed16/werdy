@@ -108,7 +108,7 @@
   /* Size and space */
   --touch-min: 48px;
   /* Sheet rows (#73): a 32px face inside a tap area of at least 44px. */
-  --mark-touch: max(44px, 2.75rem);
+  --mark-touch: max(44px, min(2.75rem, 25vw));
   --mark-face: 2rem;
   --mark-icon: 1.25rem;
   --radius-mark: 8px;

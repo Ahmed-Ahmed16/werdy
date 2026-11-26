@@ -14,8 +14,6 @@ nav-settings = الإعدادات
 nav-coming-later = قريبًا
 nav-label = التنقل
 
-language-switch = English
-
 weekday-monday = الاثنين
 weekday-tuesday = الثلاثاء
 weekday-wednesday = الأربعاء
