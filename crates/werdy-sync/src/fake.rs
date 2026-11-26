@@ -70,10 +70,7 @@ impl Backend for FakeBackend {
             accepted.push(staged.accept(pending)?);
         }
         *self = staged;
-        Ok(Batch {
-            changes: accepted,
-            cursor: self.cursor(),
-        })
+        Ok(Batch::new(accepted, self.cursor()))
     }
 
     async fn pull(&mut self, cursor: u64) -> Result<Batch, SyncError> {
@@ -86,6 +83,7 @@ impl Backend for FakeBackend {
                 .iter()
                 .filter(|row| row.stamp.sequence > cursor)
                 .cloned()
+                .map(Into::into)
                 .collect(),
             cursor: self.cursor(),
         })

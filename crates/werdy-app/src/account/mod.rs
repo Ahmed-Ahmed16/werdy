@@ -238,7 +238,8 @@ impl AccountStore {
         // repair, so every device and the account end with one copy.
         current.engine.remember_deed_keys(&mut records);
         let unsent = current.engine.unsent_marks();
-        if records.merge_duplicate_starters(&unsent) {
+        let held = current.engine.held_deed_ids();
+        if records.merge_duplicate_starters(&unsent, &held) {
             current
                 .engine
                 .capture(&records)

@@ -9,7 +9,7 @@ use werdy_core::{
     WerdyDay,
 };
 use werdy_store::{DeedName, OwnerData};
-use werdy_sync::{Backend, Batch, Change, FakeBackend, Pending, Sync, SyncError};
+use werdy_sync::{Backend, Batch, BatchRow, Change, FakeBackend, Pending, Sync, SyncError};
 
 // These tests use in memory backends whose futures finish on the first poll.
 fn run<F: Future>(future: F) -> F::Output {
@@ -49,6 +49,384 @@ fn history(name: &str) -> OwnerData {
 
 fn sync(engine: &mut Sync, backend: &mut impl Backend, records: &mut OwnerData) {
     run(engine.sync(backend, records, || 1_000)).unwrap();
+}
+
+fn wire_row(sequence: u64, change: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "pending": {"install": "source", "operation": sequence, "change": change},
+        "stamp": {"received_at": 1000, "sequence": sequence}
+    })
+}
+
+fn wire_page(cursor: u64, changes: Vec<serde_json::Value>) -> serde_json::Value {
+    serde_json::json!({"cursor": cursor, "changes": changes})
+}
+
+struct WirePull(serde_json::Value);
+
+impl Backend for WirePull {
+    async fn pull(&mut self, _: u64) -> Result<Batch, SyncError> {
+        serde_json::from_value(self.0.clone())
+            .map_err(|error| SyncError::Invalid(error.to_string()))
+    }
+
+    async fn push(&mut self, changes: &[Pending]) -> Result<Batch, SyncError> {
+        assert!(changes.is_empty(), "unchanged records must not push rows");
+        Ok(serde_json::from_value(wire_page(self.0["cursor"].as_u64().unwrap(), vec![])).unwrap())
+    }
+
+    async fn server_time(&mut self) -> Result<u64, SyncError> {
+        Ok(1_000)
+    }
+}
+
+fn wire_history() -> Vec<serde_json::Value> {
+    let mut backend = FakeBackend::new(1_000);
+    let mut records = history("shared");
+    records.chosen_sets.insert("starter".to_owned());
+    sync(
+        &mut Sync::new("source").unwrap(),
+        &mut backend,
+        &mut records,
+    );
+    let batch = serde_json::to_value(run(backend.pull(0)).unwrap()).unwrap();
+    batch["changes"].as_array().unwrap().clone()
+}
+
+fn wire_rule(rows: &[serde_json::Value]) -> serde_json::Value {
+    rows.iter()
+        .find_map(|row| row["pending"]["change"].get("Rule"))
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn held_deed_ids_cover_headers_rules_and_marks() {
+    let mut source = FakeBackend::new(1_000);
+    for install in ["rule_copy", "header_copy", "mark_copy", "readable_copy"] {
+        sync(
+            &mut Sync::new(install).unwrap(),
+            &mut source,
+            &mut history(install),
+        );
+    }
+    let batch = run(source.pull(0)).unwrap();
+    let cursor = batch.cursor;
+    let mut rows = serde_json::to_value(batch).unwrap()["changes"]
+        .as_array()
+        .unwrap()
+        .clone();
+    for (offset, (install, tag, pointer, unreadable)) in [
+        (
+            "rule_copy",
+            "Rule",
+            "/Rule/rule/schedule",
+            serde_json::json!("some_future_kind"),
+        ),
+        (
+            "header_copy",
+            "Deed",
+            "/Deed/row/name",
+            serde_json::json!({"FutureName": "name"}),
+        ),
+        (
+            "mark_copy",
+            "Mark",
+            "/Mark/entry",
+            serde_json::json!({"FutureEntry": {}}),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut change = rows
+            .iter()
+            .map(|row| &row["pending"]["change"])
+            .find(|change| change[tag]["id"]["install"] == install)
+            .unwrap()
+            .clone();
+        *change.pointer_mut(pointer).unwrap() = unreadable;
+        rows.push(wire_row(cursor + offset as u64 + 1, change));
+    }
+
+    let mut engine = Sync::new("reader").unwrap();
+    let mut records = OwnerData::default();
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(cursor + 3, rows)),
+        &mut records,
+    );
+    assert_eq!(records.deeds.len(), 4);
+    let expected = records
+        .deed_keys
+        .iter()
+        .filter_map(|(id, key)| (key.install != "readable_copy").then_some(*id))
+        .collect();
+    assert_eq!(engine.held_deed_ids(), expected);
+}
+
+#[test]
+fn unreadable_creation_rule_defers_deed_without_losing_readable_rows() {
+    let mut rows = wire_history();
+    let mut later = wire_rule(&rows);
+    for row in &mut rows {
+        if let Some(rule) = row["pending"]["change"].get_mut("Rule") {
+            rule["rule"]["schedule"] = "some_future_kind".into();
+        }
+    }
+    let mut engine = Sync::new("reader").unwrap();
+    let mut records = OwnerData::default();
+    let first_cursor = rows.len() as u64;
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(first_cursor, rows)),
+        &mut records,
+    );
+    assert!(records.deeds.is_empty());
+    assert!(records.marks.is_empty());
+    assert!(records.chosen_sets.contains("starter"));
+
+    later["from_day"] = serde_json::to_value(day().next().unwrap()).unwrap();
+    let cursor = first_cursor + 2;
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(
+            cursor,
+            vec![
+                wire_row(cursor - 1, serde_json::json!({"Rule": later})),
+                wire_row(cursor, serde_json::json!({"Setting": {"Language": "en"}})),
+            ],
+        )),
+        &mut records,
+    );
+    let state = serde_json::to_value(&engine).unwrap();
+    assert_eq!(state["cursor"], cursor);
+    assert!(records.deeds.is_empty());
+    assert!(records.marks.is_empty());
+    assert_eq!(records.settings.language, "en");
+    engine.capture(&records).unwrap();
+    assert!(engine.outbox().is_empty());
+}
+
+#[test]
+fn unreadable_updates_keep_readable_rows_and_snapshot_has_no_tombstones() {
+    let rows = wire_history();
+    let cursor = rows.len() as u64;
+    let mut engine = Sync::new("reader").unwrap();
+    let mut records = OwnerData::default();
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(cursor, rows.clone())),
+        &mut records,
+    );
+    let before = records.clone();
+    let mut future_rule = wire_rule(&rows);
+    future_rule["rule"]["schedule"] = "some_future_kind".into();
+    let mut future_mark = rows
+        .iter()
+        .find_map(|row| row["pending"]["change"].get("Mark"))
+        .unwrap()
+        .clone();
+    future_mark["entry"] = serde_json::json!({"FutureEntry": {}});
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(
+            cursor + 5,
+            vec![
+                wire_row(cursor + 1, serde_json::json!({"Rule": future_rule})),
+                wire_row(cursor + 2, serde_json::json!({"FutureKind": {}})),
+                wire_row(
+                    cursor + 3,
+                    serde_json::json!({"Setting": {"FutureSetting": true}}),
+                ),
+                wire_row(cursor + 4, serde_json::json!({"Mark": future_mark})),
+                wire_row(
+                    cursor + 5,
+                    serde_json::json!({"ChosenSet": {"key": "starter", "chosen": "some_future_kind"}}),
+                ),
+            ],
+        )),
+        &mut records,
+    );
+    assert_eq!(records, before);
+    engine.capture(&records).unwrap();
+    assert!(engine.outbox().is_empty());
+    let state = serde_json::to_value(&engine).unwrap();
+    assert_eq!(state["held"].as_array().unwrap().len(), 5);
+    for change in state["observed"].as_array().unwrap() {
+        assert!(!change.get("Deed").is_some_and(|deed| deed["row"].is_null()));
+        assert!(
+            !change
+                .get("Mark")
+                .is_some_and(|mark| mark["entry"].is_null())
+        );
+        assert!(
+            !change
+                .get("ChosenSet")
+                .is_some_and(|set| set["chosen"] == false)
+        );
+    }
+}
+
+#[test]
+fn held_rows_round_trip_and_retry_with_stamp_ordering() {
+    let legacy = serde_json::to_value(Sync::new("reader").unwrap()).unwrap();
+    let mut legacy = legacy.as_object().unwrap().clone();
+    legacy.remove("held");
+    let mut engine: Sync = serde_json::from_value(legacy.into()).unwrap();
+    let mut records = OwnerData::default();
+    let future = wire_row(2, serde_json::json!({"FutureKind": {}}));
+    sync(
+        &mut engine,
+        &mut WirePull(wire_page(
+            3,
+            vec![
+                wire_row(1, serde_json::json!({"Setting": {"FutureSetting": true}})),
+                future.clone(),
+                wire_row(3, serde_json::json!({"Setting": {"Language": "en"}})),
+            ],
+        )),
+        &mut records,
+    );
+    assert_eq!(records.settings.language, "en");
+    let checkpoint = serde_json::to_string(&engine).unwrap();
+    let mut saved: serde_json::Value = serde_json::from_str(&checkpoint).unwrap();
+    assert_eq!(saved["held"][1], future);
+    let mut loaded: Sync = serde_json::from_str(&checkpoint).unwrap();
+    assert_eq!(serde_json::to_value(&loaded).unwrap(), saved);
+    saved["held"][0]["pending"]["change"] = serde_json::json!({"Setting": {"Language": "fr"}});
+    saved["held"][1]["pending"]["change"] = serde_json::json!({"Setting": {"Theme": "dark"}});
+    loaded = serde_json::from_value(saved).unwrap();
+    sync(
+        &mut loaded,
+        &mut WirePull(wire_page(3, vec![])),
+        &mut records,
+    );
+    assert_eq!(records.settings.language, "en");
+    assert_eq!(records.settings.theme, werdy_store::Theme::Dark);
+    assert_eq!(
+        serde_json::to_value(&loaded).unwrap()["held"],
+        serde_json::json!([])
+    );
+    loaded.capture(&records).unwrap();
+    assert!(loaded.outbox().is_empty());
+}
+
+#[test]
+fn background_sync_keeps_held_header_and_its_readable_dependents() {
+    let mut rows = wire_history();
+    for row in &mut rows {
+        if let Some(deed) = row["pending"]["change"].get_mut("Deed") {
+            deed["row"]["name"] = serde_json::json!({"FutureName": "shared"});
+        }
+    }
+    let cursor = rows.len() as u64;
+    let mut foreground = Sync::new("reader").unwrap();
+    let mut background = foreground.clone();
+    let mut records = OwnerData::default();
+    sync(
+        &mut background,
+        &mut WirePull(wire_page(cursor, rows)),
+        &mut records.clone(),
+    );
+    foreground.finish_from(&background, &mut records).unwrap();
+    let mut saved = serde_json::to_value(&foreground).unwrap();
+    assert_eq!(saved["cursor"], cursor);
+    assert!(records.deeds.is_empty());
+    assert!(records.marks.is_empty());
+    saved["held"][0]["pending"]["change"]["Deed"]["row"]["name"] =
+        serde_json::json!({"text": "shared"});
+    foreground = serde_json::from_value(saved).unwrap();
+    sync(
+        &mut foreground,
+        &mut WirePull(wire_page(cursor, vec![])),
+        &mut records,
+    );
+    assert_eq!(records.deeds.len(), 1);
+    assert_eq!(records.marks.len(), 1);
+    foreground.capture(&records).unwrap();
+    assert!(foreground.outbox().is_empty());
+}
+
+#[test]
+fn watch_applies_readable_rows_around_an_unreadable_row() {
+    let mut view = werdy_sync::WatchView::new().unwrap();
+    let page = wire_page(
+        3,
+        vec![
+            wire_row(1, serde_json::json!({"Setting": {"Language": "en"}})),
+            wire_row(2, serde_json::json!({"FutureKind": {}})),
+            wire_row(
+                3,
+                serde_json::json!({"ChosenSet": {"key": "starter", "chosen": true}}),
+            ),
+        ],
+    );
+    view.apply(serde_json::from_value(page).unwrap()).unwrap();
+    assert_eq!(view.cursor(), 3);
+    assert_eq!(view.records().settings.language, "en");
+    assert!(view.records().chosen_sets.contains("starter"));
+}
+
+#[test]
+fn readable_rule_before_creation_is_rejected_even_when_the_creation_rule_is_held() {
+    let mut rows = wire_history();
+    let mut early = wire_rule(&rows);
+    for row in &mut rows {
+        if let Some(rule) = row["pending"]["change"].get_mut("Rule") {
+            rule["rule"]["schedule"] = "some_future_kind".into();
+        }
+    }
+    early["from_day"] = serde_json::to_value(day().previous().unwrap()).unwrap();
+    let cursor = rows.len() as u64 + 1;
+    rows.push(wire_row(cursor, serde_json::json!({"Rule": early})));
+    let mut view = werdy_sync::WatchView::new().unwrap();
+    assert!(
+        view.apply(serde_json::from_value(wire_page(cursor, rows)).unwrap())
+            .is_err()
+    );
+    assert_eq!(view.cursor(), 0);
+}
+
+#[test]
+fn unreadable_change_does_not_bypass_envelope_or_stream_validation() {
+    let row = wire_row(1, serde_json::json!({"FutureKind": {}}));
+    let mut extra = wire_page(1, vec![row.clone()]);
+    extra["extra"] = true.into();
+    assert!(serde_json::from_value::<Batch>(extra).is_err());
+    for (field, value) in [("install", 42.into()), ("operation", "wrong".into())] {
+        let mut malformed = row.clone();
+        malformed["pending"][field] = value;
+        assert!(serde_json::from_value::<Batch>(wire_page(1, vec![malformed])).is_err());
+    }
+    let mut malformed = row.clone();
+    malformed["stamp"] = "wrong".into();
+    assert!(serde_json::from_value::<Batch>(wire_page(1, vec![malformed])).is_err());
+
+    let mut view = werdy_sync::WatchView::new().unwrap();
+    let mut bad_install = row.clone();
+    bad_install["pending"]["install"] = "invalid install".into();
+    let mut zero_operation = row.clone();
+    zero_operation["pending"]["operation"] = 0.into();
+    let next_row = wire_row(2, row["pending"]["change"].clone());
+    let mut earlier = next_row.clone();
+    earlier["stamp"]["received_at"] = 999.into();
+    for page in [
+        wire_page(1, vec![bad_install]),
+        wire_page(1, vec![zero_operation]),
+        wire_page(2, vec![row.clone()]),
+        wire_page(2, vec![next_row, row.clone()]),
+    ] {
+        assert!(view.apply(serde_json::from_value(page).unwrap()).is_err());
+        assert_eq!(view.cursor(), 0);
+    }
+    view.apply(serde_json::from_value(wire_page(1, vec![row])).unwrap())
+        .unwrap();
+    assert!(
+        view.apply(serde_json::from_value(wire_page(2, vec![earlier])).unwrap())
+            .is_err()
+    );
+    assert_eq!(view.cursor(), 1);
 }
 
 #[test]
@@ -321,6 +699,7 @@ enum Fault {
     UnknownDeed,
     BadStamp,
     BadArchive,
+    UnreadableHeader,
 }
 
 struct FaultyBackend {
@@ -351,6 +730,10 @@ impl Backend for FaultyBackend {
                 if let Some(row) = batch
                     .changes
                     .iter_mut()
+                    .filter_map(|row| match row {
+                        BatchRow::Readable(row) => Some(row),
+                        BatchRow::Held(_) => None,
+                    })
                     .find(|row| matches!(row.pending.change, Change::Mark { .. }))
                     && let Change::Mark { id, .. } = &mut row.pending.change
                 {
@@ -361,6 +744,10 @@ impl Backend for FaultyBackend {
                 if let Some(row) = batch
                     .changes
                     .iter_mut()
+                    .filter_map(|row| match row {
+                        BatchRow::Readable(row) => Some(row),
+                        BatchRow::Held(_) => None,
+                    })
                     .find(|row| matches!(row.pending.change, Change::Deed { .. }))
                     && let Change::Deed {
                         row: Some(header), ..
@@ -369,6 +756,19 @@ impl Backend for FaultyBackend {
                     header
                         .past_archives
                         .push((day(), day().previous().unwrap()));
+                }
+            }
+            Some(Fault::UnreadableHeader) => {
+                for row in &mut batch.changes {
+                    if matches!(
+                        row.accepted().map(|row| &row.pending.change),
+                        Some(Change::Deed { row: Some(_), .. })
+                    ) {
+                        let mut raw = serde_json::to_value(&*row).unwrap();
+                        raw["pending"]["change"]["Deed"]["row"]["name"] =
+                            serde_json::json!({"FutureName": "first"});
+                        *row = serde_json::from_value(raw).unwrap();
+                    }
                 }
             }
             _ => {}
@@ -607,9 +1007,10 @@ fn failed_second_push_never_leaves_a_deed_header_without_its_rules() {
     assert!(run(engine.sync(&mut backend, &mut records, || 1000)).is_err());
     let partial = run(backend.inner.pull(0)).unwrap();
     for row in &partial.changes {
+        let row = row.accepted().unwrap();
         if let Change::Deed { id, row: Some(_) } = &row.pending.change {
             assert!(partial.changes.iter().any(|row|
-                matches!(&row.pending.change, Change::Rule { id: rule_id, .. } if rule_id == id)));
+                matches!(&row.accepted().unwrap().pending.change, Change::Rule { id: rule_id, .. } if rule_id == id)));
         }
     }
     let mut fresh = OwnerData::default();
@@ -684,6 +1085,7 @@ fn a_deed_with_more_than_32_rules_is_sent_as_one_atomic_group() {
         partial
             .changes
             .iter()
+            .map(|row| row.accepted().unwrap())
             .filter(|row| matches!(row.pending.change, Change::Rule { .. }))
             .count(),
         41
@@ -904,7 +1306,7 @@ fn legacy_oversized_outbox_keeps_local_rows_and_does_not_block_valid_changes() {
     assert_eq!(records.names[&DeedId(1)], DeedName::Text(huge_name));
     let stream = run(backend.pull(0)).unwrap();
     assert!(stream.changes.iter().all(|row| !matches!(
-        row.pending.change,
+        row.accepted().unwrap().pending.change,
         Change::Deed { .. } | Change::Rule { .. } | Change::Mark { .. }
     )));
     let mut fresh = OwnerData::default();
@@ -951,7 +1353,7 @@ fn watched_pages_preserve_late_and_excuse_signs_without_touching_owner_state() {
     let stream = run(backend.pull(0)).unwrap();
     let mut watched = werdy_sync::WatchView::new().unwrap();
     for accepted in stream.changes {
-        let cursor = accepted.stamp.sequence;
+        let cursor = accepted.stamp().sequence;
         watched
             .apply(Batch {
                 changes: vec![accepted],
@@ -1029,7 +1431,7 @@ fn moving_install_keeps_deed_keys_and_renumbers_pending_changes() {
     );
 }
 
-fn recover(engine: &mut Sync, backend: &mut FakeBackend, records: &mut OwnerData) {
+fn recover(engine: &mut Sync, backend: &mut impl Backend, records: &mut OwnerData) {
     let Err(SyncError::Collision(collision)) = run(engine.sync(backend, records, || 1000)) else {
         panic!("expected an operation collision");
     };
@@ -1090,7 +1492,16 @@ fn collision_after_accepted_batch_retries_only_missing_rows() {
     sync(&mut engine, &mut backend, &mut records);
     let log = run(backend.pull(0)).unwrap();
     assert_eq!(log.cursor, 34);
-    assert_eq!(log.changes.last().unwrap().pending.install, "fresh");
+    assert_eq!(
+        log.changes
+            .last()
+            .unwrap()
+            .accepted()
+            .unwrap()
+            .pending
+            .install,
+        "fresh"
+    );
     assert_eq!(records.day_notes.len(), 33);
 }
 
@@ -1164,5 +1575,32 @@ fn collision_keeps_two_new_deeds_with_their_own_marks() {
             .0;
         assert_eq!(reader.deed_keys[id].install, install);
         assert_eq!(reader.marks[&(*id, day())].mark, mark);
+    }
+}
+
+#[test]
+fn collision_keeps_local_deed_separate_from_held_server_header() {
+    let mut backend = FaultyBackend {
+        inner: FakeBackend::new(1000),
+        fault: None,
+    };
+    let mut first = Sync::new("shared").unwrap();
+    let mut second = first.clone();
+    sync(&mut first, &mut backend, &mut history("first"));
+    backend.fault = Some(Fault::UnreadableHeader);
+    let mut records = history("second");
+
+    recover(&mut second, &mut backend, &mut records);
+    assert_eq!(records.deed_keys[&DeedId(1)].install, "fresh");
+    let state = serde_json::to_value(&second).unwrap();
+    assert_eq!(state["held"].as_array().unwrap().len(), 1);
+    assert_eq!(second.outbox().len(), 3);
+    for pending in second.outbox() {
+        match &pending.change {
+            Change::Deed { id, .. } | Change::Rule { id, .. } | Change::Mark { id, .. } => {
+                assert_eq!(id.install, "fresh");
+            }
+            change => panic!("unexpected pending change {change:?}"),
+        }
     }
 }

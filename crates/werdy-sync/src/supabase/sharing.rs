@@ -1,4 +1,4 @@
-use crate::{Accepted, Batch, SupabaseBackend, SyncError, invalid, normalize_email};
+use crate::{Batch, BatchRow, SupabaseBackend, SyncError, invalid, normalize_email};
 use serde::{Deserialize, Serialize};
 
 /// A bearer secret, intentionally without Debug or serialization for logging.
@@ -20,7 +20,7 @@ pub struct SharePerson {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WatchPage {
-    pub changes: Vec<Accepted>,
+    pub changes: Vec<BatchRow>,
     pub cursor: u64,
     pub has_more: bool,
 }

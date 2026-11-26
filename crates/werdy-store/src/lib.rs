@@ -334,7 +334,12 @@ impl OwnerData {
     /// falls inside its lifetime. The other copies are deleted and their marks
     /// move to the kept deed. On a day both have, a mark not yet sent (in
     /// `unsent`) wins, otherwise the later change. Returns whether anything changed.
-    pub fn merge_duplicate_starters(&mut self, unsent: &BTreeSet<(DeedId, WerdyDay)>) -> bool {
+    /// Groups with a deed in `held` wait so unreadable edits are not lost.
+    pub fn merge_duplicate_starters(
+        &mut self,
+        unsent: &BTreeSet<(DeedId, WerdyDay)>,
+        held: &BTreeSet<DeedId>,
+    ) -> bool {
         let mut groups: BTreeMap<&str, Vec<DeedId>> = BTreeMap::new();
         for deed in &self.deeds {
             if let Some(key) = self.starter_keys.get(&deed.id) {
@@ -343,7 +348,7 @@ impl OwnerData {
         }
         let merges: Vec<Vec<DeedId>> = groups
             .into_values()
-            .filter(|ids| ids.len() > 1)
+            .filter(|ids| ids.len() > 1 && ids.iter().all(|id| !held.contains(id)))
             .map(|mut ids| {
                 ids.sort_by_key(|id| self.keep_order(*id));
                 ids

@@ -10,7 +10,7 @@ use werdy_core::{
     CategoryKey, Deed, DeedId, DeedRule, Mark, MarkEntry, Schedule as DeedSchedule, SlotKey,
     WerdyDay,
 };
-use werdy_sync::{Backend, Change, FakeBackend};
+use werdy_sync::{Backend, Batch, Change, FakeBackend, Pending, SyncError};
 
 fn run<F: Future>(future: F) -> F::Output {
     match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
@@ -56,7 +56,7 @@ fn store() -> AccountStore {
         true,
     )
 }
-fn flight(store: &AccountStore, backend: &mut FakeBackend) -> Checkpoint {
+fn flight(store: &AccountStore, backend: &mut impl Backend) -> Checkpoint {
     let mut checkpoint = store.account.borrow().checkpoint.clone().unwrap();
     let mut records = from_json(&checkpoint.records).unwrap();
     run(checkpoint.engine.sync(backend, &mut records, || 1000)).unwrap();
@@ -291,6 +291,84 @@ fn starter_sheet(mark_day: WerdyDay, mark: Mark) -> OwnerData {
         1000,
     );
     sheet
+}
+
+struct HeldRuleBackend {
+    inner: FakeBackend,
+    edit_day: WerdyDay,
+}
+
+impl Backend for HeldRuleBackend {
+    async fn pull(&mut self, cursor: u64) -> Result<Batch, SyncError> {
+        let mut batch = serde_json::to_value(self.inner.pull(cursor).await?).unwrap();
+        for row in batch["changes"].as_array_mut().unwrap() {
+            let change = &mut row["pending"]["change"];
+            if let Some(rule) = change.get_mut("Rule")
+                && rule["from_day"] == serde_json::json!(self.edit_day)
+            {
+                rule["rule"]["schedule"] = "some_future_kind".into();
+            }
+        }
+        Ok(serde_json::from_value(batch).unwrap())
+    }
+
+    async fn push(&mut self, changes: &[Pending]) -> Result<Batch, SyncError> {
+        self.inner.push(changes).await
+    }
+
+    async fn server_time(&mut self) -> Result<u64, SyncError> {
+        self.inner.server_time().await
+    }
+}
+
+#[test]
+fn starter_merge_waits_for_held_rule_then_moves_it_to_the_kept_deed() {
+    let edit_day = day().next().unwrap();
+    let mut backend = HeldRuleBackend {
+        inner: FakeBackend::new(1000),
+        edit_day,
+    };
+    let mut kept = starter_sheet(day(), Mark::Done);
+    run(Sync::new("a_kept")
+        .unwrap()
+        .sync(&mut backend.inner, &mut kept, || 1000))
+    .unwrap();
+    let mut copy = starter_sheet(day(), Mark::Done);
+    let mut edit = copy.deeds[0].rule_on(day()).unwrap().clone();
+    edit.schedule = DeedSchedule::WhenItComesUp;
+    copy.deeds[0].change_rule(edit_day, edit.clone()).unwrap();
+    run(Sync::new("b_copy")
+        .unwrap()
+        .sync(&mut backend.inner, &mut copy, || 1000))
+    .unwrap();
+
+    let store = store();
+    store.sign_in(session(), &OwnerData::default()).unwrap();
+    let first = flight(&store, &mut backend);
+    let deferred = store.complete(&first, 1, 1000).unwrap().unwrap();
+    assert_eq!(deferred.deeds.len(), 2);
+    assert!(deferred.deleted_deeds.is_empty());
+    let mut next = store.account.borrow().checkpoint.clone().unwrap();
+    assert!(
+        next.engine
+            .outbox()
+            .iter()
+            .all(|pending| !matches!(pending.change, Change::Deed { row: None, .. }))
+    );
+
+    let mut saved = serde_json::to_value(&next.engine).unwrap();
+    saved["held"][0]["pending"]["change"]["Rule"]["rule"]["schedule"] =
+        serde_json::json!(edit.schedule);
+    next.engine = serde_json::from_value(saved).unwrap();
+    let mut next_records = from_json(&next.records).unwrap();
+    run(next.engine.sync(&mut backend, &mut next_records, || 2000)).unwrap();
+    next.records = to_json(&next_records).unwrap();
+    let merged = store.complete(&next, 1, 2000).unwrap().unwrap();
+    assert_eq!(merged.deeds.len(), 1);
+    let kept = &merged.deeds[0];
+    assert_eq!(merged.deed_keys[&kept.id].install, "a_kept");
+    assert_eq!(kept.rule_on(edit_day), Some(&edit));
+    assert_eq!(merged.deleted_deeds.len(), 1);
 }
 
 #[test]

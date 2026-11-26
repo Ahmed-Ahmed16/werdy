@@ -14,6 +14,35 @@ fn backend() -> SupabaseBackend {
 }
 
 #[test]
+fn pull_response_holds_unreadable_changes() {
+    let body = br#"{"changes":[{"pending":{"install":"source","operation":1,
+        "change":{"FutureKind":340282366920938463463374607431768211455}},
+        "stamp":{"received_at":1000,"sequence":1}}],"cursor":1}"#;
+    let batch = parse_response::<Batch>(body).unwrap();
+    assert_eq!(batch.cursor, 1);
+    assert_eq!(batch.changes.len(), 1);
+    assert!(batch.changes[0].accepted().is_none());
+    assert!(
+        serde_json::to_string(&batch)
+            .unwrap()
+            .contains("340282366920938463463374607431768211455")
+    );
+    assert!(parse_response::<PushReceipt>(body).is_err());
+}
+
+#[test]
+fn watch_response_keeps_unreadable_rows_in_page() {
+    let body = br#"{"changes":[{"pending":{"install":"source","operation":1,
+        "change":{"FutureKind":{}}},"stamp":{"received_at":1000,"sequence":1}}],
+        "cursor":1,"has_more":true}"#;
+    let page = parse_response::<crate::WatchPage>(body).unwrap();
+    assert!(page.has_more);
+    let mut view = crate::WatchView::new().unwrap();
+    view.apply(page.batch()).unwrap();
+    assert_eq!(view.cursor(), 1);
+}
+
+#[test]
 fn sql_wire_fixture_matches_rust_request_layout() {
     let sql = include_str!("../../../../supabase/tests/sync.sql");
     let fixture = sql.split("$wire$").nth(1).unwrap();
@@ -154,7 +183,17 @@ fn full_width_fraction_serializes_without_value_conversion_or_rounding() {
         batch: Vec<Pending>,
     }
     let sent: Sent = serde_json::from_slice(request.body().unwrap().as_bytes().unwrap()).unwrap();
-    assert_eq!(sent.batch, vec![pending]);
+    assert_eq!(sent.batch, vec![pending.clone()]);
+    let row = Accepted {
+        pending,
+        stamp: crate::Stamp {
+            received_at: 1,
+            sequence: 1,
+        },
+    };
+    let body = serde_json::to_vec(&Batch::new(vec![row.clone()], 1)).unwrap();
+    let pulled: Batch = parse_response(&body).unwrap();
+    assert_eq!(pulled.changes[0].accepted(), Some(&row));
 }
 
 #[test]
@@ -167,10 +206,10 @@ fn canned_rpc_batch_preserves_receipts_tombstones_and_server_stamps() {
            "stamp":{"received_at":1793145600000,"sequence":2}}
         ]}"#).unwrap();
     assert_eq!(batch.cursor, 2);
-    assert_eq!(batch.changes[0].stamp.received_at, 1_793_145_600_000);
-    assert_eq!(batch.changes[1].stamp.sequence, 2);
+    assert_eq!(batch.changes[0].stamp().received_at, 1_793_145_600_000);
+    assert_eq!(batch.changes[1].stamp().sequence, 2);
     assert!(matches!(
-        batch.changes[1].pending.change,
+        batch.changes[1].accepted().unwrap().pending.change,
         Change::Note { note: None, .. }
     ));
     assert_eq!(
