@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_core::{SheetRow, SheetSlot, SlotKey, WerdyDay};
+use werdy_core::{RowTag, SheetRow, SheetSlot, SlotKey, WerdyDay};
 use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
@@ -253,6 +253,14 @@ fn should_scroll_to_slot(is_today: bool, welcome: bool, milestone: bool) -> bool
     is_today && !welcome && !milestone
 }
 
+/// Text key for a row's quiet schedule tag.
+fn row_tag_key(tag: RowTag) -> &'static str {
+    match tag {
+        RowTag::ThisWeek => "sheet-this-week",
+        RowTag::WhenItComesUp => "sheet-when-it-comes-up",
+    }
+}
+
 /// A chip in the slot strip: name and marked count. Tapping it opens the slot
 /// and scrolls to it.
 #[component]
@@ -358,6 +366,9 @@ fn DeedRow(row: SheetRow) -> Element {
                 span { class: "deed-name", "{name}" }
                 if let Some(target) = target {
                     CountTag { deed_id, mark, target }
+                }
+                if let Some(tag) = row.tag {
+                    span { class: "schedule-tag", {i18n.t(row_tag_key(tag))} }
                 }
                 if row.added_later {
                     span {

@@ -32,10 +32,11 @@ pub fn section_views(
             let counted_slot = full
                 .and_then(|sheet| sheet.slots.iter().find(|other| other.slot == slot.slot))
                 .unwrap_or(&slot);
+            let (marked, total) = section_count(&counted_slot.rows);
             SectionView {
                 progress: SlotProgress {
-                    marked: marked_count(&counted_slot.rows),
-                    total: counted_slot.rows.len(),
+                    marked,
+                    total,
                     complete: counted_slot.complete,
                 },
                 current: current == Some(slot.slot.0.as_str()),
@@ -45,9 +46,13 @@ pub fn section_views(
         .collect()
 }
 
-/// A miss counts as marked because the person has dealt with it.
-fn marked_count(rows: &[SheetRow]) -> usize {
-    rows.iter().filter(|row| row.mark.is_some()).count()
+/// Marked deeds and counted deeds in a section. A miss counts as marked
+/// because the person has dealt with it. An unmarked when it comes up deed is
+/// not counted (decision 0047, see `SheetRow::counts_in_section`).
+fn section_count(rows: &[SheetRow]) -> (usize, usize) {
+    let marked = rows.iter().filter(|row| row.mark.is_some()).count();
+    let counted = rows.iter().filter(|row| row.counts_in_section()).count();
+    (marked, counted)
 }
 
 /// Manual choices for each viewed date during the current werdy day.
@@ -134,7 +139,7 @@ pub fn nearest_slot<'a>(
 
 #[cfg(test)]
 mod tests {
-    use werdy_core::{DeedId, Mark};
+    use werdy_core::{DeedId, Mark, RowTag};
 
     use super::*;
 
@@ -144,6 +149,7 @@ mod tests {
             mark,
             added_later: false,
             target: None,
+            tag: None,
         }
     }
 
@@ -225,7 +231,22 @@ mod tests {
             row(5, Some(Mark::partial_without_target())),
             row(6, Some(Mark::Count(120))),
         ];
-        assert_eq!(marked_count(&rows), 5);
+        assert_eq!(section_count(&rows), (5, 6));
+    }
+
+    #[test]
+    fn an_unmarked_when_it_comes_up_deed_is_left_out_of_the_section_count() {
+        let comes_up = |id, mark| SheetRow {
+            tag: Some(RowTag::WhenItComesUp),
+            ..row(id, mark)
+        };
+        let rows = [
+            row(1, Some(Mark::Done)),
+            row(2, None),
+            comes_up(3, None),
+            comes_up(4, Some(Mark::Missed)),
+        ];
+        assert_eq!(section_count(&rows), (2, 3));
     }
 
     #[test]

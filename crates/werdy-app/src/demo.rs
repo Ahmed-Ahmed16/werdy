@@ -114,7 +114,7 @@ fn add_demo_marks(
         }
         let day = days_before(today, offset)?;
         for deed in &data.deeds {
-            if !deed.is_due_on(day, &data.settings.calendar) {
+            if !deed.is_due_on(day, &data.settings.calendar, &data.marks) {
                 continue;
             }
             if offset < UNMARKED_WINDOW

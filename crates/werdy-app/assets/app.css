@@ -782,7 +782,8 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.count-tag {
+.count-tag,
+.schedule-tag {
   font-size: var(--size-caption);
   color: var(--text-muted);
   white-space: nowrap;
