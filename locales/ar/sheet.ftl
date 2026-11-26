@@ -51,6 +51,7 @@ mark-done = تم
 mark-partial = جزئي
 mark-missed = فات
 mark-added-later = أضيف لاحقًا
+sheet-this-week = هذا الأسبوع
 count-progress = { $count } من { $target }
 count-edit = أدخل العدد
 count-empty = ١٢٣

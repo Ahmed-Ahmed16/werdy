@@ -331,3 +331,6 @@ deed-lv-friday-dua-after-asr = الدعاء بعد العصر (الجمعة)
 deed-lv-friday-kahf = سورة الكهف (الجمعة)
 deed-lv-friday-salawat-100 = الصلاة على النبي (الجمعة)
 deed-lv-friday-salawat = الصلاة على النبي ﷺ (الجمعة)
+
+deed-lv-visiting-graves = زيارة القبور
+deed-lv-weekly-fitra = سنن الفطرة

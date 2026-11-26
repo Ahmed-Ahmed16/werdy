@@ -229,7 +229,9 @@ impl<F: Fn(WerdyDay, u16) -> i32> Planner<'_, F> {
             .iter()
             .filter(|deed| {
                 !self.owner.deleted_deeds.contains(&deed.id)
-                    && deed.is_due_on(day, &self.owner.settings.calendar)
+                    && deed
+                        .status_on(day, &self.owner.settings.calendar, &self.owner.marks)
+                        .is_on_sheet()
                     && !self
                         .owner
                         .marks

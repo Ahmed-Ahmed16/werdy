@@ -680,8 +680,9 @@ schedule = { hijri = "last_ten_nights" }
 # sheets word it the same (spelling aside), so moving up a level keeps its
 # history. Names add the sheet's group in brackets when the row alone would
 # not say what it is. Groups wait on #107, so group rows use any_time.
-# Left out until weekly schedules exist (#108): the advanced sheet's
-# visiting graves and sunan al fitra, due once a week on any day.
+# The advanced sheet's weekly box (visiting graves and sunan al fitra) is
+# due once a week on any day (0047). Levels 1 to 3 keep sunan al fitra in
+# the Friday box.
 # Added by the owner, not on the sheets: istikhara and salat al hajah in
 # levels 2 and 3, placed after dawah.
 
@@ -1625,6 +1626,22 @@ slot = "any_time"
 category = "adhkar"
 schedule = { weekdays = ["friday"] }
 
+# Level deeds in the advanced weekly box (الأعمال الاسبوعية).
+
+[[deeds]]
+key = "lv_visiting_graves"
+name = "deed-lv-visiting-graves"
+slot = "any_time"
+category = "other"
+schedule = "once_a_week"
+
+[[deeds]]
+key = "lv_weekly_fitra"
+name = "deed-lv-weekly-fitra"
+slot = "any_time"
+category = "other"
+schedule = "once_a_week"
+
 # The sets, in the order they are offered. The three levels come first.
 
 [[sets]]
@@ -1867,6 +1884,8 @@ deeds = [
     "lv_friday_dua_after_asr",
     "lv_friday_kahf",
     "lv_friday_salawat",
+    "lv_visiting_graves",
+    "lv_weekly_fitra",
 ]
 
 [[sets]]

@@ -1327,7 +1327,7 @@ impl AppState {
                 .is_some_and(|deed| {
                     let mut day = deed.created_on();
                     while day < self.today {
-                        if deed.is_due_on(day, &self.data.settings.calendar) {
+                        if deed.is_due_on(day, &self.data.settings.calendar, &self.data.marks) {
                             return true;
                         }
                         let Ok(next) = day.next() else { break };
@@ -2419,6 +2419,32 @@ mod tests {
     }
 
     #[test]
+    fn once_a_week_deed_saves_and_comes_back() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let draft = EditorDraft {
+            name: "Visiting graves".to_owned(),
+            schedule: Schedule::OnceAWeek,
+            ..EditorDraft::default()
+        };
+        let id = state.save_deed(None, &draft)?;
+        state.save_to(&store);
+
+        let saved = started(&store)?;
+        let deed = saved
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .ok_or("missing deed")?;
+        assert_eq!(
+            deed.rule_on(today()?).map(|rule| &rule.schedule),
+            Some(&Schedule::OnceAWeek)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn add_and_edit_deed_save_rules_from_today_without_moving_past_due_days() -> TestResult {
         let store = MemoryStore::default();
         let mut state = started(&store)?;
@@ -2435,7 +2461,11 @@ mod tests {
                 .deeds
                 .iter()
                 .find(|deed| deed.id == id)
-                .is_some_and(|deed| deed.is_due_on(created, &state.data.settings.calendar))
+                .is_some_and(|deed| deed.is_due_on(
+                    created,
+                    &state.data.settings.calendar,
+                    &state.data.marks
+                ))
         );
         let later = today()?.next()?;
         state.update_today(later);
@@ -2451,7 +2481,7 @@ mod tests {
             .iter()
             .find(|deed| deed.id == id)
             .ok_or("missing deed")?;
-        assert!(deed.is_due_on(today()?, &saved.data.settings.calendar));
+        assert!(deed.is_due_on(today()?, &saved.data.settings.calendar, &saved.data.marks));
         assert_eq!(
             deed.rule_on(later).map(|rule| &rule.schedule),
             Some(&draft.schedule)
@@ -2473,16 +2503,20 @@ mod tests {
         state.update_today(archived);
         state.archive_deed(id)?;
         state.save_to(&store);
-        assert!(!state.data.deeds[0].is_due_on(archived, &state.data.settings.calendar));
+        assert!(!state.data.deeds[0].is_due_on(
+            archived,
+            &state.data.settings.calendar,
+            &state.data.marks
+        ));
         let restored = archived.next()?;
         state.update_today(restored);
         state.restore_deed(id)?;
         state.save_to(&store);
         let loaded = started(&store)?;
         let deed = &loaded.data.deeds[0];
-        assert!(deed.is_due_on(today()?, &loaded.data.settings.calendar));
-        assert!(!deed.is_due_on(archived, &loaded.data.settings.calendar));
-        assert!(deed.is_due_on(restored, &loaded.data.settings.calendar));
+        assert!(deed.is_due_on(today()?, &loaded.data.settings.calendar, &loaded.data.marks));
+        assert!(!deed.is_due_on(archived, &loaded.data.settings.calendar, &loaded.data.marks));
+        assert!(deed.is_due_on(restored, &loaded.data.settings.calendar, &loaded.data.marks));
         assert_eq!(
             state.delete_deed_confirmed(id, false),
             Err(EditorError::DeleteNotConfirmed)
@@ -3245,7 +3279,11 @@ mod tests {
             imported.rule_versions().collect::<Vec<_>>(),
             vec![(created, &first_rule), (changed, &later_rule)]
         );
-        assert!(imported.is_due_on(past_due, &resumed.data.settings.calendar));
+        assert!(imported.is_due_on(
+            past_due,
+            &resumed.data.settings.calendar,
+            &resumed.data.marks
+        ));
         assert!(setup_ids.iter().all(|id| {
             resumed
                 .data

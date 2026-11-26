@@ -336,3 +336,35 @@ fn london_missing_summer_prayer_keeps_clock_reminder() {
         assert!(!plan.prayer_slots_skipped_no_location);
     }
 }
+
+#[test]
+fn weekly_deed_is_reminded_until_marked_that_week() {
+    // 28 October 2026 is a Wednesday; its week started on Saturday 24 October.
+    let saturday = WerdyDay::new(2026, 10, 24).unwrap();
+    let monday = WerdyDay::new(2026, 10, 26).unwrap();
+    let mut owner = owner("any_time");
+    owner.deeds = vec![Deed::new(
+        DeedId(1),
+        saturday,
+        DeedRule {
+            schedule: Schedule::OnceAWeek,
+            target: None,
+            category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
+        },
+    )];
+    owner
+        .settings
+        .reminders
+        .deeds
+        .insert(DeedId(1), ClockTime::new(12, 0).unwrap());
+    let unmarked = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert_eq!(unmarked.notifications.len(), 1);
+
+    owner.marks.insert(
+        (DeedId(1), monday),
+        MarkEntry::new(Mark::partial_without_target(), monday),
+    );
+    let marked = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert!(marked.notifications.is_empty());
+}

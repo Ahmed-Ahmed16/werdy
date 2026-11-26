@@ -145,6 +145,7 @@ pub fn rule(deed: &CatalogDeed) -> Option<DeedRule> {
                 .range()
                 .ok()?,
         ),
+        CatalogSchedule::OnceAWeek => Schedule::OnceAWeek,
     };
     let target = deed
         .target

@@ -13,18 +13,46 @@ pub enum Schedule {
     Weekdays(BTreeSet<Weekday>),
     /// Due on the Hijri days of this range.
     Hijri(HijriRange),
+    /// Due on one day of each Saturday to Friday week: the first day it has a
+    /// mark, or Friday when the week has none (decision 0047).
+    OnceAWeek,
 }
 
 impl Schedule {
-    /// Says whether the schedule includes this day under the owner's calendar settings.
-    pub fn includes(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
+    /// Says whether a calendar schedule includes this day under the owner's
+    /// calendar settings. A schedule whose due day follows the owner's marks,
+    /// such as once a week, includes no day here; `Deed::status_on` decides it.
+    fn includes(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
         match self {
             Self::EveryDay => true,
             Self::Weekdays(weekdays) => weekdays.contains(&day.weekday()),
             Self::Hijri(range) => day
                 .hijri(calendar.offset_on(day))
                 .is_ok_and(|date| range.contains(date)),
+            Self::OnceAWeek => false,
         }
+    }
+}
+
+/// Marks keyed by deed and werdy day.
+pub type Marks = BTreeMap<(DeedId, WerdyDay), MarkEntry>;
+
+/// How a deed stands on one werdy day.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DayStatus {
+    /// Not on that day's sheet and not scored that day.
+    NotDue,
+    /// On the sheet and scored that day. Left unmarked, the finished day counts it as Missed.
+    Due,
+    /// A once a week deed with no mark yet this week, on a day before Friday.
+    /// It is on the sheet and open, but it is not scored that day and is never Missed.
+    OpenThisWeek,
+}
+
+impl DayStatus {
+    /// Says whether the deed shows on that day's sheet.
+    pub fn is_on_sheet(self) -> bool {
+        self != Self::NotDue
     }
 }
 
@@ -261,9 +289,28 @@ impl Deed {
             .or(Some(&self.first_rule.rule))
     }
 
-    /// Says whether this deed is due on this day under the owner's calendar settings.
-    pub fn is_due_on(&self, day: WerdyDay, calendar: &CalendarSettings) -> bool {
-        self.due_rule_on(day, calendar).is_some()
+    /// Says whether this deed is due on this day under the owner's calendar
+    /// settings. Marks matter for a once a week deed, whose due day is the
+    /// first day it is marked that week.
+    pub fn is_due_on(&self, day: WerdyDay, calendar: &CalendarSettings, marks: &Marks) -> bool {
+        self.status_on(day, calendar, marks) == DayStatus::Due
+    }
+
+    /// Says how this deed stands on this day: due, open this week, or not due.
+    pub fn status_on(
+        &self,
+        day: WerdyDay,
+        calendar: &CalendarSettings,
+        marks: &Marks,
+    ) -> DayStatus {
+        let Some(rule) = self.active_rule_on(day) else {
+            return DayStatus::NotDue;
+        };
+        match &rule.schedule {
+            Schedule::OnceAWeek => self.weekly_status_on(day, marks),
+            schedule if schedule.includes(day, calendar) => DayStatus::Due,
+            _ => DayStatus::NotDue,
+        }
     }
 
     /// Returns the rule if the deed is due on this day.
@@ -271,12 +318,52 @@ impl Deed {
         &self,
         day: WerdyDay,
         calendar: &CalendarSettings,
+        marks: &Marks,
     ) -> Option<&DeedRule> {
+        self.sheet_rule_on(day, calendar, marks)
+            .filter(|(_, status)| *status == DayStatus::Due)
+            .map(|(rule, _)| rule)
+    }
+
+    /// Returns the rule and status if the deed shows on this day's sheet.
+    pub(crate) fn sheet_rule_on(
+        &self,
+        day: WerdyDay,
+        calendar: &CalendarSettings,
+        marks: &Marks,
+    ) -> Option<(&DeedRule, DayStatus)> {
+        let status = self.status_on(day, calendar, marks);
+        if !status.is_on_sheet() {
+            return None;
+        }
+        self.rule_on(day).map(|rule| (rule, status))
+    }
+
+    fn active_rule_on(&self, day: WerdyDay) -> Option<&DeedRule> {
         if self.is_archived_on(day) {
             return None;
         }
         self.rule_on(day)
-            .filter(|rule| rule.schedule.includes(day, calendar))
+    }
+
+    /// The week's due day is the first day with a mark while the deed was once
+    /// a week and active, or Friday when there is none.
+    fn weekly_status_on(&self, day: WerdyDay, marks: &Marks) -> DayStatus {
+        let since_saturday = day.days_since_saturday();
+        let first_marked = (0..7)
+            .filter_map(|offset| day.checked_add_days(offset - since_saturday))
+            .find(|week_day| {
+                marks.contains_key(&(self.id, *week_day))
+                    && self
+                        .active_rule_on(*week_day)
+                        .is_some_and(|rule| rule.schedule == Schedule::OnceAWeek)
+            });
+        match first_marked {
+            Some(due_day) if due_day == day => DayStatus::Due,
+            Some(_) => DayStatus::NotDue,
+            None if since_saturday == 6 => DayStatus::Due,
+            None => DayStatus::OpenThisWeek,
+        }
     }
 }
 

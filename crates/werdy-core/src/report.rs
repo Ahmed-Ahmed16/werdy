@@ -256,7 +256,7 @@ fn deed_day_history(
         let due_days: Vec<_> = days
             .iter()
             .filter_map(|day| {
-                deed.due_rule_on(*day, &records.calendar)
+                deed.due_rule_on(*day, &records.calendar, records.marks)
                     .map(|rule| DeedDay {
                         day: *day,
                         value: crate::score::due_value(records, deed, *day, rule),
@@ -329,7 +329,7 @@ fn category_scores(
     let mut totals: BTreeMap<CategoryKey, (ScoreValue, usize)> = BTreeMap::new();
     for day in days {
         for deed in records.deeds {
-            if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
+            if let Some(rule) = deed.due_rule_on(*day, &records.calendar, records.marks) {
                 let value = crate::score::due_value(records, deed, *day, rule);
                 let category = totals.entry(rule.category.clone()).or_default();
                 category.0.add_fraction(value)?;
@@ -386,7 +386,7 @@ fn missed_deed(
     let mut days_not_done = 0usize;
     let mut lost = ScoreValue::ZERO;
     for day in days {
-        if let Some(rule) = deed.due_rule_on(*day, &records.calendar) {
+        if let Some(rule) = deed.due_rule_on(*day, &records.calendar, records.marks) {
             let value = crate::score::due_value(records, deed, *day, rule);
             if value < Fraction::ONE {
                 days_not_done = days_not_done.checked_add(1).ok_or(Error::ScoreOverflow)?;

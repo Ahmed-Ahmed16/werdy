@@ -654,3 +654,22 @@ fn last_seen_version_merge_never_lowers_valid_version() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn a_once_a_week_rule_round_trips() -> TestResult {
+    let mut data = sample()?;
+    let weekly = DeedRule {
+        schedule: Schedule::OnceAWeek,
+        ..rule("any_time", None)
+    };
+    data.deeds[0].change_rule(WerdyDay::new(2026, 10, 20)?, weekly.clone())?;
+
+    let loaded = from_json(&to_json(&data)?)?;
+
+    assert_eq!(
+        loaded.deeds[0].rule_on(WerdyDay::new(2026, 10, 20)?),
+        Some(&weekly)
+    );
+    assert_eq!(loaded, data);
+    Ok(())
+}

@@ -51,6 +51,7 @@ mark-done = Done
 mark-partial = Partial
 mark-missed = Missed
 mark-added-later = Added later
+sheet-this-week = This week
 count-progress = { $count } of { $target }
 count-edit = Enter count
 count-empty = 123

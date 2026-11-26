@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use fluent_bundle::FluentValue;
-use werdy_core::{SheetRow, SheetSlot, SlotKey, WerdyDay};
+use werdy_core::{RowTag, SheetRow, SheetSlot, SlotKey, WerdyDay};
 use werdy_store::DeedName;
 
 use super::context::{use_actions, use_i18n};
@@ -367,6 +367,9 @@ fn DeedRow(row: SheetRow) -> Element {
                 if let Some(target) = target {
                     CountTag { deed_id, mark, target }
                 }
+                if row.tag == Some(RowTag::ThisWeek) {
+                    span { class: "schedule-tag", {i18n.t("sheet-this-week")} }
+                }
                 if row.added_later {
                     span {
                         class: "late-sign",
@@ -424,6 +427,7 @@ mod tests {
             mark,
             added_later: false,
             target: None,
+            tag: None,
         }
     }
 
