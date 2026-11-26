@@ -2,7 +2,7 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
-## 0049 (2026-11-26): A late sign up may mark the week before
+## 0050 (2026-11-26): A late sign up may mark the week before
 When a person finishes first run, their setup deeds start 7 days before that day (`first_markable_day` in werdy-core, `LATE_SIGN_UP_DAYS`), so they can fill in the last week. Days before that week are not due, so no statistic counts them as Missed; this is scoring rule 4 with an earlier start day, not a new rule. Deeds added after first run still start on the day they are added. Marks entered more than 2 days after their day carry the "added later" sign (0021), so most of that week shows it. The owner decided a week on 2026-11-26 (#170); a month was considered.
 
 Why: someone who starts using werdy mid week has already prayed and read this week, and should be able to record it. Moving the start day keeps every report, strip and sheet consistent with one rule. Open: an unmarked day in that week counts as Missed, like any past due day. Revisit: if new people find a week of red they did not choose to fill, by counting only marked days in that week.

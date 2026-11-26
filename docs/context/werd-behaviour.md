@@ -37,7 +37,7 @@ Counting only due days gives about 375 of 565, **66%**. For the month (1 to 27 O
 1. A deed has a schedule (every day, given weekdays, Fridays, a date range such as Ramadan, the last ten nights). It only counts on days it is due.
 2. Today is "in progress" until the day ends.
 3. Each mark is Done, Partial (a fraction) or Missed; the score sums the fractions.
-4. A deed added mid period only counts from the day it was added. Setup deeds from first run start 7 days before first run ends, so a late sign up can fill in the last week (0049).
+4. A deed added mid period only counts from the day it was added. Setup deeds from first run start 7 days before first run ends, so a late sign up can fill in the last week (0050).
 5. Percentages round, never truncate.
 
 Counter rule, decided by the owner on 2026-10-28: zero is a miss (red). A positive count below the target is partial (yellow), worth count divided by target. Reaching or exceeding the target is full (green), capped at one. Typing a count stores the same raw count as tapping plus. Typing zero records a miss; minus from one still clears the mark. Direct entry accepts whole numbers from 0 to 4294967295, the same limit as plus, including Arabic Indic digits. Enter or blur saves; Escape cancels. Invalid input keeps the previous mark and shows a message.
