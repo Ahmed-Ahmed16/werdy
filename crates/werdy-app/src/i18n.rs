@@ -626,8 +626,8 @@ mod tests {
             ),
             (
                 Schedule::OnceAWeek,
-                "Due once a week, on the day you mark it. The week runs Saturday to Friday.",
-                "مستحق مرة في الأسبوع، في اليوم الذي تسجله فيه. الأسبوع من السبت إلى الجمعة.",
+                "Due once a week, on the day you mark it. The week runs Saturday to Friday. With no mark by the end of Friday, it counts as missed on Friday.",
+                "مستحق مرة في الأسبوع، في اليوم الذي تسجله فيه. الأسبوع من السبت إلى الجمعة. إن لم تسجله حتى نهاية الجمعة يُحسب فائتًا يوم الجمعة.",
             ),
             (
                 Schedule::WhenItComesUp,
