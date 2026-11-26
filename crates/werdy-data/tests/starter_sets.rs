@@ -408,10 +408,9 @@ fn level_sets_come_first_with_the_sheet_counts() {
     let catalog = builtin().expect("the shipped starter sets load");
     let keys: Vec<&str> = catalog.sets.iter().map(|set| set.key.as_str()).collect();
     assert_eq!(keys[..3], ["level_1", "levels_2_3", "level_advanced"]);
-    // The advanced sheet has 113 deeds; visiting graves and sunan al fitra
-    // wait for weekly schedules (#108). Levels 2 and 3 add istikhara and
+    // The advanced sheet has 113 deeds. Levels 2 and 3 add istikhara and
     // salat al hajah to the sheet's 61, at the owner's request.
-    for (key, count) in [("level_1", 44), ("levels_2_3", 63), ("level_advanced", 111)] {
+    for (key, count) in [("level_1", 44), ("levels_2_3", 63), ("level_advanced", 113)] {
         let set = catalog.set(key).expect("set exists");
         assert_eq!(catalog.deeds_in(set).len(), count, "{key}");
     }
@@ -479,6 +478,93 @@ fn friday_box_deeds_are_due_only_on_fridays() {
             deed.key
         );
     }
+}
+
+#[test]
+fn advanced_weekly_box_is_due_once_a_week() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let advanced = catalog.set("level_advanced").expect("set exists");
+    let weekly = catalog
+        .deeds_in(advanced)
+        .into_iter()
+        .filter(|deed| deed.schedule == Schedule::OnceAWeek)
+        .map(|deed| deed.key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(weekly, ["lv_visiting_graves", "lv_weekly_fitra"]);
+
+    // Levels 1 to 3 keep sunan al fitra in the Friday box.
+    for key in ["level_1", "levels_2_3"] {
+        let set = catalog.set(key).expect("set exists");
+        assert!(
+            set.deeds.iter().any(|deed| deed == "lv_friday_fitra"),
+            "{key}"
+        );
+        assert!(
+            !set.deeds.iter().any(|deed| deed == "lv_weekly_fitra"),
+            "{key}"
+        );
+    }
+}
+
+#[test]
+fn deeds_for_a_need_are_due_when_they_come_up() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let mut comes_up = catalog
+        .deeds
+        .iter()
+        .filter(|deed| deed.schedule == Schedule::WhenItComesUp)
+        .map(|deed| deed.key.as_str())
+        .collect::<Vec<_>>();
+    comes_up.sort_unstable();
+    assert_eq!(
+        comes_up,
+        [
+            "lv_asr_makeup",
+            "lv_dhuhr_makeup",
+            "lv_fajr_makeup",
+            "lv_fasting",
+            "lv_hajah",
+            "lv_isha_makeup",
+            "lv_istikhara",
+            "lv_maghrib_makeup",
+        ]
+    );
+
+    // Situational adhkar happen almost every day, so they stay daily.
+    for key in [
+        "lv_riding_adhkar",
+        "lv_mosque_enter_leave_adhkar",
+        "lv_food_adhkar",
+    ] {
+        let deed = catalog.deed(key).expect("deed exists");
+        assert_eq!(deed.schedule, Schedule::EveryDay, "{key}");
+    }
+}
+
+#[test]
+fn once_a_week_is_read_from_the_file() {
+    let weekly = SMALL.replace(
+        "schedule = { hijri = \"ramadan\" }",
+        "schedule = \"once_a_week\"",
+    );
+    let catalog = parse(&weekly).expect("once a week parses");
+    assert_eq!(
+        catalog.deed("qiyam").map(|deed| &deed.schedule),
+        Some(&Schedule::OnceAWeek)
+    );
+}
+
+#[test]
+fn when_it_comes_up_is_read_from_the_file() {
+    let comes_up = SMALL.replace(
+        "schedule = { hijri = \"ramadan\" }",
+        "schedule = \"when_it_comes_up\"",
+    );
+    let catalog = parse(&comes_up).expect("when it comes up parses");
+    assert_eq!(
+        catalog.deed("qiyam").map(|deed| &deed.schedule),
+        Some(&Schedule::WhenItComesUp)
+    );
 }
 
 #[test]
@@ -581,4 +667,25 @@ fn fard_prayers_must_use_known_slots_and_deeds() {
             key: "fajr".into()
         })
     );
+}
+
+/// The unit picker offers every shipped unit, hours included (#175), and
+/// each one has a picker label in both locales.
+#[test]
+fn every_unit_has_a_picker_label_and_hours_is_offered() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let keys: Vec<_> = catalog.units.iter().map(|unit| unit.key.as_str()).collect();
+    assert_eq!(keys, ["pages", "rakaat", "times", "hours"]);
+    for (locale, source) in [
+        ("ar", include_str!("../../../locales/ar/deeds.ftl")),
+        ("en", include_str!("../../../locales/en/deeds.ftl")),
+    ] {
+        for key in &keys {
+            let label = format!("\neditor-unit-{key} = ");
+            assert!(
+                source.contains(&label),
+                "{locale}: missing editor-unit-{key}"
+            );
+        }
+    }
 }

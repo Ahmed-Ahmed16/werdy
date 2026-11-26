@@ -30,6 +30,11 @@
         navigator.serviceWorker.register(worker.href, { scope: "/werdy/" })
           .catch((error) => console.warn("Service worker registration failed", error));
       }
+      // Records and the offline copy live in browser storage. Ask the browser
+      // not to clear it when the device runs low on space. It may say no.
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+      }
     </script>
   </body>
 </html>
