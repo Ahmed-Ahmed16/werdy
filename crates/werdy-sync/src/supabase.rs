@@ -7,7 +7,7 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderValue};
 use reqwest::{Client, Request, StatusCode, Url};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{Backend, Batch, Pending, SyncError, invalid, rows};
+use crate::{Accepted, Backend, Batch, Pending, SyncError, invalid, rows};
 
 pub(crate) mod auth;
 pub(crate) mod sharing;
@@ -25,6 +25,13 @@ pub struct SupabaseBackend {
 #[derive(Serialize)]
 struct PushRequest<'a> {
     batch: &'a [Pending],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PushReceipt {
+    changes: Vec<Accepted>,
+    cursor: u64,
 }
 
 #[derive(Serialize)]
@@ -197,8 +204,10 @@ impl Backend for SupabaseBackend {
         for pending in changes {
             rows::validate_pending(pending)?;
         }
-        self.rpc("werdy_sync_push", &PushRequest { batch: changes })
-            .await
+        let receipt: PushReceipt = self
+            .rpc("werdy_sync_push", &PushRequest { batch: changes })
+            .await?;
+        Ok(Batch::new(receipt.changes, receipt.cursor))
     }
 
     async fn pull(&mut self, cursor: u64) -> Result<Batch, SyncError> {
