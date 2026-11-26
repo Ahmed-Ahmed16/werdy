@@ -2417,6 +2417,32 @@ mod tests {
     }
 
     #[test]
+    fn when_it_comes_up_deed_saves_and_comes_back() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        let draft = EditorDraft {
+            name: "Istikhara".to_owned(),
+            schedule: Schedule::WhenItComesUp,
+            ..EditorDraft::default()
+        };
+        let id = state.save_deed(None, &draft)?;
+        state.save_to(&store);
+
+        let saved = started(&store)?;
+        let deed = saved
+            .data
+            .deeds
+            .iter()
+            .find(|deed| deed.id == id)
+            .ok_or("missing deed")?;
+        assert_eq!(
+            deed.rule_on(today()?).map(|rule| &rule.schedule),
+            Some(&Schedule::WhenItComesUp)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn once_a_week_deed_saves_and_comes_back() -> TestResult {
         let store = MemoryStore::default();
         let mut state = started(&store)?;

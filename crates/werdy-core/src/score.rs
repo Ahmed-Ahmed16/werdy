@@ -252,14 +252,14 @@ pub struct TodaySummary {
 }
 
 /// Counts marks and open deeds on today's sheet. A once a week deed with no
-/// mark yet this week counts as open.
+/// mark yet this week counts as open; an unmarked when it comes up deed does not.
 pub fn today_summary(
     deeds: &[Deed],
     marks: &Marks,
     today: WerdyDay,
     calendar: &CalendarSettings,
 ) -> TodaySummary {
-    summarise(deeds, marks, today, calendar, DayStatus::is_on_sheet)
+    summarise(deeds, marks, today, calendar, DayStatus::is_expected)
 }
 
 /// Counts due deeds on a finished day, when unmarked due deeds count as Missed.

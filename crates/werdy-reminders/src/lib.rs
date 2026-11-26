@@ -231,7 +231,7 @@ impl<F: Fn(WerdyDay, u16) -> i32> Planner<'_, F> {
                 !self.owner.deleted_deeds.contains(&deed.id)
                     && deed
                         .status_on(day, &self.owner.settings.calendar, &self.owner.marks)
-                        .is_on_sheet()
+                        .is_expected()
                     && !self
                         .owner
                         .marks

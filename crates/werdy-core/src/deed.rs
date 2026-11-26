@@ -16,6 +16,8 @@ pub enum Schedule {
     /// Due on one day of each Saturday to Friday week: the first day it has a
     /// mark, or Friday when the week has none (decision 0047).
     OnceAWeek,
+    /// Due only on a day it has a mark. Unmarked, it is never Missed (decision 0047).
+    WhenItComesUp,
 }
 
 impl Schedule {
@@ -29,7 +31,7 @@ impl Schedule {
             Self::Hijri(range) => day
                 .hijri(calendar.offset_on(day))
                 .is_ok_and(|date| range.contains(date)),
-            Self::OnceAWeek => false,
+            Self::OnceAWeek | Self::WhenItComesUp => false,
         }
     }
 }
@@ -47,12 +49,21 @@ pub enum DayStatus {
     /// A once a week deed with no mark yet this week, on a day before Friday.
     /// It is on the sheet and open, but it is not scored that day and is never Missed.
     OpenThisWeek,
+    /// A when it comes up deed with no mark that day. It is on the sheet, but
+    /// it is not scored, not open in today's line, and never Missed.
+    IfItComesUp,
 }
 
 impl DayStatus {
     /// Says whether the deed shows on that day's sheet.
     pub fn is_on_sheet(self) -> bool {
         self != Self::NotDue
+    }
+
+    /// Says whether the owner is expected to mark the deed that day, so an
+    /// unmarked one is open in today's line and in its section's count.
+    pub fn is_expected(self) -> bool {
+        matches!(self, Self::Due | Self::OpenThisWeek)
     }
 }
 
@@ -308,6 +319,8 @@ impl Deed {
         };
         match &rule.schedule {
             Schedule::OnceAWeek => self.weekly_status_on(day, marks),
+            Schedule::WhenItComesUp if marks.contains_key(&(self.id, day)) => DayStatus::Due,
+            Schedule::WhenItComesUp => DayStatus::IfItComesUp,
             schedule if schedule.includes(day, calendar) => DayStatus::Due,
             _ => DayStatus::NotDue,
         }

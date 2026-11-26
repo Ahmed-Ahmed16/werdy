@@ -368,3 +368,26 @@ fn weekly_deed_is_reminded_until_marked_that_week() {
     let marked = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
     assert!(marked.notifications.is_empty());
 }
+
+#[test]
+fn when_it_comes_up_deed_gets_no_reminder() {
+    let mut owner = owner("any_time");
+    owner.deeds = vec![Deed::new(
+        DeedId(1),
+        day(),
+        DeedRule {
+            schedule: Schedule::WhenItComesUp,
+            target: None,
+            category: CategoryKey::new("other"),
+            slot: SlotKey::new("any_time"),
+        },
+    )];
+    owner
+        .settings
+        .reminders
+        .deeds
+        .insert(DeedId(1), ClockTime::new(12, 0).unwrap());
+    clock(&mut owner, "any_time", 13, 0);
+    let planned = schedule(&owner, now(0, 0), 1, |_, _| 180).unwrap();
+    assert!(planned.notifications.is_empty());
+}
