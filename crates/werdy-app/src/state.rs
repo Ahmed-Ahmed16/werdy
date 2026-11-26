@@ -4044,7 +4044,7 @@ mod tests {
                 .data
                 .deeds
                 .iter()
-                .filter(|deed| deed.is_due_on(day, calendar))
+                .filter(|deed| deed.is_due_on(day, calendar, &state.data.marks))
                 .count()
         };
         assert_eq!(due_on(first), 5);
