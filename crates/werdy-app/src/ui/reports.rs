@@ -600,10 +600,10 @@ fn RankedBlock(report: Rc<Report>) -> Element {
     }
 }
 
-/// The five prayers (decisions 0041 and 0048): a dot per day for the last
-/// days of the period, and the percent over those days. Each day shows the on
-/// time deed, or the congregation deed when the on time deed is not due.
-/// Hidden when the owner has no prayer deed of either kind.
+/// The five prayers (decision 0049): a dot per day for the last days of the
+/// period, and the percent over those shown days only. Each day shows the
+/// first congregation deed due that day, else the on time deed. Hidden when
+/// the owner has no prayer deed of either kind.
 #[component]
 fn PrayersBlock(report: Rc<Report>) -> Element {
     let i18n = use_i18n();
