@@ -441,6 +441,7 @@ pub struct AppState {
     /// Today when the owner chose to see only unmarked deeds. A new day clears it.
     unmarked_day: Option<WerdyDay>,
     kept_days_cache: RefCell<Option<(WerdyDay, usize)>>,
+    last_saved_data: OwnerData,
     pending_settings: PendingSettings,
     sets_dirty: bool,
     first_run_dirty: bool,
@@ -452,6 +453,7 @@ impl AppState {
     /// Do not merge server revisions against phone times here.
     pub fn accept_sync(&mut self, records: OwnerData) {
         self.data = records;
+        self.last_saved_data.clone_from(&self.data);
         self.pending_settings = PendingSettings::default();
         self.sets_dirty = false;
         self.first_run_dirty = false;
@@ -469,6 +471,7 @@ impl AppState {
             Ok(None) => (OwnerData::default(), SaveStatus::Saved),
             Err(_) => (OwnerData::default(), SaveStatus::LoadFailed),
         };
+        let last_saved_data = data.clone();
         let migrated = crate::starter::migrate_legacy_prayers(&mut data);
         let (screen, pending_level, pending_extra_level, pending_extra_ticks) =
             Self::first_run_view(&data);
@@ -491,6 +494,7 @@ impl AppState {
             whats_new: Vec::new(),
             unmarked_day: None,
             kept_days_cache: RefCell::new(None),
+            last_saved_data,
             pending_settings: PendingSettings::default(),
             sets_dirty: migrated,
             first_run_dirty: false,
@@ -1880,6 +1884,16 @@ impl AppState {
         merged.merge_deed_keys(&self.data)
     }
 
+    // Shared storage may contain another tab's edits that this screen has not seen.
+    pub(crate) fn has_unsaved_changes(&self) -> bool {
+        self.save_status == SaveStatus::SaveFailed
+            || self.data != self.last_saved_data
+            || self.pending_settings != PendingSettings::default()
+            || self.first_run_dirty
+            || self.sets_dirty
+            || !self.deed_changes.is_empty()
+    }
+
     /// Saves the data, unless saved data could not be read at start.
     pub fn save_to(&mut self, store: &dyn Store) {
         if self.save_status == SaveStatus::LoadFailed {
@@ -1938,6 +1952,7 @@ impl AppState {
                             self.invalidate_kept_days();
                         }
                         self.data = merged;
+                        self.last_saved_data.clone_from(&self.data);
                         self.pending_settings = PendingSettings::default();
                         self.sets_dirty = false;
                         self.first_run_dirty = false;
@@ -1995,6 +2010,7 @@ impl AppState {
                 }
                 if merged == stored {
                     self.data = stored;
+                    self.last_saved_data.clone_from(&self.data);
                     self.invalidate_kept_days();
                     self.save_status = SaveStatus::Saved;
                     self.deed_changes.clear();
@@ -2018,6 +2034,7 @@ impl AppState {
             return false;
         }
         self.data = stored.clone();
+        self.last_saved_data.clone_from(stored);
         self.viewing = self.today;
         self.screen = Screen::Sheet;
         self.report_steps_back = 0;

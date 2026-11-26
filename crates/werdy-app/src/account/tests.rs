@@ -645,3 +645,49 @@ fn a_late_sync_in_one_tab_keeps_an_edit_saved_in_the_other() {
     assert_eq!(merged.marks, edited.marks);
     assert_eq!(second.load().unwrap().unwrap().marks, edited.marks);
 }
+
+#[test]
+fn sync_completion_with_a_stale_screen_keeps_the_other_tabs_mark() {
+    let (first, second) = two_tabs();
+    let mut screen = crate::state::AppState::start(&first, day(), vec![]);
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = first.claim_flight(1_000).unwrap().unwrap();
+    let outcome = runtime::Attempt::Synced(Box::new(flight(&first, &mut backend)));
+
+    let mut edited = second.load().unwrap().unwrap();
+    edited.set_mark(DeedId(1), day(), Some(MarkEntry::new(Mark::Done, day())), 1);
+    second.save(&edited).unwrap();
+
+    runtime::finish_attempt(&first, &mut screen, &outcome, generation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.load().unwrap().unwrap().marks, edited.marks);
+    let account = first.account.borrow();
+    let checkpoint = account.checkpoint.as_ref().unwrap();
+    assert!(
+        !checkpoint
+            .engine
+            .outbox()
+            .iter()
+            .any(|pending| matches!(pending.change, werdy_sync::Change::Mark { entry: None, .. }))
+    );
+}
+
+#[test]
+fn sync_completion_saves_an_unsaved_screen_edit_made_during_the_request() {
+    let store = store();
+    store.sign_in(session(), &records()).unwrap();
+    let mut screen = crate::state::AppState::start(&store, day(), vec![]);
+    let mut backend = FakeBackend::new(1000);
+    let (_, _, generation) = store.claim_flight(1_000).unwrap().unwrap();
+    let outcome = runtime::Attempt::Synced(Box::new(flight(&store, &mut backend)));
+
+    screen.tap(DeedId(1), crate::state::Tap::Done);
+    assert!(store.load().unwrap().unwrap().marks.is_empty());
+
+    let merged = runtime::finish_attempt(&store, &mut screen, &outcome, generation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(merged.marks[&(DeedId(1), day())].mark, Mark::Done);
+    assert_eq!(store.load().unwrap().unwrap().marks, merged.marks);
+}

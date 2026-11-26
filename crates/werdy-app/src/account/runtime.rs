@@ -1,8 +1,8 @@
-use super::{AccountStore, Checkpoint, config};
-use crate::state::AppState;
+use super::{AccountStore, Checkpoint, config, storage_error};
+use crate::state::{AppState, SaveStatus};
 use dioxus::prelude::*;
 use std::{rc::Rc, time::Duration};
-use werdy_store::Store;
+use werdy_store::{OwnerData, StoreError};
 use werdy_sync::{Session, SupabaseAuth, SupabaseBackend, SyncError};
 
 #[derive(Clone)]
@@ -66,27 +66,12 @@ pub fn use_background(mut state: Signal<AppState>) {
                         }
                         let success = match outcome {
                             Ok(outcome) => {
-                                let latest = state.read().data.clone();
-                                let needs_save =
-                                    store.load().map(|saved| saved.as_ref() != Some(&latest));
+                                let mut state = state.write();
                                 let saved =
-                                    needs_save
-                                        .and_then(|changed| {
-                                            if changed { store.save(&latest) } else { Ok(()) }
-                                        })
-                                        .and_then(|()| match &outcome {
-                                            Attempt::Synced(completed) => store.complete(
-                                                completed,
-                                                generation,
-                                                crate::platform::change_time(),
-                                            ),
-                                            Attempt::Collision(collision) => {
-                                                store.recover_collision(collision, generation)
-                                            }
-                                        });
+                                    finish_attempt(&store, &mut state, &outcome, generation);
                                 match saved {
                                     Ok(Some(records)) => {
-                                        state.write().accept_sync(records);
+                                        state.accept_sync(records);
                                         if matches!(outcome, Attempt::Collision(_)) {
                                             store.account.borrow_mut().error =
                                                 Some(error_key(&SyncError::OperationReused));
@@ -142,9 +127,29 @@ fn claim(store: &AccountStore) -> Option<super::Flight> {
     None
 }
 
-enum Attempt {
+pub(super) enum Attempt {
     Synced(Box<Checkpoint>),
     Collision(Box<werdy_sync::Collision>),
+}
+
+pub(super) fn finish_attempt(
+    store: &AccountStore,
+    state: &mut AppState,
+    outcome: &Attempt,
+    generation: u64,
+) -> Result<Option<OwnerData>, StoreError> {
+    if state.has_unsaved_changes() {
+        state.save_to(store);
+        if state.save_status != SaveStatus::Saved {
+            return Err(storage_error());
+        }
+    }
+    match outcome {
+        Attempt::Synced(completed) => {
+            store.complete(completed, generation, crate::platform::change_time())
+        }
+        Attempt::Collision(collision) => store.recover_collision(collision, generation),
+    }
 }
 
 async fn attempt(
