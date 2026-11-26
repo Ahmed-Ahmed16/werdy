@@ -6,6 +6,24 @@ use crate::{Error, HijriDate, HijriOffset};
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct WerdyDay(i32);
 
+/// How many days before the sign up day a person may still mark (#170).
+pub const LATE_SIGN_UP_DAYS: u8 = 7;
+
+/// First day a person who signs up on `sign_up` may mark: the
+/// [`LATE_SIGN_UP_DAYS`] days before it. Setup deeds start on this day, so
+/// scoring rule 4 counts that week and nothing before it. Stops at the
+/// earliest supported day instead of failing.
+pub fn first_markable_day(sign_up: WerdyDay) -> WerdyDay {
+    let mut day = sign_up;
+    for _ in 0..LATE_SIGN_UP_DAYS {
+        match day.previous() {
+            Ok(previous) => day = previous,
+            Err(_) => break,
+        }
+    }
+    day
+}
+
 impl WerdyDay {
     /// Creates a day from a checked Gregorian year, month, and day.
     pub fn new(year: i32, month: u8, day: u8) -> Result<Self, Error> {

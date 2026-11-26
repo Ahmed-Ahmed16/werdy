@@ -52,7 +52,16 @@ pub enum ReviewState {
     Finished { conclusion: String, title: String },
 }
 
-pub fn comments(number: u32, all: bool, full: bool) -> Result<(), String> {
+/// What `pr comments` shows beyond the default: unresolved threads, summarised.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CommentOptions {
+    /// Also list resolved threads.
+    pub all: bool,
+    /// Print whole comment bodies, not a short summary.
+    pub full: bool,
+}
+
+pub fn comments(number: u32, options: CommentOptions) -> Result<(), String> {
     let json = capture_ok(
         "gh",
         [
@@ -70,7 +79,7 @@ pub fn comments(number: u32, all: bool, full: bool) -> Result<(), String> {
     )?;
     print!(
         "{}",
-        render_threads(number, &parse_threads(&json)?, all, full)
+        render_threads(number, &parse_threads(&json)?, options)
     );
     Ok(())
 }
@@ -149,11 +158,11 @@ pub fn coderabbit_state(json: &str) -> Result<ReviewState, String> {
     })
 }
 
-pub fn render_threads(number: u32, threads: &[Thread], all: bool, full: bool) -> String {
+pub fn render_threads(number: u32, threads: &[Thread], options: CommentOptions) -> String {
     let open = threads.iter().filter(|thread| !thread.resolved).count();
     let mut shown: Vec<&Thread> = threads
         .iter()
-        .filter(|thread| all || !thread.resolved)
+        .filter(|thread| options.all || !thread.resolved)
         .collect();
     shown.sort_by_key(|thread| (thread.resolved, thread.path.as_str(), thread.line));
 
@@ -175,7 +184,7 @@ pub fn render_threads(number: u32, threads: &[Thread], all: bool, full: bool) ->
         }
         out.push_str(&format!("\n{}{line}{marks}\n", thread.path));
         for comment in &thread.comments {
-            let body = if full {
+            let body = if options.full {
                 comment.body.trim().to_string()
             } else {
                 summary(&comment.body)
@@ -314,15 +323,41 @@ mod tests {
     #[test]
     fn render_hides_resolved_threads_unless_all() {
         let threads = parse_threads(THREADS).unwrap();
-        let open_only = render_threads(82, &threads, false, false);
+        let open_only = render_threads(82, &threads, CommentOptions::default());
         assert!(open_only.starts_with("PR #82: 1 unresolved of 2 threads"));
         assert!(open_only.contains("src/a.rs:12"));
         assert!(!open_only.contains("src/b.rs"));
 
-        let everything = render_threads(82, &threads, true, false);
+        let all = CommentOptions {
+            all: true,
+            ..CommentOptions::default()
+        };
+        let everything = render_threads(82, &threads, all);
         let open_at = everything.find("src/a.rs").unwrap();
         let resolved_at = everything.find("src/b.rs [resolved] [outdated]").unwrap();
         assert!(open_at < resolved_at, "unresolved threads come first");
+    }
+
+    #[test]
+    fn full_prints_whole_bodies_and_default_prints_summaries() {
+        let threads = vec![Thread {
+            path: "src/a.rs".to_string(),
+            line: Some(1),
+            resolved: false,
+            outdated: false,
+            comments: vec![Comment {
+                author: "coderabbitai".to_string(),
+                body: "One\n\nTwo\n\nThree\n\nFour".to_string(),
+                url: "https://x/1".to_string(),
+            }],
+        }];
+        let short = render_threads(1, &threads, CommentOptions::default());
+        assert!(short.contains("Three") && !short.contains("Four"));
+        let full = CommentOptions {
+            full: true,
+            ..CommentOptions::default()
+        };
+        assert!(render_threads(1, &threads, full).contains("Four"));
     }
 
     #[test]

@@ -868,3 +868,24 @@ fn group_of_is_none_for_slot_deeds_and_unknown_keys() {
     assert_eq!(catalog.group_of("lv_witr"), None);
     assert_eq!(catalog.group_of("no_such_deed"), None);
 }
+
+/// The unit picker offers every shipped unit, hours included (#175), and
+/// each one has a picker label in both locales.
+#[test]
+fn every_unit_has_a_picker_label_and_hours_is_offered() {
+    let catalog = builtin().expect("the shipped starter sets load");
+    let keys: Vec<_> = catalog.units.iter().map(|unit| unit.key.as_str()).collect();
+    assert_eq!(keys, ["pages", "rakaat", "times", "hours"]);
+    for (locale, source) in [
+        ("ar", include_str!("../../../locales/ar/deeds.ftl")),
+        ("en", include_str!("../../../locales/en/deeds.ftl")),
+    ] {
+        for key in &keys {
+            let label = format!("\neditor-unit-{key} = ");
+            assert!(
+                source.contains(&label),
+                "{locale}: missing editor-unit-{key}"
+            );
+        }
+    }
+}
