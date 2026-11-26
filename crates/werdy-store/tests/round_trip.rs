@@ -123,6 +123,29 @@ fn save_then_load_returns_identical_data() -> TestResult {
 }
 
 #[test]
+fn a_group_place_and_its_clock_reminder_round_trip() -> TestResult {
+    let mut data = sample()?;
+    let start = WerdyDay::new(2026, 10, 1)?;
+    data.deeds
+        .push(Deed::new(DeedId(3), start, rule("self_review", None)));
+    data.last_deed_id = 3;
+    data.settings.reminders.slots.insert(
+        SlotKey::new("self_review"),
+        werdy_store::SlotReminder::Clock(werdy_store::ClockTime::new(21, 30)?),
+    );
+    let loaded = from_json(&to_json(&data)?)?;
+    assert_eq!(loaded, data);
+    let place = loaded
+        .deeds
+        .iter()
+        .find(|deed| deed.id == DeedId(3))
+        .and_then(|deed| deed.rule_on(start))
+        .map(|rule| rule.slot.clone());
+    assert_eq!(place, Some(SlotKey::new("self_review")));
+    Ok(())
+}
+
+#[test]
 fn first_run_setup_ids_round_trip_and_old_file_defaults() -> TestResult {
     let mut data = sample()?;
     data.first_run.step = "own_deeds".to_owned();
