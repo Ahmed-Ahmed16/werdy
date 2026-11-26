@@ -1223,6 +1223,17 @@ textarea:focus-visible {
   padding-block: var(--gap-xs);
 }
 
+.report-prayer-missed,
+.report-prayer-total {
+  color: var(--mark-missed);
+  font-weight: var(--weight-semibold);
+}
+
+.report-prayer-legend .report-dot {
+  flex: none;
+  inline-size: var(--mark-icon);
+}
+
 .report-row-head {
   flex-wrap: wrap;
   align-items: baseline;
@@ -1262,7 +1273,6 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   aspect-ratio: 1;
-  border: var(--stroke-thin) dashed var(--border-strong);
   border-radius: var(--radius-mark);
 }
 
@@ -1287,6 +1297,28 @@ textarea:focus-visible {
   border: 0;
   background: var(--mark-missed);
   color: var(--on-mark-missed);
+}
+
+.report-dot[data-kind="unmarked"] {
+  border: var(--stroke-strong) solid var(--mark-missed);
+  background: transparent;
+  color: var(--mark-missed);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.report-dot[data-kind="unmarked"]::before {
+  content: "?";
+}
+
+.report-dot[data-kind="none"]::before {
+  content: "";
+  inline-size: 33%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--border-strong);
+  opacity: 0.5;
 }
 
 .report-dot[data-sign="true"] {
