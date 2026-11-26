@@ -115,6 +115,7 @@ pub fn schedule_sentence(texts: &Texts, language: Language, schedule: &Schedule)
         Schedule::Weekdays(days) => weekdays_sentence(texts, language, days),
         Schedule::Hijri(range) => hijri_sentence(texts, language, range),
         Schedule::OnceAWeek => texts.get(language, "schedule-once-a-week-sentence", &[]),
+        Schedule::WhenItComesUp => texts.get(language, "schedule-when-it-comes-up-sentence", &[]),
     }
 }
 
@@ -662,6 +663,11 @@ mod tests {
                 Schedule::OnceAWeek,
                 "Due once a week, on the day you mark it. The week runs Saturday to Friday. With no mark by the end of Friday, it counts as missed on Friday.",
                 "مستحق مرة في الأسبوع، في اليوم الذي تسجله فيه. الأسبوع من السبت إلى الجمعة. إن لم تسجله حتى نهاية الجمعة يُحسب فائتًا يوم الجمعة.",
+            ),
+            (
+                Schedule::WhenItComesUp,
+                "Counts only on a day you mark it. Left unmarked, it is never missed.",
+                "يحسب فقط في يوم تسجله فيه. إن لم تسجله فلا يعد فائتًا.",
             ),
         ];
         for (schedule, english, arabic) in cases {

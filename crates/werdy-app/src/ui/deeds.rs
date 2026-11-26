@@ -257,6 +257,7 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                         if let Some(range) = first_range { draft.write().schedule = Schedule::Hijri(range); }
                     }, {i18n.t("editor-hijri")} }
                     button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::OnceAWeek)}", onclick: move |_| draft.write().schedule = Schedule::OnceAWeek, {i18n.t("editor-once-a-week")} }
+                    button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::WhenItComesUp)}", onclick: move |_| draft.write().schedule = Schedule::WhenItComesUp, {i18n.t("editor-when-it-comes-up")} }
                 }
                 if let Schedule::Weekdays(days) = &selected.schedule {
                     div { class: "weekday-list",

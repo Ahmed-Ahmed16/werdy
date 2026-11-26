@@ -154,3 +154,15 @@ fn once_a_week_is_stored_as_a_plain_name() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn when_it_comes_up_is_stored_as_a_plain_name() -> TestResult {
+    let json = serde_json::to_string(&Schedule::WhenItComesUp)?;
+
+    assert_eq!(json, r#""when_it_comes_up""#);
+    assert_eq!(
+        serde_json::from_str::<Schedule>(&json)?,
+        Schedule::WhenItComesUp
+    );
+    Ok(())
+}

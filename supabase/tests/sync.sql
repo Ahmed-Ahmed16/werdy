@@ -29,7 +29,8 @@ declare
       {"install":"wire","operation":18,"change":{"ChosenSet":{"key":"prayers","chosen":true}}},
       {"install":"wire","operation":19,"change":{"Deed":{"id":{"install":"wire","sequence":2},"row":null}}},
       {"install":"wire","operation":20,"change":{"Deed":{"id":{"install":"wire","sequence":3},"row":{"created_on":20754,"archived_from":null,"past_archives":[],"name":{"key":"starter-fajr"},"starter_key":"fajr"}}}},
-      {"install":"wire","operation":21,"change":{"Rule":{"id":{"install":"wire","sequence":3},"from_day":20757,"rule":{"schedule":"once_a_week","target":null,"category":"other","slot":"any_time"}}}}
+      {"install":"wire","operation":21,"change":{"Rule":{"id":{"install":"wire","sequence":3},"from_day":20757,"rule":{"schedule":"once_a_week","target":null,"category":"other","slot":"any_time"}}}},
+      {"install":"wire","operation":22,"change":{"Rule":{"id":{"install":"wire","sequence":3},"from_day":20758,"rule":{"schedule":"when_it_comes_up","target":null,"category":"other","slot":"any_time"}}}}
     ]$wire$;
     operation_json jsonb;
 begin
