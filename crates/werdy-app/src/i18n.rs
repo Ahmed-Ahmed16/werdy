@@ -358,6 +358,36 @@ mod tests {
         }
     }
 
+    /// The sharing role is called Support / دعم (#167). The old words
+    /// "watch" and the Arabic root تابع (as in متابع) must not come back
+    /// in sharing copy. Fluent keys keep their old `watch` names, so only
+    /// the text after `=` is checked.
+    #[test]
+    fn sharing_role_copy_says_support_not_watcher() {
+        for source in ARABIC.iter().chain(ENGLISH) {
+            for line in source.lines() {
+                let Some((key, text)) = line.split_once('=') else {
+                    continue;
+                };
+                let lower = text.to_lowercase();
+                assert!(!lower.contains("watch"), "{key} still says watch: {text}");
+                let sharing_key = key.contains("watch") || key.starts_with("sharing-");
+                if sharing_key {
+                    assert!(!text.contains("تابع"), "{key} still uses تابع: {text}");
+                }
+            }
+        }
+        let texts = Texts::load();
+        assert_eq!(
+            texts.get(Language::English, "sharing-watchers", &[]),
+            "People who support me"
+        );
+        assert_eq!(
+            texts.get(Language::Arabic, "sharing-watchers", &[]),
+            "من يدعمونني"
+        );
+    }
+
     #[test]
     fn variables_are_filled_in() {
         let texts = Texts::load();
@@ -582,6 +612,11 @@ mod tests {
             ("unit-times", 3, "الهدف: 3 مرات", "Target: 3 times"),
             ("unit-times", 11, "الهدف: 11 مرةً", "Target: 11 times"),
             ("unit-times", 100, "الهدف: 100 مرة", "Target: 100 times"),
+            ("unit-hours", 1, "الهدف: ساعة", "Target: 1 hour"),
+            ("unit-hours", 2, "الهدف: ساعتان", "Target: 2 hours"),
+            ("unit-hours", 3, "الهدف: 3 ساعات", "Target: 3 hours"),
+            ("unit-hours", 11, "الهدف: 11 ساعةً", "Target: 11 hours"),
+            ("unit-hours", 100, "الهدف: 100 ساعة", "Target: 100 hours"),
         ] {
             for (language, expected) in [(Language::Arabic, arabic), (Language::English, english)] {
                 let unit = texts.get(language, unit_key, &[("count", FluentValue::from(count))]);

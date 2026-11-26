@@ -18,6 +18,11 @@ unit-times =
         [one] time
        *[other] times
     }
+unit-hours =
+    { $count ->
+        [one] hour
+       *[other] hours
+    }
 
 ## Sets.
 
