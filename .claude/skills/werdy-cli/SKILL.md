@@ -26,11 +26,11 @@ Use these commands for the jobs below. Do not write a `.ps1`, `.sh` or Python sc
 
 ## What the output means
 
-* **gates**: prints `[k/total] command` before each step, then `All N steps passed.` The steps are the ones in `.github/workflows/ci.yml`; a unit test keeps the two the same. The headless Chrome tests are not included.
-* **apk inspect**: prints package, version, SDK levels, CPU types, signer and certificate SHA-256, then one `PROBLEM:` line for each of: no `arm64-v8a` code (phones refuse it, #84), a signature that does not verify, or the debug key. Needs `ANDROID_HOME`; uses the newest build tools there.
+* **gates**: prints `[k/total] command` before each step, then `All N steps passed.` The steps are the ones in `.github/workflows/ci.yml`. A unit test keeps the two the same. The headless Chrome tests are not included. On Windows, gates reports os error 5 (access denied) or 32 (file in use by another process) and runs the failed step once more. If either code appears again, gates reports that the step failed twice. Set the Windows toolchain and target folder in the owner's shell (`RUSTUP_TOOLCHAIN`, `CARGO_TARGET_DIR`) before `cargo xtask` starts.
+* **apk inspect**: prints package, version, SDK levels, CPU types, signer and certificate SHA-256, then one `PROBLEM:` line for each of: no `arm64-v8a` code (phones refuse it, #84), a signature that does not verify, the debug key, or any other key than the release key (its SHA-256 is a constant in `crates/xtask/src/apk.rs`). Needs `ANDROID_HOME`; uses the newest build tools there.
 * **pr comments**: one block per thread, `path:line`, marked `[resolved]` or `[outdated]`, with each comment's author, a three line summary and its link. The summary drops HTML and CodeRabbit's `<details>` logs; use `--full` before replying to a comment.
 * **release check-tag**: prints the version when the tag is `v` + the version in `crates/werdy-app/Cargo.toml`. The release workflow runs it first. To release, raise the version, merge, then push the tag (ask the owner first).
-* **pr wait-review**: checks CodeRabbit's check run every 30 seconds and prints a line when its state changes. "Skipped" means CodeRabbit did not review this commit. On this repo reviews are often asked for by hand; asking is the owner's call, so ask him before posting `@coderabbitai review`.
+* **pr wait-review**: checks CodeRabbit's check run every 30 seconds and prints a line when its state changes. `pr comments` shows only inline review threads. Read the debate review's round summary in the review body on the PR page. "Skipped" means CodeRabbit did not review this commit. Ask the owner before posting `@coderabbitai review`.
 
 ## Releases
 

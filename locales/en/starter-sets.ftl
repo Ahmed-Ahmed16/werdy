@@ -18,6 +18,11 @@ unit-times =
         [one] time
        *[other] times
     }
+unit-hours =
+    { $count ->
+        [one] hour
+       *[other] hours
+    }
 
 ## Sets.
 
@@ -310,3 +315,6 @@ deed-lv-friday-dua-after-asr = Dua after Asr (Friday)
 deed-lv-friday-kahf = Surat al Kahf (Friday)
 deed-lv-friday-salawat-100 = Salawat on the Prophet (Friday)
 deed-lv-friday-salawat = Salawat on the Prophet (Friday)
+
+deed-lv-visiting-graves = Visiting graves
+deed-lv-weekly-fitra = Sunan al fitra

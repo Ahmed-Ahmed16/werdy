@@ -144,7 +144,10 @@ fn DeedListRow(deed: Deed) -> Element {
         )
     });
     let archived = deed.is_archived_on(app.today);
-    let not_due = !archived && !deed.is_due_on(app.today, &app.data.settings.calendar);
+    let not_due = !archived
+        && !deed
+            .status_on(app.today, &app.data.settings.calendar, &app.data.marks)
+            .is_on_sheet();
     let id = deed.id;
     rsx! {
         div { class: "deeds-list-row",
@@ -253,6 +256,8 @@ pub fn DeedEditor(id: Option<DeedId>) -> Element {
                     button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::Hijri(_))}", onclick: move |_| {
                         if let Some(range) = first_range { draft.write().schedule = Schedule::Hijri(range); }
                     }, {i18n.t("editor-hijri")} }
+                    button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::OnceAWeek)}", onclick: move |_| draft.write().schedule = Schedule::OnceAWeek, {i18n.t("editor-once-a-week")} }
+                    button { class: "choice-chip", aria_pressed: "{matches!(selected.schedule, Schedule::WhenItComesUp)}", onclick: move |_| draft.write().schedule = Schedule::WhenItComesUp, {i18n.t("editor-when-it-comes-up")} }
                 }
                 if let Schedule::Weekdays(days) = &selected.schedule {
                     div { class: "weekday-list",

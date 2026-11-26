@@ -88,6 +88,11 @@ pub enum Schedule {
     Weekdays(Vec<Weekday>),
     /// Due inside a Hijri range. Written as `{ hijri = "ramadan" }`.
     Hijri(String),
+    /// Due once in each Saturday to Friday week, on the day it is marked.
+    /// Written as `"once_a_week"`.
+    OnceAWeek,
+    /// Due only on a day it is marked. Written as `"when_it_comes_up"`.
+    WhenItComesUp,
 }
 
 /// Day of the week, written in lower case in the file.
@@ -489,7 +494,7 @@ fn check_deed(catalog: &Catalog, deed: &Deed) -> Result<(), Error> {
                 range: range.clone(),
             });
         }
-        Schedule::Hijri(_) => {}
+        Schedule::Hijri(_) | Schedule::OnceAWeek | Schedule::WhenItComesUp => {}
     }
     if let Some(target) = &deed.target {
         if target.amount == 0 {

@@ -81,10 +81,11 @@ pub use consistency::{
     Consistency, DEFAULT_CONSISTENCY_WINDOW, consistency, kept_days, milestone_to_show,
     welcome_after_gap,
 };
-pub use day::{Weekday, WerdyDay};
+pub use day::{LATE_SIGN_UP_DAYS, Weekday, WerdyDay, first_markable_day};
 pub use deed::{
-    CategoryKey, Deed, DeedId, DeedRule, Schedule, SlotKey, Target, active_deed_count,
-    archived_deed_count, decrease_target_amount, delete_deed, increase_target_amount,
+    CategoryKey, DayStatus, Deed, DeedId, DeedRule, Marks, Schedule, SlotKey, Target,
+    active_deed_count, archived_deed_count, decrease_target_amount, delete_deed,
+    increase_target_amount,
 };
 pub use hijri::{CalendarSettings, HijriDate, HijriOffset, HijriRange};
 pub use mark::{Fraction, Mark, MarkEntry, convert_mark_for_target};
@@ -98,4 +99,4 @@ pub use report::{
 pub use score::{
     OwnerRecords, Score, ScoreValue, TodaySummary, finished_day_summary, score, today_summary,
 };
-pub use sheet::{DailySheet, SheetRow, SheetSlot, daily_sheet};
+pub use sheet::{DailySheet, RowTag, SheetRow, SheetSlot, daily_sheet};

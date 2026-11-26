@@ -2,6 +2,11 @@
 
 Newest first. Each entry: the decision, why, and what would make us revisit it.
 
+## 0050 (2026-11-26): A late sign up may mark the week before
+When a person finishes first run, their setup deeds start 7 days before that day (`first_markable_day` in werdy-core, `LATE_SIGN_UP_DAYS`), so they can fill in the last week. Days before that week are not due, so no statistic counts them as Missed; this is scoring rule 4 with an earlier start day, not a new rule. Deeds added after first run still start on the day they are added. Marks entered more than 2 days after their day carry the "added later" sign (0021), so most of that week shows it. The owner decided a week on 2026-11-26 (#170); a month was considered.
+
+Why: someone who starts using werdy mid week has already prayed and read this week, and should be able to record it. Moving the start day keeps every report, strip and sheet consistent with one rule. Open: an unmarked day in that week counts as Missed, like any past due day. Revisit: if new people find a week of red they did not choose to fill, by counting only marked days in that week.
+
 ## 0049 (2026-11-26): The five prayers block is built on the congregation deed
 The reports block "The five prayers" shows, for each prayer and each day, the mark of the owner's congregation deed for that prayer, from a level or the mosque prayer set. The mark already tells the whole story: done (green) is the first congregation, partial (yellow) is a later congregation, and missed (X) is a prayer prayed alone. A day with no mark at all is the real "missed or not recorded" state and must look clearly different from an X. The on time deed from the five prayers set is used only on a day no congregation deed for that prayer is due, for example when the owner has none. Each row counts done, partial, missed and unmarked days over the shown range, from pure tested functions. Which deeds belong to which prayer is the `fard_prayers` table in `data/starter-sets.toml`.
 
