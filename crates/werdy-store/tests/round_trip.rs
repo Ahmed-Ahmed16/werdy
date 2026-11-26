@@ -78,6 +78,7 @@ fn sample() -> Result<OwnerData, Box<dyn std::error::Error>> {
         first_run: Default::default(),
         chosen_sets: ["five_prayers".to_owned()].into(),
         starter_keys: BTreeMap::from([(DeedId(1), "fajr_on_time".to_owned())]),
+        level_group_move_handled: Default::default(),
         deeds: vec![fajr, quran],
         last_deed_id: 2,
         deleted_deeds: Default::default(),
@@ -119,6 +120,24 @@ fn save_then_load_returns_identical_data() -> TestResult {
     store.save(&data)?;
 
     assert_eq!(store.load()?, Some(data));
+    Ok(())
+}
+
+#[test]
+fn a_level_group_move_marker_round_trips_and_old_saves_load() -> TestResult {
+    let old = sample()?;
+    let mut updated = old.clone();
+    updated.level_group_move_handled.insert(DeedId(2));
+    let json = to_json(&updated)?;
+    assert_eq!(from_json(&json)?, updated);
+
+    let mut legacy: serde_json::Value = serde_json::from_str(&json)?;
+    let marker = legacy
+        .as_object_mut()
+        .ok_or("expected an owner data object")?
+        .remove("level_group_move_handled");
+    assert!(marker.is_some());
+    assert_eq!(from_json(&legacy.to_string())?, old);
     Ok(())
 }
 

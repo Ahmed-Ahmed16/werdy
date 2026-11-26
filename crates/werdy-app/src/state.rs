@@ -1266,6 +1266,9 @@ impl AppState {
             let created_deed = Deed::new(id, self.today, rule);
             self.data.deeds.push(created_deed.clone());
             self.data.names.insert(id, DeedName::Key(deed.name.clone()));
+            if catalog.group_of(&key).is_some() {
+                self.data.level_group_move_handled.insert(id);
+            }
             self.data.starter_keys.insert(id, key);
             if !self.data.first_run_complete {
                 self.data.first_run.setup_deed_ids.insert(id);
@@ -1815,6 +1818,9 @@ impl AppState {
         }
         if let Some(key) = self.data.starter_keys.remove(&old_id) {
             self.data.starter_keys.insert(new_id, key);
+        }
+        if self.data.level_group_move_handled.remove(&old_id) {
+            self.data.level_group_move_handled.insert(new_id);
         }
         self.move_mark_ids(old_id, new_id);
         if let Some(DeedChange::Upsert { mut deed, name, .. }) = self.deed_changes.remove(&old_id) {
@@ -2475,6 +2481,40 @@ mod tests {
             Some("heart_and_character")
         );
         assert_eq!(place(&reloaded, start).as_deref(), Some("any_time"));
+
+        let mut edited = reloaded;
+        let mut draft = edited.draft_for(id).ok_or("missing deed draft")?;
+        draft.slot = SlotKey::new("any_time");
+        edited.save_deed(Some(id), &draft)?;
+        edited.save_to(&store);
+
+        let mut reopened = AppState::start(&store, today()?, slot_order());
+        reopened.move_level_deeds_to_groups(&store);
+        assert_eq!(place(&reopened, today()?).as_deref(), Some("any_time"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_new_level_deed_can_move_from_its_group_to_any_time() -> TestResult {
+        let store = MemoryStore::default();
+        let mut state = started(&store)?;
+        state.toggle_set("level_1")?;
+        let id = state
+            .data
+            .starter_keys
+            .iter()
+            .find_map(|(id, key)| (key == "lv_parents").then_some(*id))
+            .ok_or("missing parents deed")?;
+        let mut draft = state.draft_for(id).ok_or("missing deed draft")?;
+        assert_eq!(draft.slot.0, "heart_and_character");
+        draft.slot = SlotKey::new("any_time");
+        state.save_deed(Some(id), &draft)?;
+        state.save_to(&store);
+
+        let mut reopened = AppState::start(&store, today()?, slot_order());
+        reopened.move_level_deeds_to_groups(&store);
+        let draft = reopened.draft_for(id).ok_or("missing deed draft")?;
+        assert_eq!(draft.slot.0, "any_time");
         Ok(())
     }
 
