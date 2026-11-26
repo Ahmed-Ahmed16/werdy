@@ -592,6 +592,11 @@ mod tests {
             ("unit-times", 3, "الهدف: 3 مرات", "Target: 3 times"),
             ("unit-times", 11, "الهدف: 11 مرةً", "Target: 11 times"),
             ("unit-times", 100, "الهدف: 100 مرة", "Target: 100 times"),
+            ("unit-hours", 1, "الهدف: ساعة", "Target: 1 hour"),
+            ("unit-hours", 2, "الهدف: ساعتان", "Target: 2 hours"),
+            ("unit-hours", 3, "الهدف: 3 ساعات", "Target: 3 hours"),
+            ("unit-hours", 11, "الهدف: 11 ساعةً", "Target: 11 hours"),
+            ("unit-hours", 100, "الهدف: 100 ساعة", "Target: 100 hours"),
         ] {
             for (language, expected) in [(Language::Arabic, arabic), (Language::English, english)] {
                 let unit = texts.get(language, unit_key, &[("count", FluentValue::from(count))]);

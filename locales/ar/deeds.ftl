@@ -72,3 +72,4 @@ range-ayyam-al-bid = الأيام البيض
 editor-unit-pages = صفحات
 editor-unit-rakaat = ركعات
 editor-unit-times = مرات
+editor-unit-hours = ساعات

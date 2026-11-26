@@ -71,6 +71,11 @@ name = "unit-rakaat"
 key = "times"
 name = "unit-times"
 
+# Whole hours only, no minutes (#175).
+[[units]]
+key = "hours"
+name = "unit-hours"
+
 # Set 1: the five prayers.
 
 [[deeds]]
